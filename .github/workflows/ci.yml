@@ -1,0 +1,81 @@
+name: Scarp Studio CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Do not build both push and PR runs for each feature-branch commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows editor checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # Resolve strictly from reviewed, committed lockfiles.
+      - name: Install JS dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Frontend typecheck
+        run: npm run typecheck
+      - name: Frontend tests
+        run: npm test
+      - name: Frontend production bundle
+        run: npm run build
+      - name: Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Native Rust compilation
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build Windows executable
+        run: npm run tauri build -- --no-bundle
+      - name: Build Windows NSIS installer candidate
+        run: npm run tauri build -- --bundles nsis
+      - name: Produce SHA-256 checksums
+        shell: pwsh
+        run: |
+          $files = @("src-tauri/target/release/scarp-studio.exe")
+          $installers = @(Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -File -Filter "*-setup.exe")
+          if ($installers.Count -eq 0) { throw "Windows installer was not produced" }
+          foreach ($installer in $installers) { $files += $installer.FullName }
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLowerInvariant()
+            "$hash *$(Split-Path -Leaf $file)"
+          }
+          $lines | Set-Content -Path SHA256SUMS.txt -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-windows-unbundled
+          path: src-tauri/target/release/scarp-studio.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-windows-nsis-candidate
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            SHA256SUMS.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-lockfiles
+          path: |
+            package-lock.json
+            src-tauri/Cargo.lock
+          if-no-files-found: error
+      - name: Ensure builds did not modify dependency lockfiles
+        shell: bash
+        run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
