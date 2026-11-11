@@ -16,7 +16,7 @@ Scarp Studio is an Apache-2.0 desktop IDE **exclusively for the Scarp programmin
 
 Install Node.js 22+, Rust stable with MSVC build tools, the Tauri 2 Windows requirements (WebView2), and run:
 
-    npm install
+    npm ci
     npm run typecheck
     npm test
     npm run tauri dev
@@ -25,11 +25,11 @@ Optional: create an unbundled Windows executable with:
 
     npm run tauri build -- --no-bundle
 
-CI builds an **experimental NSIS installer candidate** and uploads generated JS/Cargo lockfiles separately. Download both lockfiles from the CI artifact, add them to this branch, then change CI to `npm ci` and Cargo `--locked`. A passing build is not a substitute for hands-on Windows file-save testing.
+CI builds an **experimental NSIS installer candidate**. Both `package-lock.json` and `src-tauri/Cargo.lock` are committed; CI uses `npm ci` and `cargo check --locked` to check reproducibility. A passing build is not a substitute for hands-on Windows file-save testing.
 
 ## Known limitations
 
-- Compiler commands, diagnostics, completion and debugging are not yet implemented. The evolving official Scarp compiler CLI must be audited first.
+- Compiler commands, diagnostics, completion and debugging are not yet implemented. The official compiler lives at https://github.com/scarp-lang/scarp; its experimental `exec` and `verify` interfaces require version-aware, bounded native process integration before exposure in Studio.
 - Folder browsing currently lists only immediate .srp children; selected-folder filesystem scope behavior needs Windows verification.
 - Only user-selected files are accessible, and dialog scopes are session-local. Reopen a file or folder after restarting.
 - Native Windows tests, packaging and hands-on launch/open/save/discard validation must pass before publishing any GitHub release. The CI installer is an unsigned candidate, not an official release.

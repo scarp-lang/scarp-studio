@@ -28,9 +28,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      # Bootstrap dependency locks in the runner; commit them after downloading the lockfile artifact.
+      # Resolve strictly from reviewed, committed lockfiles.
       - name: Install JS dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Frontend typecheck
         run: npm run typecheck
       - name: Frontend tests
@@ -40,7 +40,7 @@ jobs:
       - name: Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Native Rust compilation
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate
@@ -76,3 +76,6 @@ jobs:
             package-lock.json
             src-tauri/Cargo.lock
           if-no-files-found: error
+      - name: Ensure builds did not modify dependency lockfiles
+        shell: bash
+        run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
