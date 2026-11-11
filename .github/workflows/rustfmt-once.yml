@@ -1,0 +1,33 @@
+name: Format Rust compiler integration (temporary)
+on:
+  push:
+    branches: [feat/scarp-compiler-run-verify]
+
+permissions:
+  contents: write
+
+jobs:
+  rustfmt-once:
+    if: github.repository == 'scarp-lang/scarp-studio'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/scarp-compiler-run-verify
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Apply official rustfmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml
+      - name: Commit formatted Rust source if changed
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- src-tauri/src/compiler.rs src-tauri/src/lib.rs
+          if git diff --cached --quiet; then
+            echo 'Rust sources already match rustfmt.'
+            exit 0
+          fi
+          git commit -m 'style(compiler): apply rustfmt to native service'
+          git push origin HEAD:feat/scarp-compiler-run-verify
