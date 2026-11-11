@@ -200,10 +200,13 @@ export default function App() {
       return;
     }
     let source: string;
+    let expectedContent: string;
     try {
-      source = runnableSource(
-        liveEditor.current.documents.find((item) => item.id === liveEditor.current.activeId) ?? null,
-      );
+      const selected = liveEditor.current.documents.find(
+        (item) => item.id === liveEditor.current.activeId,
+      ) ?? null;
+      source = runnableSource(selected);
+      expectedContent = selected!.savedContent;
       if (!compilerPath) throw new Error('Select the trusted Scarp compiler first.');
     } catch (caught) {
       setError(toMessage(caught));
@@ -214,7 +217,7 @@ export default function App() {
     setError(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
-      const result = await executeScarp(compilerPath, source, mode);
+      const result = await executeScarp(compilerPath, source, mode, expectedContent);
       setCompilerOutput(result);
       setNotice('Scarp ' + mode + ' finished; see output');
     } catch (caught) {

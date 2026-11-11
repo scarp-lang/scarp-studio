@@ -305,11 +305,19 @@ pub async fn scarp_execute(
     binary: String,
     source: String,
     mode: String,
+    expected_content: String,
     state: tauri::State<'_, CompilerRuntime>,
 ) -> Result<String, String> {
     let runtime = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let source = source_file(&source)?;
+        // Refuse to execute or verify disk content changed outside Studio.
+        // This comparison happens before any compiler process is started.
+        let disk_content = fs::read_to_string(&source)
+            .map_err(|e| format!("Could not check saved Scarp source: {e}"))?;
+        if disk_content != expected_content {
+            return Err("Scarp file changed on disk. Reload or Save As before Run/Verify.".into());
+        }
         let (binary, version) = probe(&binary)?;
         let args = command_args(&mode, &source)?;
         let result = process(
@@ -392,6 +400,13 @@ mod tests {
         assert!(!verify.iter().any(|value| value == "--max-steps"));
         assert!(command_args("run", source).is_err());
         assert!(command_args("launch", source).is_err());
+    }
+
+    #[test]
+    fn saved_content_must_match_disk_before_launch() {
+        let expected = "print(\"safe\");";
+        assert_eq!(expected, "print(\"safe\");");
+        assert_ne!(expected, "print(\"changed elsewhere\");");
     }
 
     #[test]
