@@ -1,0 +1,326 @@
+//! Bounded, opt-in execution of the separately installed official Scarp binary.
+//! This service never invokes a shell and never starts on file open or save.
+use std::{
+    ffi::OsString,
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+    process::{Child, Command, ExitStatus, Stdio},
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+    time::{Duration, Instant},
+};
+
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const EXEC_TIMEOUT: Duration = Duration::from_secs(20);
+const PROBE_OUTPUT_LIMIT: usize = 32 * 1024;
+const EXEC_OUTPUT_LIMIT: usize = 256 * 1024;
+
+#[derive(Clone)]
+struct ActiveJob {
+    id: u64,
+    child: Arc<Mutex<Child>>,
+    cancelled: Arc<AtomicBool>,
+}
+
+#[derive(Default)]
+pub struct CompilerRuntime {
+    active: Mutex<Option<ActiveJob>>,
+    sequence: AtomicU64,
+}
+
+struct ProcessResult {
+    status: ExitStatus,
+    stdout: String,
+    stderr: String,
+    truncated: bool,
+    cancelled: bool,
+}
+
+fn read_bounded<R: Read>(mut source: R, limit: usize) -> Result<(String, bool), String> {
+    let mut captured = Vec::new();
+    let mut buffer = [0u8; 8192];
+    let mut truncated = false;
+    loop {
+        let size = source.read(&mut buffer).map_err(|e| e.to_string())?;
+        if size == 0 {
+            break;
+        }
+        let remaining = limit.saturating_sub(captured.len());
+        captured.extend_from_slice(&buffer[..size.min(remaining)]);
+        if size > remaining {
+            truncated = true;
+        }
+        // Keep draining the pipe even after reaching the limit, so the child
+        // cannot deadlock on a full stdout/stderr buffer.
+    }
+    Ok((String::from_utf8_lossy(&captured).into_owned(), truncated))
+}
+
+fn process(
+    binary: &Path,
+    args: &[OsString],
+    cwd: Option<&Path>,
+    timeout: Duration,
+    output_limit: usize,
+    runtime: Option<&CompilerRuntime>,
+) -> Result<ProcessResult, String> {
+    let mut command = Command::new(binary);
+    command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    if let Some(directory) = cwd {
+        command.current_dir(directory);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+
+    // Reserve the execution slot before spawning so two Run clicks can never
+    // launch two compiler processes concurrently.
+    let (child, job_id, cancelled) = if let Some(runtime) = runtime {
+        let mut slot = runtime.active.lock().map_err(|e| e.to_string())?;
+        if slot.is_some() {
+            return Err("Scarp is already running. Stop it before starting another command.".into());
+        }
+        let child = Arc::new(Mutex::new(command.spawn().map_err(|e| format!("Could not start Scarp: {e}"))?));
+        let id = runtime.sequence.fetch_add(1, Ordering::Relaxed);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        *slot = Some(ActiveJob { id, child: child.clone(), cancelled: cancelled.clone() });
+        (child, Some(id), cancelled)
+    } else {
+        let child = Arc::new(Mutex::new(command.spawn().map_err(|e| format!("Could not start Scarp: {e}"))?));
+        (child, None, Arc::new(AtomicBool::new(false)))
+    };
+
+    let execution = (|| {
+        let (stdout, stderr) = {
+            let mut child = child.lock().map_err(|e| e.to_string())?;
+            (
+                child.stdout.take().ok_or("Compiler stdout was unavailable")?,
+                child.stderr.take().ok_or("Compiler stderr was unavailable")?,
+            )
+        };
+        let output_thread = thread::spawn(move || read_bounded(stdout, output_limit));
+        let error_thread = thread::spawn(move || read_bounded(stderr, output_limit));
+        let started = Instant::now();
+        let mut timed_out = false;
+        let status = loop {
+            let current = child.lock().map_err(|e| e.to_string())?.try_wait().map_err(|e| e.to_string())?;
+            if let Some(status) = current {
+                break status;
+            }
+            if started.elapsed() >= timeout {
+                timed_out = true;
+                let _ = child.lock().map_err(|e| e.to_string())?.kill();
+                break child.lock().map_err(|e| e.to_string())?.wait().map_err(|e| e.to_string())?;
+            }
+            thread::sleep(Duration::from_millis(25));
+        };
+        let (stdout, stdout_truncated) = output_thread.join()
+            .map_err(|_| "Scarp stdout reader thread failed".to_string())??;
+        let (stderr, stderr_truncated) = error_thread.join()
+            .map_err(|_| "Scarp stderr reader thread failed".to_string())??;
+        if timed_out {
+            return Err(format!("Scarp exceeded the {} second time limit and was stopped.", timeout.as_secs()));
+        }
+        Ok(ProcessResult {
+            status,
+            stdout,
+            stderr,
+            truncated: stdout_truncated || stderr_truncated,
+            cancelled: cancelled.load(Ordering::SeqCst),
+        })
+    })();
+
+    if let (Some(runtime), Some(id)) = (runtime, job_id) {
+        if let Ok(mut slot) = runtime.active.lock() {
+            if slot.as_ref().is_some_and(|job| job.id == id) {
+                *slot = None;
+            }
+        }
+    }
+    execution
+}
+
+fn compiler_binary(path: &str) -> Result<PathBuf, String> {
+    let raw = Path::new(path);
+    if !raw.is_absolute() {
+        return Err("Select the absolute path to the official Scarp executable.".into());
+    }
+    let resolved = fs::canonicalize(raw).map_err(|e| format!("Scarp executable not found: {e}"))?;
+    if !resolved.is_file() {
+        return Err("The selected Scarp compiler is not a file.".into());
+    }
+    let file_name = resolved.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    #[cfg(windows)]
+    let expected = "scarp.exe";
+    #[cfg(not(windows))]
+    let expected = "scarp";
+    if !file_name.eq_ignore_ascii_case(expected) {
+        return Err(format!("Select the official {expected} executable (not another program)."));
+    }
+    Ok(resolved)
+}
+
+fn source_file(path: &str) -> Result<PathBuf, String> {
+    let raw = Path::new(path);
+    if !raw.is_absolute() || !raw.to_string_lossy().to_ascii_lowercase().ends_with(".srp") {
+        return Err("Save a Scarp .srp file before running or verifying.".into());
+    }
+    let canonical = fs::canonicalize(raw).map_err(|e| format!("Scarp source not found: {e}"))?;
+    if !canonical.is_file() || !canonical.to_string_lossy().to_ascii_lowercase().ends_with(".srp") {
+        return Err("The selected source must be an existing .srp file.".into());
+    }
+    Ok(canonical)
+}
+
+fn parse_version(output: &str) -> Option<String> {
+    let version = output.trim().strip_prefix("scarp ")?.split_whitespace().next()?;
+    if version.contains('.')
+        && version.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    {
+        Some(version.to_owned())
+    } else {
+        None
+    }
+}
+
+fn compiler_supports(binary: &Path, verb: &str) -> Result<bool, String> {
+    let args = [OsString::from("guide"), OsString::from(verb)];
+    let result = process(binary, &args, None, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT, None)?;
+    Ok(result.status.success()
+        && !result.truncated
+        && result.stdout.starts_with(&format!("Usage: scarp {verb}")))
+}
+
+fn probe(binary: &str) -> Result<(PathBuf, String), String> {
+    let binary = compiler_binary(binary)?;
+    let result = process(&binary, &[OsString::from("--version")], None, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT, None)?;
+    if !result.status.success() || result.truncated {
+        return Err("Scarp --version failed or returned invalid output.".into());
+    }
+    let version = parse_version(&result.stdout).ok_or("The executable did not report a valid Scarp version.")?;
+    if !compiler_supports(&binary, "exec")? || !compiler_supports(&binary, "verify")? {
+        return Err("This Scarp build does not advertise both exec and static verify.".into());
+    }
+    Ok((binary, version))
+}
+
+fn command_args(mode: &str, source: &Path) -> Result<Vec<OsString>, String> {
+    let mut args = match mode {
+        "exec" => vec![
+            OsString::from("exec"),
+            OsString::from("--max-steps"), OsString::from("200000"),
+            OsString::from("--max-prints"), OsString::from("1000"),
+        ],
+        "verify" => vec![OsString::from("verify")],
+        _ => return Err("Only the official Scarp exec and verify commands are allowed.".into()),
+    };
+    args.push(OsString::from("--diagnostic-format=json"));
+    args.push(OsString::from("--"));
+    args.push(source.as_os_str().to_owned());
+    Ok(args)
+}
+
+/// Probe only the executable selected by the user. No execution or PATH search.
+#[tauri::command]
+pub async fn scarp_probe(binary: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (_, version) = probe(&binary)?;
+        Ok(format!("Scarp {version} — exec and static verify available"))
+    })
+    .await
+    .map_err(|e| format!("Scarp probe worker failed: {e}"))?
+}
+
+/// Run/verify a previously saved source file only after an explicit button click.
+#[tauri::command]
+pub async fn scarp_execute(
+    binary: String,
+    source: String,
+    mode: String,
+    state: tauri::State<'_, CompilerRuntime>,
+) -> Result<String, String> {
+    let runtime = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let source = source_file(&source)?;
+        let (binary, version) = probe(&binary)?;
+        let args = command_args(&mode, &source)?;
+        let result = process(&binary, &args, source.parent(), EXEC_TIMEOUT, EXEC_OUTPUT_LIMIT, Some(&runtime))?;
+        let exit = result.status.code().map_or("terminated by signal".to_owned(), |code| code.to_string());
+        let outcome = if result.cancelled { "cancelled" } else if result.status.success() { "completed" } else { "failed" };
+        let cap_notice = if result.truncated { "\n[Output truncated to the configured safety limit.]" } else { "" };
+        Ok(format!(
+            "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
+            source.display(), result.stdout,
+            if result.stderr.is_empty() { "" } else { "\nCompiler diagnostics:\n" },
+            result.stderr, cap_notice
+        ))
+    })
+    .await
+    .map_err(|e| format!("Scarp execution worker failed: {e}"))?
+}
+
+/// Cancel only the Scarp process launched by Studio; no system-wide kills.
+#[tauri::command]
+pub fn scarp_cancel(state: tauri::State<'_, CompilerRuntime>) -> Result<bool, String> {
+    let slot = state.active.lock().map_err(|e| e.to_string())?;
+    let Some(job) = slot.as_ref() else {
+        return Ok(false);
+    };
+    job.cancelled.store(true, Ordering::SeqCst);
+    let mut child = job.child.lock().map_err(|e| e.to_string())?;
+    let _ = child.kill(); // Already exited is harmless; completion resolves separately.
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checks_real_scarp_version_format() {
+        assert_eq!(parse_version("scarp 0.0.6-alpha.7\n"), Some("0.0.6-alpha.7".into()));
+        assert_eq!(parse_version("other 0.0.6-alpha.7"), None);
+        assert_eq!(parse_version("scarp ../../evil"), None);
+    }
+
+    #[test]
+    fn only_official_actions_are_allowed() {
+        let source = Path::new("C:/Scarp project/main.srp");
+        let run = command_args("exec", source).unwrap();
+        assert_eq!(run[0], "exec");
+        assert_eq!(run[1], "--max-steps");
+        assert_eq!(run.last().unwrap(), source.as_os_str());
+        let verify = command_args("verify", source).unwrap();
+        assert_eq!(verify[0], "verify");
+        assert!(!verify.iter().any(|value| value == "--max-steps"));
+        assert!(command_args("run", source).is_err());
+        assert!(command_args("launch", source).is_err());
+    }
+
+    #[test]
+    fn source_validation_rejects_non_scarp_files_and_relative_paths() {
+        assert!(source_file("test.rs").is_err());
+        assert!(source_file("test.srp").is_err());
+        assert!(source_file("C:/not-a-file.rs").is_err());
+    }
+
+    #[test]
+    fn binary_validation_rejects_relative_paths() {
+        assert!(compiler_binary("scarp").is_err());
+        assert!(compiler_binary("scarp.exe").is_err());
+    }
+
+    #[test]
+    fn output_capture_is_bounded_even_for_large_streams() {
+        let source = vec![b'x'; 300_000];
+        let (captured, truncated) = read_bounded(source.as_slice(), 4096).unwrap();
+        assert_eq!(captured.len(), 4096);
+        assert!(truncated);
+    }
+}
