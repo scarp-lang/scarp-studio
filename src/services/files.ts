@@ -1,7 +1,7 @@
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import type { StudioDocument } from '../model/documents';
-import { isScarpPath } from '../model/documents';
+import { isScarpPath, sameFilePath } from '../model/documents';
 
 const scarpFilter = [{ name: 'Scarp source', extensions: ['srp'] }];
 
@@ -28,7 +28,7 @@ export async function writeSourceFile(
   }
   if (!path) return null;
   if (!isScarpPath(path)) throw new Error('Scarp source files must end in .srp.');
-  if (otherOpenPaths.some((otherPath) => otherPath.toLowerCase() === path.toLowerCase())) {
+  if (otherOpenPaths.some((otherPath) => sameFilePath(otherPath, path))) {
     throw new Error('That file is already open in another tab.');
   }
   await writeTextFile(path, document.content);

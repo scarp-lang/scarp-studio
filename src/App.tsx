@@ -36,6 +36,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const nextUntitled = useRef(2);
+  const saveInProgress = useRef(false);
   const liveDocuments = useRef(documents);
   liveDocuments.current = documents;
 
@@ -124,7 +125,8 @@ export default function App() {
 
   async function saveFile(forceSaveAs = false): Promise<void> {
     const document = liveDocuments.current.find((item) => item.id === activeId);
-    if (!document) return;
+    if (!document || saveInProgress.current) return;
+    saveInProgress.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -142,6 +144,7 @@ export default function App() {
     } catch (caught) {
       setError('Could not save source: ' + toMessage(caught));
     } finally {
+      saveInProgress.current = false;
       setBusy(false);
     }
   }

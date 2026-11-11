@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createUntitled, isDirty, isScarpPath, markSaved, openedDocument, updateContent } from './documents';
+import { createUntitled, isDirty, isScarpPath, markSaved, openedDocument, sameFilePath, updateContent } from './documents';
 
 describe('Scarp-only file state', () => {
   it('accepts .srp paths case-insensitively and rejects other files', () => {
@@ -24,6 +24,20 @@ describe('Scarp-only file state', () => {
     const base = createUntitled(2);
     const saved = markSaved([{ ...base, content: 'new version' }], base.id, '/tmp/test.srp', 'old version')[0];
     expect(isDirty(saved)).toBe(true);
+  });
+
+  it('compares Windows path aliases without collapsing distinct POSIX filenames', () => {
+    expect(sameFilePath('C:\\\\Project\\\\Main.srp', 'c:/project/main.SRP')).toBe(true);
+    expect(sameFilePath('\\\\\\\\server\\\\share\\\\Main.srp', '\\\\\\\\SERVER/share/main.SRP')).toBe(true);
+    expect(sameFilePath('/tmp/Main.srp', '/tmp/main.srp')).toBe(false);
+  });
+
+  it('reuses a Windows tab opened using different separators and casing', () => {
+    const opened = openedDocument([], 'C:\\\\Project\\\\Main.srp', 'disk');
+    const dirty = updateContent(opened.documents, opened.id, 'unsaved');
+    const again = openedDocument(dirty, 'c:/project/main.SRP', 'different disk contents');
+    expect(again.id).toBe(opened.id);
+    expect(again.documents).toEqual(dirty);
   });
 
   it('focuses the already-open path without erasing unsaved work', () => {

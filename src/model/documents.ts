@@ -11,6 +11,17 @@ export function isScarpPath(path: string): boolean {
   return /\.srp$/i.test(path);
 }
 
+/** Compare only Windows paths without regard to case or separator style.
+ * POSIX paths remain case-sensitive to avoid colliding distinct files.
+ */
+export function sameFilePath(left: string, right: string): boolean {
+  const isWindows = (path: string) => /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path);
+  if (isWindows(left) && isWindows(right)) {
+    return left.replace(/\//g, '\\\\').toLowerCase() === right.replace(/\//g, '\\\\').toLowerCase();
+  }
+  return left === right;
+}
+
 export function fileName(path: string): string {
   return path.split(/[\\/]/).at(-1) || path;
 }
@@ -44,7 +55,7 @@ export function openedDocument(
   path: string,
   content: string,
 ): { documents: StudioDocument[]; id: string } {
-  const existing = documents.find((document) => document.path === path);
+  const existing = documents.find((document) => document.path !== null && sameFilePath(document.path, path));
   if (existing) return { documents, id: existing.id };
 
   const id = 'file-' + path;
