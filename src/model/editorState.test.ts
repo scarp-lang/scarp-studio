@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { editorReducer, initialEditorState } from './editorState';
+import { editorReducer, initialEditorState, sameDirtyDocuments } from './editorState';
 
 describe('atomic editor session transitions', () => {
   it('preserves all tabs when two opens complete asynchronously', () => {
@@ -68,6 +68,24 @@ describe('atomic editor session transitions', () => {
     });
     expect(closeSecond.activeId).toBeNull();
     expect(closeSecond.documents).toHaveLength(0);
+  });
+
+  it('detects new edits while an application close confirmation is open', () => {
+    const original = editorReducer(initialEditorState, { type: 'new' });
+    const dirty = editorReducer(original, {
+      type: 'edit', id: 'untitled-2', content: 'first edit',
+    });
+    const snapshot = dirty.documents.filter((document) => document.content !== document.savedContent);
+    expect(sameDirtyDocuments(snapshot, dirty.documents)).toBe(true);
+    const moreEdits = editorReducer(dirty, {
+      type: 'edit', id: 'untitled-2', content: 'new changes after prompt',
+    });
+    expect(sameDirtyDocuments(snapshot, moreEdits.documents)).toBe(false);
+    const newTab = editorReducer(dirty, { type: 'new' });
+    const changedTab = editorReducer(newTab, {
+      type: 'edit', id: 'untitled-3', content: 'another unsaved file',
+    });
+    expect(sameDirtyDocuments(snapshot, changedTab.documents)).toBe(false);
   });
 
   it('ignores stale edits and save results for a removed tab', () => {

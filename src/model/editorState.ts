@@ -79,3 +79,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
   }
 }
+
+/** Native exit dialogs must never authorize edits created after the prompt opened. */
+export function sameDirtyDocuments(
+  snapshot: readonly StudioDocument[],
+  currentDocuments: readonly StudioDocument[],
+): boolean {
+  const currentDirty = currentDocuments.filter(isDirty);
+  if (snapshot.length !== currentDirty.length) return false;
+  return snapshot.every((expected) => {
+    const current = currentDirty.find((document) => document.id === expected.id);
+    return current !== undefined && isUnchangedSnapshot(current, expected);
+  });
+}

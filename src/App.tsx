@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
@@ -6,7 +6,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   fileName, isDirty,
 } from './model/documents';
-import { editorReducer, initialEditorState, isUnchangedSnapshot } from './model/editorState';
+import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 
@@ -26,7 +26,16 @@ function toMessage(error: unknown): string {
 }
 
 export default function App() {
-  const [{ documents, activeId }, dispatch] = useReducer(editorReducer, initialEditorState);
+  const [editorState, setEditorState] = useState(initialEditorState);
+  // Apply actions synchronously to the live state so native close requests and
+  // file operations observe new edits before React renders the next frame.
+  const liveEditor = useRef(editorState);
+  const { documents, activeId } = editorState;
+  function dispatch(action: EditorAction): void {
+    const next = editorReducer(liveEditor.current, action);
+    liveEditor.current = next;
+    setEditorState(next);
+  }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
@@ -35,8 +44,6 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
-  const liveDocuments = useRef(documents);
-  liveDocuments.current = documents;
 
   const active = documents.find((document) => document.id === activeId) || null;
 
@@ -51,13 +58,23 @@ export default function App() {
     let removed = false;
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(async (event) => {
-      if (!liveDocuments.current.some(isDirty)) return;
+      const pending = liveEditor.current.documents.filter(isDirty);
+      if (!pending.length && !saveInProgress.current) return;
       event.preventDefault();
+      if (saveInProgress.current) {
+        setError('A file is being saved. Finish saving before exiting.');
+        return;
+      }
       try {
         if (await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
           kind: 'warning',
         })) {
+          if (saveInProgress.current ||
+              !sameDirtyDocuments(pending, liveEditor.current.documents)) {
+            setError('Files changed while confirming exit. Review your edits and try again.');
+            return;
+          }
           await getCurrentWindow().destroy();
         }
       } catch (caught) {
@@ -118,7 +135,7 @@ export default function App() {
   }
 
   async function saveFile(forceSaveAs = false): Promise<void> {
-    const document = liveDocuments.current.find((item) => item.id === activeId);
+    const document = liveEditor.current.documents.find((item) => item.id === activeId);
     if (!document || saveInProgress.current) return;
     saveInProgress.current = true;
     setError(null);
@@ -127,7 +144,7 @@ export default function App() {
       const path = await writeSourceFile(
         document,
         forceSaveAs,
-        liveDocuments.current
+        liveEditor.current.documents
           .filter((item) => item.id !== document.id && item.path !== null)
           .map((item) => item.path as string),
       );
@@ -148,7 +165,7 @@ export default function App() {
       setError('Finish the current save before closing a tab.');
       return;
     }
-    const document = liveDocuments.current.find((item) => item.id === id);
+    const document = liveEditor.current.documents.find((item) => item.id === id);
     if (!document) return;
     if (isDirty(document)) {
       try {
@@ -162,7 +179,7 @@ export default function App() {
         return;
       }
     }
-    const current = liveDocuments.current.find((item) => item.id === id);
+    const current = liveEditor.current.documents.find((item) => item.id === id);
     if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
       setError('The file changed while confirming close. Review the changes and try again.');
       return;
