@@ -1,12 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  createUntitled, fileName, isDirty, markSaved, openedDocument, updateContent,
-  type StudioDocument,
+  fileName, isDirty,
 } from './model/documents';
+import { editorReducer, initialEditorState, isUnchangedSnapshot } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 
@@ -26,8 +26,7 @@ function toMessage(error: unknown): string {
 }
 
 export default function App() {
-  const [documents, setDocuments] = useState<StudioDocument[]>([createUntitled(1)]);
-  const [activeId, setActiveId] = useState<string | null>('untitled-1');
+  const [{ documents, activeId }, dispatch] = useReducer(editorReducer, initialEditorState);
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
@@ -35,7 +34,6 @@ export default function App() {
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
-  const nextUntitled = useRef(2);
   const saveInProgress = useRef(false);
   const liveDocuments = useRef(documents);
   liveDocuments.current = documents;
@@ -73,17 +71,13 @@ export default function App() {
   }, []);
 
   function newFile(): void {
-    const document = createUntitled(nextUntitled.current++);
-    setDocuments((current) => [...current, document]);
-    setActiveId(document.id);
-    setNotice('Created ' + document.name);
+    dispatch({ type: 'new' });
+    setNotice('Created a new Scarp source file');
     setError(null);
   }
 
   function activateOpenedFile(path: string, content: string): void {
-    const result = openedDocument(liveDocuments.current, path, content);
-    setDocuments(result.documents);
-    setActiveId(result.id);
+    dispatch({ type: 'open', path, content });
     setNotice('Opened ' + fileName(path));
   }
 
@@ -139,7 +133,7 @@ export default function App() {
       );
       if (!path) return;
       // Preserve edits made during the asynchronous native save operation.
-      setDocuments((current) => markSaved(current, document.id, path, document.content));
+      dispatch({ type: 'saved', id: document.id, path, savedContent: document.content });
       setNotice('Saved ' + fileName(path));
     } catch (caught) {
       setError('Could not save source: ' + toMessage(caught));
@@ -150,6 +144,10 @@ export default function App() {
   }
 
   async function closeFile(id: string): Promise<void> {
+    if (saveInProgress.current) {
+      setError('Finish the current save before closing a tab.');
+      return;
+    }
     const document = liveDocuments.current.find((item) => item.id === id);
     if (!document) return;
     if (isDirty(document)) {
@@ -164,9 +162,12 @@ export default function App() {
         return;
       }
     }
-    const remaining = liveDocuments.current.filter((item) => item.id !== id);
-    setDocuments(remaining);
-    if (activeId === id) setActiveId(remaining.at(-1)?.id || null);
+    const current = liveDocuments.current.find((item) => item.id === id);
+    if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
+      setError('The file changed while confirming close. Review the changes and try again.');
+      return;
+    }
+    dispatch({ type: 'close', id, snapshot: document });
     setNotice('Closed ' + document.name);
   }
 
@@ -244,7 +245,7 @@ export default function App() {
               <button
                 className={'file-row' + (document.id === activeId ? ' selected' : '')}
                 key={document.id}
-                onClick={() => setActiveId(document.id)}
+                onClick={() => dispatch({ type: 'activate', id: document.id })}
                 title={document.path || document.name}
               >
                 <span aria-hidden="true" className="file-glyph">S</span>
@@ -268,7 +269,7 @@ export default function App() {
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
-                    setActiveId(document.id);
+                    dispatch({ type: 'activate', id: document.id });
                   }
                 }}
                 tabIndex={0}
@@ -300,7 +301,7 @@ export default function App() {
                 theme={theme === 'dark' ? 'vs-dark' : 'vs'}
                 value={active.content}
                 onChange={(content) => {
-                  setDocuments((current) => updateContent(current, active.id, content ?? ''));
+                  dispatch({ type: 'edit', id: active.id, content: content ?? '' });
                 }}
                 onMount={(editor) => {
                   editor.onDidChangeCursorPosition((event) => {
