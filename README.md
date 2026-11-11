@@ -25,13 +25,13 @@ Optional: create an unbundled Windows executable with:
 
     npm run tauri build -- --no-bundle
 
-The app currently does not package an installer. A dependency lockfile, successful Windows CI and interactive file-save testing are required before publishing a prerelease.
+CI builds an **experimental NSIS installer candidate** and uploads generated JS/Cargo lockfiles separately. Download both lockfiles from the CI artifact, add them to this branch, then change CI to `npm ci` and Cargo `--locked`. A passing build is not a substitute for hands-on Windows file-save testing.
 
 ## Known limitations
 
 - Compiler commands, diagnostics, completion and debugging are not yet implemented. The evolving official Scarp compiler CLI must be audited first.
 - Folder browsing currently lists only immediate .srp children; selected-folder filesystem scope behavior needs Windows verification.
 - Only user-selected files are accessible, and dialog scopes are session-local. Reopen a file or folder after restarting.
-- Native Windows tests and distributable packaging must pass before publishing any GitHub release.
+- Native Windows tests, packaging and hands-on launch/open/save/discard validation must pass before publishing any GitHub release. The CI installer is an unsigned candidate, not an official release.
 
 **Repository:** https://github.com/scarp-lang/scarp-studio

@@ -27,13 +27,13 @@ describe('Scarp-only file state', () => {
   });
 
   it('compares Windows path aliases without collapsing distinct POSIX filenames', () => {
-    expect(sameFilePath('C:\\\\Project\\\\Main.srp', 'c:/project/main.SRP')).toBe(true);
-    expect(sameFilePath('\\\\\\\\server\\\\share\\\\Main.srp', '\\\\\\\\SERVER/share/main.SRP')).toBe(true);
+    expect(sameFilePath(String.raw`C:\Project\Main.srp`, 'c:/project/main.SRP')).toBe(true);
+    expect(sameFilePath(String.raw`\\server\share\Main.srp`, String.raw`\\SERVER/share/main.SRP`)).toBe(true);
     expect(sameFilePath('/tmp/Main.srp', '/tmp/main.srp')).toBe(false);
   });
 
   it('reuses a Windows tab opened using different separators and casing', () => {
-    const opened = openedDocument([], 'C:\\\\Project\\\\Main.srp', 'disk');
+    const opened = openedDocument([], String.raw`C:\Project\Main.srp`, 'disk');
     const dirty = updateContent(opened.documents, opened.id, 'unsaved');
     const again = openedDocument(dirty, 'c:/project/main.SRP', 'different disk contents');
     expect(again.id).toBe(opened.id);

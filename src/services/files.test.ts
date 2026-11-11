@@ -43,6 +43,7 @@ describe('safe .srp file writes', () => {
     const document = { ...createUntitled(2), content: 'bind value = 123' };
     const selected = await writeSourceFile(document, false, []);
     expect(selected).toBe('C:\\Project\\example.srp');
-    expect(writeTextFile).toHaveBeenCalledExactlyOnceWith(selected, document.content);
+    expect(writeTextFile).toHaveBeenCalledTimes(1);
+    expect(writeTextFile).toHaveBeenCalledWith(selected, document.content);
   });
 });

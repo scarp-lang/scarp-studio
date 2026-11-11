@@ -17,7 +17,7 @@ export function isScarpPath(path: string): boolean {
 export function sameFilePath(left: string, right: string): boolean {
   const isWindows = (path: string) => /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path);
   if (isWindows(left) && isWindows(right)) {
-    return left.replace(/\//g, '\\\\').toLowerCase() === right.replace(/\//g, '\\\\').toLowerCase();
+    return left.replace(/[\\/]+/g, '\\').toLowerCase() === right.replace(/[\\/]+/g, '\\').toLowerCase();
   }
   return left === right;
 }

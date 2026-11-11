@@ -23,7 +23,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-      # Lockfiles will be committed after the first successful dependency resolution.
+      # Bootstrap dependency locks in the runner; commit them after downloading the lockfile artifact.
       - name: Install JS dependencies
         run: npm install --no-audit --no-fund
       - name: Frontend typecheck
@@ -38,8 +38,36 @@ jobs:
         run: cargo check --manifest-path src-tauri/Cargo.toml
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
+      - name: Build Windows NSIS installer candidate
+        run: npm run tauri build -- --bundles nsis
+      - name: Produce SHA-256 checksums
+        shell: pwsh
+        run: |
+          $files = @("src-tauri/target/release/scarp-studio.exe")
+          $installers = @(Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -File -Filter "*-setup.exe")
+          if ($installers.Count -eq 0) { throw "Windows installer was not produced" }
+          foreach ($installer in $installers) { $files += $installer.FullName }
+          $lines = foreach ($file in $files) {
+            $hash = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLowerInvariant()
+            "$hash *$(Split-Path -Leaf $file)"
+          }
+          $lines | Set-Content -Path SHA256SUMS.txt -Encoding ascii
       - uses: actions/upload-artifact@v4
         with:
           name: scarp-studio-windows-unbundled
           path: src-tauri/target/release/scarp-studio.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-windows-nsis-candidate
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            SHA256SUMS.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-lockfiles
+          path: |
+            package-lock.json
+            src-tauri/Cargo.lock
           if-no-files-found: error
