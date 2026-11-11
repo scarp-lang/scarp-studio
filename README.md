@@ -2,7 +2,7 @@
 
 Scarp Studio is an Apache-2.0 desktop IDE **exclusively for the Scarp programming language** (.srp files).
 
-**Status:** Early development toward v0.0.1-alpha.1. This branch is not yet a verified release.
+**Status:** Early development toward v0.0.2-alpha.1. This branch is not yet a verified release.
 
 ## Implemented in this branch
 

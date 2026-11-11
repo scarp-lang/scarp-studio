@@ -448,7 +448,7 @@ export default function App() {
         <span>{busy ? 'Working…' : notice}</span>
         <span>{active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}</span>
         <span>Scarp · .srp</span>
-        <span>v0.0.1-alpha.1</span>
+        <span>v0.0.2-alpha.1</span>
       </footer>
     </div>
   );
