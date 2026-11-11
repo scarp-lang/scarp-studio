@@ -68,6 +68,15 @@ jobs:
           $execution = & $binary.FullName exec --max-steps 200000 --max-prints 1000 --diagnostic-format=json -- scarp-smoke.srp
           if ($LASTEXITCODE -ne 0 -or $execution -notmatch "Studio CLI smoke") { throw "Scarp execution smoke failed" }
 
+      - name: Test Studio native process service against pinned Scarp compiler
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Pinned Scarp compiler missing from integration test" }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Native Scarp process integration failed" }
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate

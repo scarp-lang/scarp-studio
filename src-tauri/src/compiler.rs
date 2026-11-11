@@ -436,6 +436,61 @@ mod tests {
         assert!(compiler_binary("scarp.exe").is_err());
     }
 
+    /// Uses the actual pinned release binary only when CI explicitly enables it.
+    #[test]
+    #[ignore = "requires the SHA-256-pinned official Scarp compiler"]
+    fn official_compiler_runs_through_native_service() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let selected = std::env::var("SCARP_TEST_BIN")
+            .expect("CI must explicitly provide the verified official Scarp executable");
+        let (binary, version) = probe(&selected).expect("official compiler probe");
+        assert_eq!(version, "0.0.6-alpha.7");
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let source = std::env::temp_dir().join(format!(
+            "scarp-studio-native-{}-{unique}.srp",
+            std::process::id()
+        ));
+        let content = "print(\"Studio backend integration\");";
+        fs::write(&source, content).unwrap();
+        let validated = source_file(source.to_str().unwrap()).unwrap();
+        ensure_matching_disk_snapshot(&validated, content).unwrap();
+
+        let runtime = CompilerRuntime::default();
+        let verify = process(
+            &binary,
+            &command_args("verify", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("native verify process");
+        assert!(verify.status.success(), "{}", verify.stderr);
+        assert!(!verify.truncated);
+        assert!(!verify.cancelled);
+
+        let execute = process(
+            &binary,
+            &command_args("exec", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("native exec process");
+        assert!(execute.status.success(), "{}", execute.stderr);
+        assert!(execute.stdout.contains("Studio backend integration"));
+        assert!(!execute.truncated);
+        assert!(!execute.cancelled);
+        fs::remove_file(&source).unwrap();
+        assert!(runtime.active.lock().unwrap().is_none());
+    }
+
     #[test]
     fn output_capture_is_bounded_even_for_large_streams() {
         let source = vec![b'x'; 300_000];
