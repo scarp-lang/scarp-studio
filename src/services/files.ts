@@ -31,6 +31,19 @@ export async function writeSourceFile(
   if (otherOpenPaths.some((otherPath) => sameFilePath(otherPath, path))) {
     throw new Error('That file is already open in another tab.');
   }
+
+  // Refuse to overwrite changes made by another editor since this tab's last
+  // successful read/save. A missing or inaccessible original fails closed.
+  // Save As to a different path uses the OS dialog's overwrite confirmation.
+  if (document.path !== null && sameFilePath(path, document.path)) {
+    const diskContent = await readTextFile(path);
+    if (diskContent !== document.savedContent) {
+      throw new Error(
+        'This file changed on disk since it was opened or saved. ' +
+        'Use Save As with a different filename to preserve both versions.',
+      );
+    }
+  }
   await writeTextFile(path, document.content);
   return path;
 }

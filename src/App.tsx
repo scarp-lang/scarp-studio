@@ -297,6 +297,7 @@ export default function App() {
                 <button
                   className="tab-close"
                   onClick={(event) => { event.stopPropagation(); void closeFile(document.id); }}
+                  onKeyDown={(event) => { event.stopPropagation(); }}
                   aria-label={'Close ' + document.name}
                   title={'Close ' + document.name}
                 >×</button>
