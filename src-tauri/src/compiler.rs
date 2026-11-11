@@ -268,6 +268,15 @@ fn probe(binary: &str) -> Result<(PathBuf, String), String> {
     Ok((binary, version))
 }
 
+fn ensure_matching_disk_snapshot(source: &Path, expected_content: &str) -> Result<(), String> {
+    let disk_content = fs::read_to_string(source)
+        .map_err(|e| format!("Could not check saved Scarp source: {e}"))?;
+    if disk_content != expected_content {
+        return Err("Scarp file changed on disk. Reload or Save As before Run/Verify.".into());
+    }
+    Ok(())
+}
+
 fn command_args(mode: &str, source: &Path) -> Result<Vec<OsString>, String> {
     let mut args = match mode {
         "exec" => vec![
@@ -313,11 +322,7 @@ pub async fn scarp_execute(
         let source = source_file(&source)?;
         // Refuse to execute or verify disk content changed outside Studio.
         // This comparison happens before any compiler process is started.
-        let disk_content = fs::read_to_string(&source)
-            .map_err(|e| format!("Could not check saved Scarp source: {e}"))?;
-        if disk_content != expected_content {
-            return Err("Scarp file changed on disk. Reload or Save As before Run/Verify.".into());
-        }
+        ensure_matching_disk_snapshot(&source, &expected_content)?;
         let (binary, version) = probe(&binary)?;
         let args = command_args(&mode, &source)?;
         let result = process(
@@ -404,9 +409,20 @@ mod tests {
 
     #[test]
     fn saved_content_must_match_disk_before_launch() {
-        let expected = "print(\"safe\");";
-        assert_eq!(expected, "print(\"safe\");");
-        assert_ne!(expected, "print(\"changed elsewhere\");");
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "scarp-studio-{}-{unique}.srp",
+            std::process::id()
+        ));
+        fs::write(&path, "print(\"original\");").unwrap();
+        assert!(ensure_matching_disk_snapshot(&path, "print(\"original\");").is_ok());
+        assert!(ensure_matching_disk_snapshot(&path, "print(\"stale\");").is_err());
+        fs::remove_file(&path).unwrap();
+        assert!(ensure_matching_disk_snapshot(&path, "print(\"original\");").is_err());
     }
 
     #[test]
