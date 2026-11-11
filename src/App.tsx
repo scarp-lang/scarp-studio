@@ -265,7 +265,7 @@ export default function App() {
                 aria-selected={document.id === activeId}
                 className={'tab' + (document.id === activeId ? ' active' : '')}
                 key={document.id}
-                onClick={() => setActiveId(document.id)}
+                onClick={() => dispatch({ type: 'activate', id: document.id })}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
