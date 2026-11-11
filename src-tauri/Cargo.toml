@@ -4,7 +4,6 @@ version = "0.1.0-alpha.1"
 description = "A native IDE dedicated to Scarp"
 edition = "2021"
 license = "Apache-2.0"
-rust-version = "1.77.2"
 build = "build.rs"
 
 [lib]

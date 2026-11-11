@@ -1,0 +1,45 @@
+name: Scarp Studio CI
+on:
+  push:
+    branches: [main, "feat/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows editor checks
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # Lockfiles will be committed after the first successful dependency resolution.
+      - name: Install JS dependencies
+        run: npm install --no-audit --no-fund
+      - name: Frontend typecheck
+        run: npm run typecheck
+      - name: Frontend tests
+        run: npm test
+      - name: Frontend production bundle
+        run: npm run build
+      - name: Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Native Rust compilation
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+      - name: Build Windows executable
+        run: npm run tauri build -- --no-bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-windows-unbundled
+          path: src-tauri/target/release/scarp-studio.exe
+          if-no-files-found: error
