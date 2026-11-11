@@ -11,7 +11,5 @@ export default defineConfig({
     host: '127.0.0.1',
   },
   envPrefix: ['VITE_'],
-  build: {
-    target: process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13',
-  },
+  build: { target: 'es2022' },
 });
