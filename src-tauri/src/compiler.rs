@@ -69,7 +69,11 @@ fn process(
     runtime: Option<&CompilerRuntime>,
 ) -> Result<ProcessResult, String> {
     let mut command = Command::new(binary);
-    command.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    command
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     if let Some(directory) = cwd {
         command.current_dir(directory);
     }
@@ -84,15 +88,29 @@ fn process(
     let (child, job_id, cancelled) = if let Some(runtime) = runtime {
         let mut slot = runtime.active.lock().map_err(|e| e.to_string())?;
         if slot.is_some() {
-            return Err("Scarp is already running. Stop it before starting another command.".into());
+            return Err(
+                "Scarp is already running. Stop it before starting another command.".into(),
+            );
         }
-        let child = Arc::new(Mutex::new(command.spawn().map_err(|e| format!("Could not start Scarp: {e}"))?));
+        let child = Arc::new(Mutex::new(
+            command
+                .spawn()
+                .map_err(|e| format!("Could not start Scarp: {e}"))?,
+        ));
         let id = runtime.sequence.fetch_add(1, Ordering::Relaxed);
         let cancelled = Arc::new(AtomicBool::new(false));
-        *slot = Some(ActiveJob { id, child: child.clone(), cancelled: cancelled.clone() });
+        *slot = Some(ActiveJob {
+            id,
+            child: child.clone(),
+            cancelled: cancelled.clone(),
+        });
         (child, Some(id), cancelled)
     } else {
-        let child = Arc::new(Mutex::new(command.spawn().map_err(|e| format!("Could not start Scarp: {e}"))?));
+        let child = Arc::new(Mutex::new(
+            command
+                .spawn()
+                .map_err(|e| format!("Could not start Scarp: {e}"))?,
+        ));
         (child, None, Arc::new(AtomicBool::new(false)))
     };
 
@@ -100,8 +118,14 @@ fn process(
         let (stdout, stderr) = {
             let mut child = child.lock().map_err(|e| e.to_string())?;
             (
-                child.stdout.take().ok_or("Compiler stdout was unavailable")?,
-                child.stderr.take().ok_or("Compiler stderr was unavailable")?,
+                child
+                    .stdout
+                    .take()
+                    .ok_or("Compiler stdout was unavailable")?,
+                child
+                    .stderr
+                    .take()
+                    .ok_or("Compiler stderr was unavailable")?,
             )
         };
         let output_thread = thread::spawn(move || read_bounded(stdout, output_limit));
@@ -109,23 +133,36 @@ fn process(
         let started = Instant::now();
         let mut timed_out = false;
         let status = loop {
-            let current = child.lock().map_err(|e| e.to_string())?.try_wait().map_err(|e| e.to_string())?;
+            let current = child
+                .lock()
+                .map_err(|e| e.to_string())?
+                .try_wait()
+                .map_err(|e| e.to_string())?;
             if let Some(status) = current {
                 break status;
             }
             if started.elapsed() >= timeout {
                 timed_out = true;
                 let _ = child.lock().map_err(|e| e.to_string())?.kill();
-                break child.lock().map_err(|e| e.to_string())?.wait().map_err(|e| e.to_string())?;
+                break child
+                    .lock()
+                    .map_err(|e| e.to_string())?
+                    .wait()
+                    .map_err(|e| e.to_string())?;
             }
             thread::sleep(Duration::from_millis(25));
         };
-        let (stdout, stdout_truncated) = output_thread.join()
+        let (stdout, stdout_truncated) = output_thread
+            .join()
             .map_err(|_| "Scarp stdout reader thread failed".to_string())??;
-        let (stderr, stderr_truncated) = error_thread.join()
+        let (stderr, stderr_truncated) = error_thread
+            .join()
             .map_err(|_| "Scarp stderr reader thread failed".to_string())??;
         if timed_out {
-            return Err(format!("Scarp exceeded the {} second time limit and was stopped.", timeout.as_secs()));
+            return Err(format!(
+                "Scarp exceeded the {} second time limit and was stopped.",
+                timeout.as_secs()
+            ));
         }
         Ok(ProcessResult {
             status,
@@ -161,7 +198,9 @@ fn compiler_binary(path: &str) -> Result<PathBuf, String> {
     #[cfg(not(windows))]
     let expected = "scarp";
     if !file_name.eq_ignore_ascii_case(expected) {
-        return Err(format!("Select the official {expected} executable (not another program)."));
+        return Err(format!(
+            "Select the official {expected} executable (not another program)."
+        ));
     }
     Ok(resolved)
 }
@@ -172,16 +211,27 @@ fn source_file(path: &str) -> Result<PathBuf, String> {
         return Err("Save a Scarp .srp file before running or verifying.".into());
     }
     let canonical = fs::canonicalize(raw).map_err(|e| format!("Scarp source not found: {e}"))?;
-    if !canonical.is_file() || !canonical.to_string_lossy().to_ascii_lowercase().ends_with(".srp") {
+    if !canonical.is_file()
+        || !canonical
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .ends_with(".srp")
+    {
         return Err("The selected source must be an existing .srp file.".into());
     }
     Ok(canonical)
 }
 
 fn parse_version(output: &str) -> Option<String> {
-    let version = output.trim().strip_prefix("scarp ")?.split_whitespace().next()?;
+    let version = output
+        .trim()
+        .strip_prefix("scarp ")?
+        .split_whitespace()
+        .next()?;
     if version.contains('.')
-        && version.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+        && version
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
     {
         Some(version.to_owned())
     } else {
@@ -199,11 +249,19 @@ fn compiler_supports(binary: &Path, verb: &str) -> Result<bool, String> {
 
 fn probe(binary: &str) -> Result<(PathBuf, String), String> {
     let binary = compiler_binary(binary)?;
-    let result = process(&binary, &[OsString::from("--version")], None, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT, None)?;
+    let result = process(
+        &binary,
+        &[OsString::from("--version")],
+        None,
+        PROBE_TIMEOUT,
+        PROBE_OUTPUT_LIMIT,
+        None,
+    )?;
     if !result.status.success() || result.truncated {
         return Err("Scarp --version failed or returned invalid output.".into());
     }
-    let version = parse_version(&result.stdout).ok_or("The executable did not report a valid Scarp version.")?;
+    let version = parse_version(&result.stdout)
+        .ok_or("The executable did not report a valid Scarp version.")?;
     if !compiler_supports(&binary, "exec")? || !compiler_supports(&binary, "verify")? {
         return Err("This Scarp build does not advertise both exec and static verify.".into());
     }
@@ -214,8 +272,10 @@ fn command_args(mode: &str, source: &Path) -> Result<Vec<OsString>, String> {
     let mut args = match mode {
         "exec" => vec![
             OsString::from("exec"),
-            OsString::from("--max-steps"), OsString::from("200000"),
-            OsString::from("--max-prints"), OsString::from("1000"),
+            OsString::from("--max-steps"),
+            OsString::from("200000"),
+            OsString::from("--max-prints"),
+            OsString::from("1000"),
         ],
         "verify" => vec![OsString::from("verify")],
         _ => return Err("Only the official Scarp exec and verify commands are allowed.".into()),
@@ -231,7 +291,9 @@ fn command_args(mode: &str, source: &Path) -> Result<Vec<OsString>, String> {
 pub async fn scarp_probe(binary: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let (_, version) = probe(&binary)?;
-        Ok(format!("Scarp {version} — exec and static verify available"))
+        Ok(format!(
+            "Scarp {version} — exec and static verify available"
+        ))
     })
     .await
     .map_err(|e| format!("Scarp probe worker failed: {e}"))?
@@ -250,15 +312,41 @@ pub async fn scarp_execute(
         let source = source_file(&source)?;
         let (binary, version) = probe(&binary)?;
         let args = command_args(&mode, &source)?;
-        let result = process(&binary, &args, source.parent(), EXEC_TIMEOUT, EXEC_OUTPUT_LIMIT, Some(&runtime))?;
-        let exit = result.status.code().map_or("terminated by signal".to_owned(), |code| code.to_string());
-        let outcome = if result.cancelled { "cancelled" } else if result.status.success() { "completed" } else { "failed" };
-        let cap_notice = if result.truncated { "\n[Output truncated to the configured safety limit.]" } else { "" };
+        let result = process(
+            &binary,
+            &args,
+            source.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )?;
+        let exit = result
+            .status
+            .code()
+            .map_or("terminated by signal".to_owned(), |code| code.to_string());
+        let outcome = if result.cancelled {
+            "cancelled"
+        } else if result.status.success() {
+            "completed"
+        } else {
+            "failed"
+        };
+        let cap_notice = if result.truncated {
+            "\n[Output truncated to the configured safety limit.]"
+        } else {
+            ""
+        };
         Ok(format!(
             "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
-            source.display(), result.stdout,
-            if result.stderr.is_empty() { "" } else { "\nCompiler diagnostics:\n" },
-            result.stderr, cap_notice
+            source.display(),
+            result.stdout,
+            if result.stderr.is_empty() {
+                ""
+            } else {
+                "\nCompiler diagnostics:\n"
+            },
+            result.stderr,
+            cap_notice
         ))
     })
     .await
@@ -284,7 +372,10 @@ mod tests {
 
     #[test]
     fn checks_real_scarp_version_format() {
-        assert_eq!(parse_version("scarp 0.0.6-alpha.7\n"), Some("0.0.6-alpha.7".into()));
+        assert_eq!(
+            parse_version("scarp 0.0.6-alpha.7\n"),
+            Some("0.0.6-alpha.7".into())
+        );
         assert_eq!(parse_version("other 0.0.6-alpha.7"), None);
         assert_eq!(parse_version("scarp ../../evil"), None);
     }
