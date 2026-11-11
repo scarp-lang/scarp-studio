@@ -35,3 +35,8 @@ CI builds an **experimental NSIS installer candidate**. Both `package-lock.json`
 - Native Windows tests, packaging and hands-on launch/open/save/discard validation must pass before publishing any GitHub release. The CI installer is an unsigned candidate, not an official release.
 
 **Repository:** https://github.com/scarp-lang/scarp-studio
+
+## Experimental compiler integration branch (not included in first alpha)
+The development branch `feat/scarp-compiler-run-verify` adds opt-in native Scarp compiler selection, version/capability checking, `exec`, static `verify`, Stop, and a bounded textual output panel. These features are **not in the initial editor-only candidate** until a separate PR is reviewed, validated and merged.
+
+The user must select a trusted official `scarp.exe` on Windows. Scarp Studio invokes commands directly without a shell, limits captured output and wall-clock execution, and does not execute code automatically. Run and Verify require a saved and clean `.srp` buffer. Output is plain text; clickable diagnostics, language-server integration and interactive stdin are not yet implemented. Native compiler/runtime calls are privileged processes: do not run untrusted source or binaries.

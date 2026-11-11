@@ -41,6 +41,33 @@ jobs:
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Native Rust compilation
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+      - name: Rust service tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+      - name: Verify official Scarp CLI compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.7/scarp-0.0.6-alpha.7-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-compiler.zip
+          $actual = (Get-FileHash scarp-compiler.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "e7efe469adf050e84d322c72bb283a0a0822d4a4cd914096a95ac0dd4da07609") {
+            throw "Official compiler archive hash mismatch"
+          }
+          Expand-Archive -Path scarp-compiler.zip -DestinationPath scarp-compiler
+          $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Official Scarp binary missing from archive" }
+          & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "Scarp version probe failed" }
+          & $binary.FullName guide exec
+          if ($LASTEXITCODE -ne 0) { throw "Scarp exec probe failed" }
+          & $binary.FullName guide verify
+          if ($LASTEXITCODE -ne 0) { throw "Scarp verify probe failed" }
+          'print("Studio CLI smoke");' | Set-Content -Path scarp-smoke.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-smoke.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp static verification failed" }
+          $execution = & $binary.FullName exec --max-steps 200000 --max-prints 1000 --diagnostic-format=json -- scarp-smoke.srp
+          if ($LASTEXITCODE -ne 0 -or $execution -notmatch "Studio CLI smoke") { throw "Scarp execution smoke failed" }
+
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate
