@@ -26,10 +26,10 @@ struct ActiveJob {
     cancelled: Arc<AtomicBool>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct CompilerRuntime {
-    active: Mutex<Option<ActiveJob>>,
-    sequence: AtomicU64,
+    active: Arc<Mutex<Option<ActiveJob>>>,
+    sequence: Arc<AtomicU64>,
 }
 
 struct ProcessResult {
