@@ -414,10 +414,8 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "scarp-studio-{}-{unique}.srp",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("scarp-studio-{}-{unique}.srp", std::process::id()));
         fs::write(&path, "print(\"original\");").unwrap();
         assert!(ensure_matching_disk_snapshot(&path, "print(\"original\");").is_ok());
         assert!(ensure_matching_disk_snapshot(&path, "print(\"stale\");").is_err());
