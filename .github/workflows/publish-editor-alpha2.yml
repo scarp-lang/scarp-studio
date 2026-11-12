@@ -38,11 +38,27 @@ jobs:
             Write-Host 'Another version is checked out; this one-time release workflow is inert.'
             exit 0
           }
-          if ($npmLock['version'] -ne $expected -or
-              $npmLock['packages']['']['version'] -ne $expected -or $tauri.version -ne $expected -or
-              $cargo -notmatch '(?m)^version = "0\.0\.1-alpha\.2"$' -or
-              $cargoLock -notmatch '(?m)name = "scarp-studio"\r?\nversion = "0\.0\.1-alpha\.2"') {
-            throw 'App, native and committed lockfile versions must all match alpha.2.'
+          # Read the manifest versions as data rather than relying on CRLF-
+          # sensitive regex anchors on Windows checkouts.
+          $cargoVersion = ([regex]::Match(
+            $cargo, '(?m)^\s*version\s*=\s*"([^"]+)"'
+          )).Groups[1].Value
+          $cargoLockVersion = ([regex]::Match(
+            $cargoLock, '(?s)\[\[package\]\]\s*name\s*=\s*"scarp-studio"\s*version\s*=\s*"([^"]+)"'
+          )).Groups[1].Value
+          $versions = [ordered]@{
+            npm = $pkg.version
+            npm_lock = $npmLock['version']
+            npm_root = $npmLock['packages']['']['version']
+            tauri = $tauri.version
+            cargo = $cargoVersion
+            cargo_lock = $cargoLockVersion
+          }
+          foreach ($item in $versions.GetEnumerator()) {
+            Write-Host ("Checking {0}: {1}" -f $item.Key, $item.Value)
+            if ($item.Value -ne $expected) {
+              throw ("Refusing to publish: {0} version disagrees with {1}." -f $item.Key, $expected)
+            }
           }
           $existing = gh release list --repo "$env:GITHUB_REPOSITORY" --limit 100 --json tagName | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'Could not check existing releases.' }
