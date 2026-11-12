@@ -65,13 +65,14 @@ export default function App() {
     'Source files are never executed automatically.',
   );
   const [compilerBusy, setCompilerBusy] = useState(false);
+  const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
   const [compilerOutputSource, setCompilerOutputSource] = useState<{
     path: string; content: string;
   } | null>(null);
   const editorRef = useRef<MonacoEditorApi.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
-  const diagnostic = parseScarpDiagnostic(compilerOutput);
+  const diagnostic = parseScarpDiagnostic(compilerDiagnosticStderr);
   const canNavigateDiagnostic = Boolean(
     diagnostic?.path && diagnostic.line && diagnostic.column &&
     active?.path && compilerOutputSource &&
@@ -226,6 +227,7 @@ export default function App() {
       setCompilerPath(chosen);
       setCompilerInfo(info);
       setCompilerOutputSource(null);
+      setCompilerDiagnosticStderr(null);
       try { localStorage.setItem('studio.compilerPath', chosen); } catch { /* optional persistence */ }
       setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
       setNotice('Scarp compiler configured');
@@ -260,10 +262,12 @@ export default function App() {
     setCompilerBusy(true);
     setError(null);
     setCompilerOutputSource({ path: source, content: expectedContent });
+    setCompilerDiagnosticStderr(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(compilerPath, source, mode, expectedContent);
-      setCompilerOutput(result);
+      setCompilerOutput(result.output);
+      setCompilerDiagnosticStderr(result.diagnosticStderr);
       setNotice('Scarp ' + mode + ' finished; see output');
     } catch (caught) {
       const message = toMessage(caught);

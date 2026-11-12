@@ -316,7 +316,7 @@ pub async fn scarp_execute(
     mode: String,
     expected_content: String,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let runtime = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let source = source_file(&source)?;
@@ -349,7 +349,7 @@ pub async fn scarp_execute(
         } else {
             ""
         };
-        Ok(format!(
+        let display = format!(
             "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
             source.display(),
             result.stdout,
@@ -360,7 +360,16 @@ pub async fn scarp_execute(
             },
             result.stderr,
             cap_notice
-        ))
+        );
+        // Only complete diagnostic stderr from a failed compiler command is
+        // eligible for source navigation; stdout is displayed but never parsed.
+        let show_diagnostics = !result.status.success() && !result.cancelled && !result.truncated;
+        let diagnostics = if show_diagnostics && !result.stderr.is_empty() {
+            Some(result.stderr)
+        } else {
+            None
+        };
+        Ok((display, diagnostics))
     })
     .await
     .map_err(|e| format!("Scarp execution worker failed: {e}"))?

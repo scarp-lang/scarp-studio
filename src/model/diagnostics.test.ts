@@ -18,13 +18,11 @@ const fixture = {
   related: [],
   help: 'Keep primitive types consistent',
 };
-const output = (value: unknown) =>
-  'Scarp 0.0.6-alpha.7 — verify main.srp\nStatus: failed (exit 1)\n\n' +
-  '\nCompiler diagnostics:\n' + JSON.stringify(value) + '\n';
+const stderr = (value: unknown) => JSON.stringify(value) + '\n';
 
 describe('published Scarp JSON error diagnostics', () => {
   it('parses the documented schema-v1 error and its source position', () => {
-    expect(parseScarpDiagnostic(output(fixture))).toEqual({
+    expect(parseScarpDiagnostic(stderr(fixture))).toEqual({
       code: 'E0015',
       message: 'expected integer, found string',
       path: 'main.srp', line: 2, column: 4,
@@ -32,23 +30,33 @@ describe('published Scarp JSON error diagnostics', () => {
     });
   });
   it('allows a diagnostic without a source position', () => {
-    expect(parseScarpDiagnostic(output({
+    expect(parseScarpDiagnostic(stderr({
       ...fixture, code: null, primary: null, help: null,
     }))).toMatchObject({ code: null, path: null, line: null, column: null, help: null });
   });
   it('ignores unknown versions, malformed JSON, and normal program output', () => {
-    expect(parseScarpDiagnostic(output({ ...fixture, schema_version: 2 }))).toBeNull();
-    expect(parseScarpDiagnostic('\nCompiler diagnostics:\nnot-json')).toBeNull();
+    expect(parseScarpDiagnostic(stderr({ ...fixture, schema_version: 2 }))).toBeNull();
+    expect(parseScarpDiagnostic('not-json')).toBeNull();
     expect(parseScarpDiagnostic('print: ' + JSON.stringify(fixture))).toBeNull();
   });
+  it('does not treat output markers or program stdout as diagnostics', () => {
+    expect(parseScarpDiagnostic(null)).toBeNull();
+    expect(parseScarpDiagnostic('\nCompiler diagnostics:\n' + JSON.stringify(fixture))).toBeNull();
+    expect(parseScarpDiagnostic('program output: ' + JSON.stringify(fixture))).toBeNull();
+  });
+  it('requires the published column, span and coordinate encodings', () => {
+    expect(parseScarpDiagnostic(stderr({ ...fixture, column_encoding: 'utf-16' }))).toBeNull();
+    expect(parseScarpDiagnostic(stderr({ ...fixture, span_encoding: 'utf-16' }))).toBeNull();
+    expect(parseScarpDiagnostic(stderr({ ...fixture, position_base: 0 }))).toBeNull();
+  });
   it('rejects invalid positions without hiding a useful error message', () => {
-    const actual = parseScarpDiagnostic(output({
+    const actual = parseScarpDiagnostic(stderr({
       ...fixture, primary: { path: 'main.srp', start: { line: -2, column: 1 } },
     }));
     expect(actual).toMatchObject({ message: fixture.message, path: null, line: null });
   });
   it('limits error JSON size to prevent expensive rendering', () => {
-    expect(parseScarpDiagnostic(output({ ...fixture, message: 'X'.repeat(70_000) }))).toBeNull();
+    expect(parseScarpDiagnostic(stderr({ ...fixture, message: 'X'.repeat(70_000) }))).toBeNull();
   });
   it('navigates only the matching source file or a bare basename', () => {
     expect(diagnosticBelongsToSource('main.srp', 'C:/Project/main.srp')).toBe(true);

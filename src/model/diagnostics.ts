@@ -10,8 +10,6 @@ export interface ScarpDiagnostic {
   help: string | null;
 }
 
-const DIAGNOSTIC_MARKER = '\nCompiler diagnostics:\n';
-
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
@@ -27,18 +25,20 @@ function sourcePosition(value: unknown): { line: number; column: number } | null
   return { line, column };
 }
 
-/** Only parse JSON from the compiler's stderr marker, never from program stdout.
- * Malformed and future diagnostic schemas remain visible as raw output.
+/** Parse only isolated compiler stderr supplied by the native service.
+ * Program stdout is never an input. Malformed/future schemas stay raw.
  */
-export function parseScarpDiagnostic(output: string): ScarpDiagnostic | null {
-  const offset = output.lastIndexOf(DIAGNOSTIC_MARKER);
-  if (offset < 0) return null;
-  const raw = output.slice(offset + DIAGNOSTIC_MARKER.length).trimStart().split(/\r?\n/, 1)[0];
+export function parseScarpDiagnostic(stderr: string | null): ScarpDiagnostic | null {
+  if (!stderr) return null;
+  const raw = stderr.trimStart().split(/\r?\n/, 1)[0];
   if (!raw || raw.length > 64 * 1024) return null;
   try {
     const diagnostic: unknown = JSON.parse(raw);
     if (!object(diagnostic) || diagnostic.schema_version !== 1 ||
-        diagnostic.severity !== 'error' || typeof diagnostic.message !== 'string') {
+        diagnostic.severity !== 'error' || typeof diagnostic.message !== 'string' ||
+        diagnostic.span_encoding !== 'utf-8-bytes' ||
+        diagnostic.column_encoding !== 'unicode-scalar' ||
+        diagnostic.position_base !== 1) {
       return null;
     }
     const code = typeof diagnostic.code === 'string' && /^E\d{4}$/.test(diagnostic.code)
