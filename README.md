@@ -47,4 +47,6 @@ CI builds an **experimental NSIS installer candidate**. Both `package-lock.json`
 
 The `feat/scarp-compiler-run-verify` branch (PR #5) requires an explicitly selected trusted official `scarp.exe` on Windows. Studio launches the compiler directly without a shell and limits execution time and captured output. Run and Verify require saved, unchanged `.srp` sources. Stop applies to the Studio-launched execution process; probing cannot yet be stopped through the same control.
 
+The draft CI suite pins and hashes the official Scarp `v0.0.6-alpha.8` Windows compiler archive, tests the actual `exec`/`verify` CLI surface, and checks that `assert(false)` verifies statically but fails at runtime with `E0065`. This **does not** bundle Scarp with Studio or automatically authorize another compiler binary; selection and trust confirmation remain session-specific. The editor still runs only saved standalone `.srp` files, not `scarp.project` commands or `scarp test`.
+
 PR #5 shows compiler output as plain text. The stacked draft PR #6 adds structured JSON diagnostic navigation, guarded against stale edits and unrelated module paths. Interactive stdin (`read_line`), language-server features, and debugging remain unsupported. Do not run untrusted binaries or source.
