@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { editor as MonacoEditor } from 'monaco-editor';
 import Editor from '@monaco-editor/react';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
@@ -9,6 +10,9 @@ import {
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
+import {
+  searchOpenFiles, type OpenFileSearchHit,
+} from './model/openFileSearch';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -43,11 +47,27 @@ export default function App() {
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
+  const [searchWholeWord, setSearchWholeWord] = useState(false);
+  const searchInput = useRef<HTMLInputElement | null>(null);
+  const mountedEditor = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const pendingSearchLocation = useRef<OpenFileSearchHit | null>(null);
   const saveInProgress = useRef(false);
   // Prevent overlapping native discard prompts on repeated close attempts.
   const exitConfirmationInProgress = useRef(false);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const openFileMatches = useMemo(() => searchOpenFiles(
+    documents, searchQuery, {
+      caseSensitive: searchCaseSensitive, wholeWord: searchWholeWord,
+    },
+  ), [documents, searchQuery, searchCaseSensitive, searchWholeWord]);
+
+  useEffect(() => {
+    if (searchOpen) searchInput.current?.focus();
+  }, [searchOpen]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -167,6 +187,37 @@ export default function App() {
     }
   }
 
+  function revealSearchLocation(
+    editorInstance: MonacoEditor.IStandaloneCodeEditor, match: OpenFileSearchHit,
+  ): void {
+    const selection = {
+      startLineNumber: match.line,
+      startColumn: match.column,
+      endLineNumber: match.line,
+      endColumn: match.column + match.matchText.length,
+    };
+    editorInstance.setSelection(selection);
+    editorInstance.revealRangeInCenter(selection);
+    editorInstance.focus();
+  }
+
+  function goToSearchMatch(match: OpenFileSearchHit): void {
+    // A click must not navigate to a position computed for earlier buffer contents.
+    const current = liveEditor.current;
+    const document = current.documents.find((item) => item.id === match.documentId);
+    if (!document || document.content !== match.sourceContent) {
+      setError('Search results changed. Review the updated matches and try again.');
+      return;
+    }
+    pendingSearchLocation.current = match;
+    if (current.activeId === document.id && mountedEditor.current) {
+      revealSearchLocation(mountedEditor.current, match);
+      pendingSearchLocation.current = null;
+    } else {
+      dispatch({ type: 'activate', id: document.id });
+    }
+  }
+
   async function closeFile(id: string): Promise<void> {
     if (saveInProgress.current) {
       setError('Finish the current save before closing a tab.');
@@ -209,6 +260,10 @@ export default function App() {
       } else if (key === 'o' && !event.shiftKey) {
         event.preventDefault();
         void openFile();
+      } else if (key === 'f' && event.shiftKey) {
+        event.preventDefault();
+        setSearchOpen(true);
+        searchInput.current?.focus();
       } else if (key === 'w' && activeId) {
         event.preventDefault();
         void closeFile(activeId);
@@ -232,6 +287,13 @@ export default function App() {
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
           <button onClick={() => void saveFile()} disabled={!active || busy} title="Save (Ctrl+S)">Save</button>
           <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
+          <button
+            type="button"
+            onClick={() => setSearchOpen((open) => !open)}
+            aria-expanded={searchOpen}
+            aria-controls="open-file-search"
+            title="Search all currently open Scarp buffers (Ctrl+Shift+F)"
+          >Find in Open Files</button>
         </nav>
         <button
           className="theme-button"
@@ -311,6 +373,70 @@ export default function App() {
               </div>
             ))}
           </div>
+          {searchOpen && (
+            <section id="open-file-search" className="open-file-search" aria-label="Find in open Scarp files">
+              <div className="open-file-search-toolbar">
+                <label htmlFor="open-file-query">Find in open files</label>
+                <input
+                  id="open-file-query"
+                  ref={searchInput}
+                  type="search"
+                  maxLength={121}
+                  value={searchQuery}
+                  placeholder="Search open .srp documents"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+                <label className="search-option">
+                  <input
+                    type="checkbox"
+                    checked={searchCaseSensitive}
+                    onChange={(event) => setSearchCaseSensitive(event.target.checked)}
+                  />
+                  Match case
+                </label>
+                <label className="search-option">
+                  <input
+                    type="checkbox"
+                    checked={searchWholeWord}
+                    onChange={(event) => setSearchWholeWord(event.target.checked)}
+                  />
+                  Whole word
+                </label>
+                <button type="button" onClick={() => setSearchOpen(false)}
+                  aria-label="Close open-file search">Close</button>
+              </div>
+              <div className="search-status" role="status" aria-live="polite">
+                {openFileMatches.error ||
+                  (searchQuery
+                    ? `${openFileMatches.hits.length} matches in open files`
+                    : 'Search only already-open Scarp files. No files are read from disk.')}
+                {openFileMatches.truncated &&
+                  ` · Results limited to 200; ${openFileMatches.skippedDocuments} buffers skipped.`}
+              </div>
+              {searchQuery && !openFileMatches.error && (
+                <div className="search-results" role="list" aria-label="Matches in open Scarp files">
+                  {openFileMatches.hits.map((match) => (
+                    <div role="listitem" key={match.documentId + ':' + match.offset}>
+                      <button
+                        className="search-result-row"
+                        type="button"
+                        onClick={() => goToSearchMatch(match)}
+                        title={match.documentName + ' at line ' + match.line}
+                      >
+                        <span className="search-result-location">
+                          {match.documentName} · {match.line}:{match.column}
+                        </span>
+                        <span className="search-result-preview">{match.preview}</span>
+                      </button>
+                    </div>
+                  ))}
+                  {!openFileMatches.hits.length && (
+                    <p className="sidebar-note">No matches in open files.</p>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
           {error && (
             <div className="error-banner" role="alert">
               <span>{error}</span>
@@ -326,12 +452,24 @@ export default function App() {
                 theme={theme === 'dark' ? 'vs-dark' : 'vs'}
                 value={active.content}
                 onChange={(content) => {
+                  pendingSearchLocation.current = null;
                   dispatch({ type: 'edit', id: active.id, content: content ?? '' });
                 }}
                 onMount={(editor) => {
+                  mountedEditor.current = editor;
                   editor.onDidChangeCursorPosition((event) => {
                     setCursor({ line: event.position.lineNumber, column: event.position.column });
                   });
+                  const pending = pendingSearchLocation.current;
+                  if (pending && pending.documentId === active.id) {
+                    const current = liveEditor.current.documents.find(
+                      (item) => item.id === pending.documentId,
+                    );
+                    if (current?.content === pending.sourceContent) {
+                      revealSearchLocation(editor, pending);
+                    }
+                    pendingSearchLocation.current = null;
+                  }
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
                 options={{
