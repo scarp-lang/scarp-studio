@@ -612,11 +612,11 @@ mod tests {
         let assertion_json = runtime_failure.stderr.trim();
         assert!(
             assertion_json
-                .starts_with("{\\"schema_version\\":1,\\"severity\\":\\"error\\",\\"code\\":\\"E0065\\""),
+                .starts_with("{\"schema_version\":1,\"severity\":\"error\",\"code\":\"E0065\""),
             "unexpected assertion diagnostic: {assertion_json}"
         );
-        assert!(assertion_json.contains("\\"span_encoding\\":\\"utf-8-bytes\\""));
-        assert!(assertion_json.contains("\\"column_encoding\\":\\"unicode-scalar\\""));
+        assert!(assertion_json.contains("\"span_encoding\":\"utf-8-bytes\""));
+        assert!(assertion_json.contains("\"column_encoding\":\"unicode-scalar\""));
         assert!(
             runtime_failure.stdout.is_empty(),
             "failed execution replayed user stdout"
