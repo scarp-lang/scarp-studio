@@ -522,14 +522,14 @@ mod tests {
         let diagnostic = failed_verify.stderr.trim();
         assert!(
             diagnostic.starts_with(
-                "{\\"schema_version\\":1,\\"severity\\":\\"error\\",\\"code\\":\\"E0010\\""
+                "{\"schema_version\":1,\"severity\":\"error\",\"code\":\"E0010\""
             ),
             "unexpected CLI diagnostic envelope: {diagnostic}"
         );
-        assert!(diagnostic.contains("\\"span_encoding\\":\\"utf-8-bytes\\""));
-        assert!(diagnostic.contains("\\"column_encoding\\":\\"unicode-scalar\\""));
-        assert!(diagnostic.contains("\\"position_base\\":1"));
-        assert!(diagnostic.contains("\\"primary\\":{"));
+        assert!(diagnostic.contains("\"span_encoding\":\"utf-8-bytes\""));
+        assert!(diagnostic.contains("\"column_encoding\":\"unicode-scalar\""));
+        assert!(diagnostic.contains("\"position_base\":1"));
+        assert!(diagnostic.contains("\"primary\":{"));
         fs::remove_file(&source).unwrap();
         assert!(runtime.active.lock().unwrap().is_none());
     }
