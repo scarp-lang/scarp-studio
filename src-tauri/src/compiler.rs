@@ -424,10 +424,10 @@ mod tests {
     #[test]
     fn checks_real_scarp_version_format() {
         assert_eq!(
-            parse_version("scarp 0.0.6-alpha.7\n"),
-            Some("0.0.6-alpha.7".into())
+            parse_version("scarp 0.0.6-alpha.8\n"),
+            Some("0.0.6-alpha.8".into())
         );
-        assert_eq!(parse_version("other 0.0.6-alpha.7"), None);
+        assert_eq!(parse_version("other 0.0.6-alpha.8"), None);
         assert_eq!(parse_version("scarp ../../evil"), None);
     }
 
@@ -526,7 +526,7 @@ mod tests {
         let selected = std::env::var("SCARP_TEST_BIN")
             .expect("CI must explicitly provide the verified official Scarp executable");
         let (binary, version) = probe(&selected).expect("official compiler probe");
-        assert_eq!(version, "0.0.6-alpha.7");
+        assert_eq!(version, "0.0.6-alpha.8");
 
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -536,7 +536,7 @@ mod tests {
             "scarp-studio-native-{}-{unique}.srp",
             std::process::id()
         ));
-        let content = "print(\"Studio backend integration\");";
+        let content = "assert(2 + 2 == 4, \"addition\");\nprint(\"Studio backend integration\");";
         fs::write(&source, content).unwrap();
         let validated = source_file(source.to_str().unwrap()).unwrap();
         ensure_matching_disk_snapshot(&validated, content).unwrap();
@@ -568,6 +568,49 @@ mod tests {
         assert!(execute.stdout.contains("Studio backend integration"));
         assert!(!execute.truncated);
         assert!(!execute.cancelled);
+
+        // Verify checks assertion types but does not evaluate a false predicate.
+        // The alpha.8 interpreter must fail with the native E0065 diagnostic;
+        // buffered program stdout must not leak after a runtime failure.
+        let failing_assertion = "print(\"do-not-emit\");\nassert(false, \"intentional failure\");";
+        fs::write(&source, failing_assertion).unwrap();
+        ensure_matching_disk_snapshot(&validated, failing_assertion).unwrap();
+        let static_check = process(
+            &binary,
+            &command_args("verify", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("native verify of false assertion");
+        assert!(static_check.status.success(), "{}", static_check.stderr);
+        assert!(!static_check.truncated);
+
+        let runtime_failure = process(
+            &binary,
+            &command_args("exec", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("native assertion failure");
+        assert!(
+            !runtime_failure.status.success(),
+            "assert(false) must fail execution"
+        );
+        assert!(!runtime_failure.truncated);
+        assert!(!runtime_failure.cancelled);
+        assert!(
+            runtime_failure.stderr.contains("E0065"),
+            "{}",
+            runtime_failure.stderr
+        );
+        assert!(
+            runtime_failure.stdout.is_empty(),
+            "failed execution replayed user stdout"
+        );
 
         // Validate the real published CLI's failure envelope, not just a
         // hand-written frontend diagnostic fixture. Studio relies on this
