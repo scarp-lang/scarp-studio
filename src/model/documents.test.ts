@@ -30,14 +30,14 @@ describe('Scarp-only file state', () => {
     expect(sameFilePath(String.raw`C:\Project\Main.srp`, 'c:/project/main.SRP')).toBe(true);
     expect(sameFilePath(String.raw`\\server\share\Main.srp`, String.raw`\\SERVER/share/main.SRP`)).toBe(true);
     expect(sameFilePath('/tmp/Main.srp', '/tmp/main.srp')).toBe(false);
-    expect(sameFilePath(String.raw`\\\\?\\C:\\Project\\Main.srp`, 'c:/project/main.SRP')).toBe(true);
+    expect(sameFilePath(String.raw`\\?\C:\Project\Main.srp`, 'c:/project/main.SRP')).toBe(true);
     expect(sameFilePath(
-      String.raw`\\\\?\\UNC\\server\\share\\Main.srp`,
-      String.raw`\\\\SERVER\\share\\main.SRP`,
+      String.raw`\\?\UNC\server\share\Main.srp`,
+      String.raw`\\SERVER\share\main.SRP`,
     )).toBe(true);
-    expect(sameFilePath(String.raw`\\\\?\\C:\\Project\\main.srp`, 'D:/Project/main.srp')).toBe(false);
+    expect(sameFilePath(String.raw`\\?\C:\Project\main.srp`, 'D:/Project/main.srp')).toBe(false);
     expect(sameFilePath(
-      String.raw`\\\\?\\GLOBALROOT\\Device\\HarddiskVolume1\\main.srp`,
+      String.raw`\\?\GLOBALROOT\Device\HarddiskVolume1\main.srp`,
       'C:/main.srp',
     )).toBe(false);
   });

@@ -69,7 +69,7 @@ describe('published Scarp JSON error diagnostics', () => {
       ...fixture,
       primary: {
         ...fixture.primary,
-        path: String.raw`\\\\?\\C:\\Project\\main.srp`,
+        path: String.raw`\\?\C:\Project\main.srp`,
         start: { line: 1, column: 3 },
       },
     }));
