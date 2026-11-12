@@ -53,6 +53,7 @@ export default function App() {
   const [searchWholeWord, setSearchWholeWord] = useState(false);
   const searchInput = useRef<HTMLInputElement | null>(null);
   const mountedEditor = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const mountedEditorDocumentId = useRef<string | null>(null);
   const pendingSearchLocation = useRef<OpenFileSearchHit | null>(null);
   const saveInProgress = useRef(false);
   // Prevent overlapping native discard prompts on repeated close attempts.
@@ -210,7 +211,8 @@ export default function App() {
       return;
     }
     pendingSearchLocation.current = match;
-    if (current.activeId === document.id && mountedEditor.current) {
+    if (current.activeId === document.id && mountedEditor.current &&
+        mountedEditorDocumentId.current === document.id) {
       revealSearchLocation(mountedEditor.current, match);
       pendingSearchLocation.current = null;
     } else {
@@ -457,6 +459,7 @@ export default function App() {
                 }}
                 onMount={(editor) => {
                   mountedEditor.current = editor;
+                  mountedEditorDocumentId.current = active.id;
                   editor.onDidChangeCursorPosition((event) => {
                     setCursor({ line: event.position.lineNumber, column: event.position.column });
                   });
