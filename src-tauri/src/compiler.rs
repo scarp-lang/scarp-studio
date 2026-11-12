@@ -366,10 +366,8 @@ pub async fn scarp_execute(
     .map_err(|e| format!("Scarp execution worker failed: {e}"))?
 }
 
-/// Cancel only the Scarp process launched by Studio; no system-wide kills.
-#[tauri::command]
-pub fn scarp_cancel(state: tauri::State<'_, CompilerRuntime>) -> Result<bool, String> {
-    let slot = state.active.lock().map_err(|e| e.to_string())?;
+fn cancel_active_job(runtime: &CompilerRuntime) -> Result<bool, String> {
+    let slot = runtime.active.lock().map_err(|e| e.to_string())?;
     let Some(job) = slot.as_ref() else {
         return Ok(false);
     };
@@ -377,6 +375,12 @@ pub fn scarp_cancel(state: tauri::State<'_, CompilerRuntime>) -> Result<bool, St
     let mut child = job.child.lock().map_err(|e| e.to_string())?;
     let _ = child.kill(); // Already exited is harmless; completion resolves separately.
     Ok(true)
+}
+
+/// Cancel only the Scarp process launched by Studio; no system-wide kills.
+#[tauri::command]
+pub fn scarp_cancel(state: tauri::State<'_, CompilerRuntime>) -> Result<bool, String> {
+    cancel_active_job(state.inner())
 }
 
 #[cfg(test)]
@@ -489,6 +493,74 @@ mod tests {
         assert!(!execute.cancelled);
         fs::remove_file(&source).unwrap();
         assert!(runtime.active.lock().unwrap().is_none());
+    }
+
+    // This helper runs only when explicitly selected as a child test process.
+    // It is never launched in the normal unit-test suite.
+    #[test]
+    #[ignore = "invoked by native process cancellation and timeout tests"]
+    fn slow_child_process_helper() {
+        std::thread::sleep(Duration::from_secs(15));
+    }
+
+    fn slow_test_process_args() -> Vec<OsString> {
+        vec![
+            OsString::from("--exact"),
+            OsString::from("compiler::tests::slow_child_process_helper"),
+            OsString::from("--ignored"),
+            OsString::from("--nocapture"),
+        ]
+    }
+
+    #[test]
+    fn native_stop_terminates_an_active_child_and_cleans_up() {
+        let binary = std::env::current_exe().unwrap();
+        let runtime = CompilerRuntime::default();
+        let worker_runtime = runtime.clone();
+        let handle = thread::spawn(move || {
+            process(
+                &binary,
+                &slow_test_process_args(),
+                None,
+                Duration::from_secs(12),
+                4096,
+                Some(&worker_runtime),
+            )
+        });
+
+        let started = Instant::now();
+        loop {
+            if runtime.active.lock().unwrap().is_some() {
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(8),
+                "Native test helper failed to enter the active job slot"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(cancel_active_job(&runtime).unwrap());
+        let result = handle.join().unwrap().expect("Cancelled process result");
+        assert!(result.cancelled, "Stop must be observable by the worker");
+        assert!(!result.status.success(), "Stop must terminate the child");
+        assert!(runtime.active.lock().unwrap().is_none());
+        assert!(!cancel_active_job(&runtime).unwrap());
+    }
+
+    #[test]
+    fn native_process_timeout_stops_long_running_children() {
+        let binary = std::env::current_exe().unwrap();
+        let failure = process(
+            &binary,
+            &slow_test_process_args(),
+            None,
+            Duration::from_millis(100),
+            4096,
+            None,
+        )
+        .err()
+        .expect("Long running process should time out");
+        assert!(failure.contains("time limit"), "{failure}");
     }
 
     #[test]
