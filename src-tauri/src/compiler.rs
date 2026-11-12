@@ -587,11 +587,21 @@ mod tests {
             Some(&runtime),
         )
         .expect("native assertion failure");
-        assert!(!runtime_failure.status.success(), "assert(false) must fail execution");
+        assert!(
+            !runtime_failure.status.success(),
+            "assert(false) must fail execution"
+        );
         assert!(!runtime_failure.truncated);
         assert!(!runtime_failure.cancelled);
-        assert!(runtime_failure.stderr.contains("E0065"), "{}", runtime_failure.stderr);
-        assert!(runtime_failure.stdout.is_empty(), "failed execution replayed user stdout");
+        assert!(
+            runtime_failure.stderr.contains("E0065"),
+            "{}",
+            runtime_failure.stderr
+        );
+        assert!(
+            runtime_failure.stdout.is_empty(),
+            "failed execution replayed user stdout"
+        );
 
         fs::remove_file(&source).unwrap();
         assert!(runtime.active.lock().unwrap().is_none());
