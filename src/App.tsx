@@ -48,10 +48,9 @@ export default function App() {
   const selectionInProgress = useRef(false);
   const exitConfirmationInProgress = useRef(false);
   const [compilerSelecting, setCompilerSelecting] = useState(false);
-  const [compilerPath, setCompilerPath] = useState<string | null>(() => {
-    try { return localStorage.getItem('studio.compilerPath'); }
-    catch { return null; }
-  });
+  // Never silently trust a stored compiler path across sessions: an executable
+  // may be replaced after the user previously approved it.
+  const [compilerPath, setCompilerPath] = useState<string | null>(null);
   const [compilerInfo, setCompilerInfo] = useState<string | null>(null);
   const [compilerOutput, setCompilerOutput] = useState(
     'Select a trusted official Scarp executable to enable Run and Verify.\n' +
@@ -228,7 +227,6 @@ export default function App() {
       setCompilerInfo(info);
       setCompilerOutputSource(null);
       setCompilerDiagnosticStderr(null);
-      try { localStorage.setItem('studio.compilerPath', chosen); } catch { /* optional persistence */ }
       setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
       setNotice('Scarp compiler configured');
     } catch (caught) {
