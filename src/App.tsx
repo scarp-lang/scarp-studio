@@ -206,7 +206,7 @@ export default function App() {
     // A click must not navigate to a position computed for earlier buffer contents.
     const current = liveEditor.current;
     const document = current.documents.find((item) => item.id === match.documentId);
-    if (!isCurrentSearchHit(document, match)) {
+    if (!document || !isCurrentSearchHit(document, match)) {
       setError('Search results changed. Review the updated matches and try again.');
       return;
     }
