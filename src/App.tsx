@@ -10,6 +10,7 @@ import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocume
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { runnableSource } from './model/compilerReadiness';
+import { exitBlockReason } from './model/exitGuards';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
 type Theme = 'dark' | 'light';
@@ -47,6 +48,9 @@ export default function App() {
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
   const commandInProgress = useRef(false);
+  const selectionInProgress = useRef(false);
+  const exitConfirmationInProgress = useRef(false);
+  const [compilerSelecting, setCompilerSelecting] = useState(false);
   const [compilerPath, setCompilerPath] = useState<string | null>(() => {
     try { return localStorage.getItem('studio.compilerPath'); }
     catch { return null; }
@@ -72,26 +76,37 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(async (event) => {
       const pending = liveEditor.current.documents.filter(isDirty);
-      if (!pending.length && !saveInProgress.current) return;
+      const blocked = exitBlockReason(
+        saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+      );
+      if (!pending.length && !blocked && !exitConfirmationInProgress.current) return;
       event.preventDefault();
-      if (saveInProgress.current) {
-        setError('A file is being saved. Finish saving before exiting.');
+      if (blocked) {
+        setError(blocked);
         return;
       }
+      if (exitConfirmationInProgress.current) return;
+      exitConfirmationInProgress.current = true;
       try {
         if (await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
           kind: 'warning',
         })) {
-          if (saveInProgress.current ||
+          const newBlocker = exitBlockReason(
+            saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+          );
+          if (newBlocker ||
               !sameDirtyDocuments(pending, liveEditor.current.documents)) {
-            setError('Files changed while confirming exit. Review your edits and try again.');
+            setError(newBlocker ||
+              'Files changed while confirming exit. Review your edits and try again.');
             return;
           }
           await getCurrentWindow().destroy();
         }
       } catch (caught) {
         setError(toMessage(caught));
+      } finally {
+        exitConfirmationInProgress.current = false;
       }
     }).then((cleanup) => {
       if (removed) cleanup();
@@ -174,7 +189,9 @@ export default function App() {
   }
 
   async function selectCompiler(): Promise<void> {
-    if (!isTauri() || commandInProgress.current) return;
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    selectionInProgress.current = true;
+    setCompilerSelecting(true);
     setError(null);
     try {
       const chosen = await open({
@@ -190,11 +207,14 @@ export default function App() {
       setNotice('Scarp compiler configured');
     } catch (caught) {
       setError('Compiler selection failed: ' + toMessage(caught));
+    } finally {
+      selectionInProgress.current = false;
+      setCompilerSelecting(false);
     }
   }
 
   async function runCompiler(mode: ScarpMode): Promise<void> {
-    if (!isTauri() || commandInProgress.current) return;
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
     if (saveInProgress.current) {
       setError('Finish saving before running the compiler.');
       return;
@@ -426,15 +446,15 @@ export default function App() {
             <div className="compiler-heading">
               <strong>SCARP OUTPUT</strong>
               <div className="compiler-actions">
-                <button onClick={() => void selectCompiler()} disabled={compilerBusy}
+                <button onClick={() => void selectCompiler()} disabled={compilerBusy || compilerSelecting}
                   title="Choose a trusted Scarp executable; nothing runs on selection">
-                  {compilerPath ? 'Change Compiler' : 'Select Compiler'}
+                  {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Select Compiler'}
                 </button>
                 <button onClick={() => void runCompiler('exec')}
-                  disabled={!isTauri() || compilerBusy || busy || !compilerPath || !active || !active.path || isDirty(active)}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
                   title="Execute the saved Scarp source using the official compiler">Run</button>
                 <button onClick={() => void runCompiler('verify')}
-                  disabled={!isTauri() || compilerBusy || busy || !compilerPath || !active || !active.path || isDirty(active)}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
                   title="Statically verify saved Scarp source without runtime execution">Verify</button>
                 <button onClick={() => void stopCompiler()} disabled={!compilerBusy}
                   title="Stop the active compiler process">Stop</button>
