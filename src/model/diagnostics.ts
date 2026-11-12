@@ -66,6 +66,26 @@ export function diagnosticBelongsToSource(diagnosticPath: string, sourcePath: st
   return !/[\\/]/.test(diagnosticPath) && diagnosticPath === fileName(sourcePath);
 }
 
+/** A compiler-reported position must exist in this unchanged source.
+ * Reject oversized columns rather than silently moving the caret to EOL.
+ */
+export function diagnosticSourcePosition(
+  diagnostic: ScarpDiagnostic | null, sourcePath: string, content: string,
+): { lineNumber: number; column: number } | null {
+  if (!diagnostic?.path || diagnostic.line === null || diagnostic.column === null ||
+      !diagnosticBelongsToSource(diagnostic.path, sourcePath)) return null;
+  const line = content.split(/\r?\n/)[diagnostic.line - 1];
+  if (line === undefined) return null;
+  // An insertion-point diagnostic can legitimately identify the column
+  // immediately after the last Unicode scalar.
+  const scalarCount = Array.from(line).length;
+  if (diagnostic.column < 1 || diagnostic.column > scalarCount + 1) return null;
+  return {
+    lineNumber: diagnostic.line,
+    column: scalarColumnToUtf16(line, diagnostic.column),
+  };
+}
+
 /** Scarp columns are Unicode scalar values, while Monaco uses UTF-16 offsets. */
 export function scalarColumnToUtf16(sourceLine: string, scalarColumn: number): number {
   if (!Number.isSafeInteger(scalarColumn) || scalarColumn < 1) return 1;

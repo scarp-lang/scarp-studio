@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  diagnosticBelongsToSource, parseScarpDiagnostic, scalarColumnToUtf16,
+  diagnosticBelongsToSource, diagnosticSourcePosition, parseScarpDiagnostic, scalarColumnToUtf16,
 } from './diagnostics';
 
 const fixture = {
@@ -63,6 +63,29 @@ describe('published Scarp JSON error diagnostics', () => {
     expect(diagnosticBelongsToSource('C:\\Project\\Main.srp', 'c:/project/main.SRP')).toBe(true);
     expect(diagnosticBelongsToSource('other/main.srp', 'C:/project/main.srp')).toBe(false);
     expect(diagnosticBelongsToSource('unrelated.srp', 'C:/project/main.srp')).toBe(false);
+  });
+  it('resolves extended-length Windows canonical paths into editor source locations', () => {
+    const diagnostic = parseScarpDiagnostic(stderr({
+      ...fixture,
+      primary: {
+        ...fixture.primary,
+        path: String.raw`\\\\?\\C:\\Project\\main.srp`,
+        start: { line: 1, column: 3 },
+      },
+    }));
+    expect(diagnosticSourcePosition(diagnostic, 'c:/project/main.srp', 'A😀B'))
+      .toEqual({ lineNumber: 1, column: 4 });
+  });
+  it('rejects invalid, stale or foreign positions without clamping', () => {
+    const diagnostic = parseScarpDiagnostic(stderr(fixture));
+    expect(diagnosticSourcePosition(diagnostic, 'C:/project/main.srp', 'first\nAB'))
+      .toBeNull(); // source line 2 is too short for scalar column 4
+    expect(diagnosticSourcePosition(diagnostic, 'C:/project/main.srp', 'single'))
+      .toBeNull(); // line 2 does not exist
+    expect(diagnosticSourcePosition(diagnostic, 'C:/project/other.srp', 'first\n123'))
+      .toBeNull(); // wrong source file
+    expect(diagnosticSourcePosition(diagnostic, 'C:/project/main.srp', 'first\nABC'))
+      .toEqual({ lineNumber: 2, column: 4 }); // end-of-line is valid
   });
   it('converts Unicode scalar positions to Monaco UTF-16 columns', () => {
     expect(scalarColumnToUtf16('A😀B', 1)).toBe(1);

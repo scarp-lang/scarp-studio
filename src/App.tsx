@@ -12,9 +12,7 @@ import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { runnableSource } from './model/compilerReadiness';
 import { exitBlockReason } from './model/exitGuards';
-import {
-  parseScarpDiagnostic, diagnosticBelongsToSource, scalarColumnToUtf16,
-} from './model/diagnostics';
+import { parseScarpDiagnostic, diagnosticSourcePosition } from './model/diagnostics';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
 type Theme = 'dark' | 'light';
@@ -38,11 +36,6 @@ export default function App() {
   // file operations observe new edits before React renders the next frame.
   const liveEditor = useRef(editorState);
   const { documents, activeId } = editorState;
-  function dispatch(action: EditorAction): void {
-    const next = editorReducer(liveEditor.current, action);
-    liveEditor.current = next;
-    setEditorState(next);
-  }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
@@ -71,16 +64,23 @@ export default function App() {
   } | null>(null);
   const editorRef = useRef<MonacoEditorApi.IStandaloneCodeEditor | null>(null);
 
+  function dispatch(action: EditorAction): void {
+    const before = liveEditor.current;
+    const next = editorReducer(before, action);
+    if (next === before) return;
+    // Invalidate source navigation on every edit, tab transition or save.
+    // Even if the text is later restored, old compiler positions stay stale.
+    setCompilerOutputSource(null);
+    liveEditor.current = next;
+    setEditorState(next);
+  }
+
   const active = documents.find((document) => document.id === activeId) || null;
   const diagnostic = parseScarpDiagnostic(compilerDiagnosticStderr);
-  const canNavigateDiagnostic = Boolean(
-    diagnostic?.path && diagnostic.line && diagnostic.column &&
-    active?.path && compilerOutputSource &&
+  const diagnosticPosition = active?.path && compilerOutputSource &&
     sameFilePath(active.path, compilerOutputSource.path) &&
-    active.content === compilerOutputSource.content &&
-    diagnosticBelongsToSource(diagnostic.path, active.path) &&
-    diagnostic.line <= active.content.split(/\r?\n/).length,
-  );
+    active.content === compilerOutputSource.content
+    ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -279,20 +279,17 @@ export default function App() {
     }
   }
 
-  function revealDiagnostic(path: string, line: number, scalarColumn: number): void {
+  function revealDiagnostic(): void {
     const current = liveEditor.current.documents.find(
       (item) => item.id === liveEditor.current.activeId,
     );
     if (!current?.path || !compilerOutputSource ||
         !sameFilePath(current.path, compilerOutputSource.path) ||
-        current.content !== compilerOutputSource.content ||
-        !diagnosticBelongsToSource(path, current.path)) return;
-    const sourceLines = current.content.split(/\r?\n/);
-    if (line < 1 || line > sourceLines.length) return;
-    const position = {
-      lineNumber: line,
-      column: scalarColumnToUtf16(sourceLines[line - 1], scalarColumn),
-    };
+        current.content !== compilerOutputSource.content) return;
+    // Revalidate against the live editor state at click time, not just the
+    // position calculated during the last React render.
+    const position = diagnosticSourcePosition(diagnostic, current.path, current.content);
+    if (!position) return;
     editorRef.current?.revealPositionInCenter(position);
     editorRef.current?.setPosition(position);
     editorRef.current?.focus();
@@ -516,9 +513,9 @@ export default function App() {
               <div className="compiler-diagnostic" role="status">
                 <strong>{diagnostic.code || 'Scarp error'}</strong>
                 <span>{diagnostic.message}</span>
-                {canNavigateDiagnostic && diagnostic.path && diagnostic.line && diagnostic.column && (
+                {diagnosticPosition && (
                   <button type="button"
-                    onClick={() => revealDiagnostic(diagnostic.path!, diagnostic.line!, diagnostic.column!)}
+                    onClick={revealDiagnostic}
                     title="Focus the reported error location in the open Scarp file">
                     Go to line {diagnostic.line}, column {diagnostic.column}
                   </button>
