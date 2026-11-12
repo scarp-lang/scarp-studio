@@ -700,6 +700,18 @@ mod tests {
         let input_source = "bind name = read_line(); print(\"Hello\", name);";
         fs::write(&source, input_source).unwrap();
         ensure_matching_disk_snapshot(&validated, input_source).unwrap();
+        let static_input = process(
+            &binary,
+            &command_args("verify", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("static read_line verification");
+        assert!(static_input.status.success(), "{}", static_input.stderr);
+        assert!(static_input.stdout.is_empty());
+
         let input_run = process_with_input(
             &binary,
             &command_args_with_input("exec", &validated, true).unwrap(),
