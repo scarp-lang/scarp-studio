@@ -98,7 +98,11 @@ fn process_with_input(
     let mut command = Command::new(binary);
     command
         .args(args)
-        .stdin(if stdin_text.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdin(if stdin_text.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(directory) = cwd {
@@ -159,11 +163,14 @@ fn process_with_input(
         // A small, owned snapshot is written off-thread so a child that never
         // reads stdin cannot block Stop or the process timeout loop.
         // BrokenPipe is expected if source exits without consuming every byte.
-        let input_thread = stdin_pipe
-            .zip(stdin_text.map(str::to_owned))
-            .map(|(mut pipe, payload)| thread::spawn(move || {
-                let _ = pipe.write_all(payload.as_bytes());
-            }));
+        let input_thread =
+            stdin_pipe
+                .zip(stdin_text.map(str::to_owned))
+                .map(|(mut pipe, payload)| {
+                    thread::spawn(move || {
+                        let _ = pipe.write_all(payload.as_bytes());
+                    })
+                });
         let output_thread = thread::spawn(move || read_bounded(stdout, output_limit));
         let error_thread = thread::spawn(move || read_bounded(stderr, output_limit));
         let started = Instant::now();
@@ -385,9 +392,12 @@ fn command_args_with_input(
         args.splice(
             1..1,
             [
-                "--max-input-line-bytes", "4096",
-                "--max-input-bytes", "16384",
-                "--max-input-reads", "256",
+                "--max-input-line-bytes",
+                "4096",
+                "--max-input-bytes",
+                "16384",
+                "--max-input-reads",
+                "256",
             ]
             .into_iter()
             .map(OsString::from),
@@ -434,7 +444,11 @@ pub async fn scarp_execute(
             EXEC_TIMEOUT,
             EXEC_OUTPUT_LIMIT,
             Some(&runtime),
-            if mode == "exec" { Some(stdin_text.as_str()) } else { None },
+            if mode == "exec" {
+                Some(stdin_text.as_str())
+            } else {
+                None
+            },
         )?;
         let exit = result
             .status
