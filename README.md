@@ -2,7 +2,9 @@
 
 Scarp Studio is an Apache-2.0 desktop IDE **exclusively for the Scarp programming language** (.srp files).
 
-**Status:** Early development toward v0.0.1-alpha.1. This branch is not yet a verified release.
+**Status:** [`v0.0.1-alpha.1`](https://github.com/scarp-lang/scarp-studio/releases/tag/v0.0.1-alpha.1) was published on 2026-11-11 as an **experimental, unsigned Windows pre-release**. The editor foundation is present on `main`; interactive Windows 11 GUI acceptance is still pending. Use only test files until that validation is complete.
+
+**Not in the released alpha:** Run, Verify, Stop and structured error navigation. These are under review in [draft PR #5](https://github.com/scarp-lang/scarp-studio/pull/5) and [draft PR #6](https://github.com/scarp-lang/scarp-studio/pull/6). Neither PR is merged or published.
 
 ## Implemented in this branch
 
@@ -29,9 +31,10 @@ CI builds an **experimental NSIS installer candidate**. Both `package-lock.json`
 
 ## Known limitations
 
-- Compiler commands, diagnostics, completion and debugging are not yet implemented. The official compiler lives at https://github.com/scarp-lang/scarp; its experimental `exec` and `verify` interfaces require version-aware, bounded native process integration before exposure in Studio.
+- The **published** `v0.0.1-alpha.1` is editor-only: compiler Run/Verify/Stop, source diagnostics, completion and debugging are **not available**. A version-aware, bounded native compiler service is implemented only on the unmerged draft PR #5, with diagnostic navigation on the stacked draft PR #6. The official Scarp compiler lives at https://github.com/scarp-lang/scarp.
 - Folder browsing currently lists only immediate .srp children; selected-folder filesystem scope behavior needs Windows verification.
 - Only user-selected files are accessible, and dialog scopes are session-local. Reopen a file or folder after restarting.
-- Native Windows tests, packaging and hands-on launch/open/save/discard validation must pass before publishing any GitHub release. The CI installer is an unsigned candidate, not an official release.
+- Automated Windows builds and package checksum checks passed for the published experimental release, but **hands-on launch/open/save/discard validation and unsigned-installer security review remain open** in [issue #2](https://github.com/scarp-lang/scarp-studio/issues/2). Later release candidates require their own gates; successful CI is not proof of GUI correctness.
+- The next compiler-integrated release is **not yet published**. Manual Windows 11 testing and review are required for PRs #5 and #6; see [issue #3](https://github.com/scarp-lang/scarp-studio/issues/3).
 
 **Repository:** https://github.com/scarp-lang/scarp-studio
