@@ -69,3 +69,13 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .status-bar span:first-child { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .sidebar { width: 180px; flex-basis: 180px; } .identity { font-size: 14px; } }
 @media (max-width: 690px) { .sidebar { display: none; } .toolbar { gap: 8px; } .theme-button { margin-left: 0; } }
+
+.compiler-panel { flex: 0 0 185px; min-height: 120px; display: flex; flex-direction: column; border-top: 1px solid var(--border); background: var(--surface); }
+.compiler-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 7px 12px; }
+.compiler-heading strong { font-size: 10px; letter-spacing: .1em; color: var(--muted); }
+.compiler-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.compiler-actions button { border: 1px solid var(--border); background: var(--raised); color: var(--text); padding: 5px 10px; border-radius: 5px; font-size: 11px; }
+.compiler-actions button:not(:disabled):hover { border-color: var(--accent); }
+.compiler-meta { color: var(--muted); font-size: 10px; padding: 0 12px 6px; }
+.compiler-output { font: 12px/1.5 Consolas, "Cascadia Code", monospace; margin: 0; padding: 8px 12px; color: var(--text); background: var(--bg); flex: 1; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-height: 660px) { .compiler-panel { flex-basis: 140px; } }
