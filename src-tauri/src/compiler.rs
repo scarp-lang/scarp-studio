@@ -516,14 +516,16 @@ mod tests {
             Some(&runtime),
         )
         .expect("native diagnostic verify process");
-        assert!(!failed_verify.status.success(), "invalid source was accepted");
+        assert!(
+            !failed_verify.status.success(),
+            "invalid source was accepted"
+        );
         assert!(!failed_verify.cancelled);
         assert!(!failed_verify.truncated);
         let diagnostic = failed_verify.stderr.trim();
         assert!(
-            diagnostic.starts_with(
-                "{\"schema_version\":1,\"severity\":\"error\",\"code\":\"E0010\""
-            ),
+            diagnostic
+                .starts_with("{\"schema_version\":1,\"severity\":\"error\",\"code\":\"E0010\""),
             "unexpected CLI diagnostic envelope: {diagnostic}"
         );
         assert!(diagnostic.contains("\"span_encoding\":\"utf-8-bytes\""));
