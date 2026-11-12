@@ -454,8 +454,15 @@ export default function App() {
                 theme={theme === 'dark' ? 'vs-dark' : 'vs'}
                 value={active.content}
                 onChange={(content) => {
-                  pendingSearchLocation.current = null;
-                  dispatch({ type: 'edit', id: active.id, content: content ?? '' });
+                  const nextContent = content ?? '';
+                  const pending = pendingSearchLocation.current;
+                  // Monaco may initialize a newly selected tab before its onMount.
+                  // Keep the pending jump unless the destination text really changed.
+                  if (pending?.documentId === active.id &&
+                      pending.sourceContent !== nextContent) {
+                    pendingSearchLocation.current = null;
+                  }
+                  dispatch({ type: 'edit', id: active.id, content: nextContent });
                 }}
                 onMount={(editor) => {
                   mountedEditor.current = editor;
