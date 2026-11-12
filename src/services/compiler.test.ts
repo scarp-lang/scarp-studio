@@ -14,7 +14,8 @@ describe('Scarp native invoke input contract', () => {
       'C:/trusted/scarp.exe', 'C:/project/main.srp', 'exec',
       'bind name = read_line();', stdinText,
     )).resolves.toBe('Hello नमस्ते 👋');
-    expect(invoke).toHaveBeenCalledExactlyOnceWith('scarp_execute', {
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith('scarp_execute', {
       binary: 'C:/trusted/scarp.exe', source: 'C:/project/main.srp',
       mode: 'exec', expectedContent: 'bind name = read_line();', stdinText,
     });
