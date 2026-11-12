@@ -9,6 +9,10 @@ import {
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
+import {
+  DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
+  parseEditorPreferences, type EditorPreferences,
+} from './model/editorPreferences';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -18,6 +22,14 @@ function getInitialTheme(): Theme {
     return localStorage.getItem('studio.theme') === 'light' ? 'light' : 'dark';
   } catch {
     return 'dark';
+  }
+}
+
+function getInitialEditorPreferences(): EditorPreferences {
+  try {
+    return parseEditorPreferences(localStorage.getItem('studio.editorPreferences'));
+  } catch {
+    return { ...DEFAULT_EDITOR_PREFERENCES };
   }
 }
 
@@ -37,6 +49,8 @@ export default function App() {
     setEditorState(next);
   }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
+  const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +67,13 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     try { localStorage.setItem('studio.theme', theme); } catch { /* storage unavailable */ }
   }, [theme]);
+
+  useEffect(() => {
+    // Editor preferences remain local and never modify a source file.
+    try {
+      localStorage.setItem('studio.editorPreferences', JSON.stringify(editorPreferences));
+    } catch { /* Continue with in-memory settings when storage is unavailable. */ }
+  }, [editorPreferences]);
 
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
@@ -234,6 +255,13 @@ export default function App() {
           <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
         </nav>
         <button
+          className="settings-toggle"
+          type="button"
+          onClick={() => setEditorSettingsOpen((isOpen) => !isOpen)}
+          aria-expanded={editorSettingsOpen}
+          aria-controls="editor-settings"
+        >Editor settings</button>
+        <button
           className="theme-button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
@@ -242,6 +270,46 @@ export default function App() {
         </button>
       </header>
 
+      {editorSettingsOpen && (
+        <section id="editor-settings" className="editor-settings" aria-label="Scarp editor settings">
+          <label htmlFor="editor-font-size">Font size</label>
+          <select
+            id="editor-font-size"
+            value={editorPreferences.fontSize}
+            onChange={(event) => setEditorPreferences((current) => ({
+              ...current, fontSize: Number(event.target.value) as EditorPreferences['fontSize'],
+            }))}
+          >
+            {FONT_SIZES.map((size) => <option key={size} value={size}>{size} px</option>)}
+          </select>
+          <label htmlFor="editor-tab-size">Tab width</label>
+          <select
+            id="editor-tab-size"
+            value={editorPreferences.tabSize}
+            onChange={(event) => setEditorPreferences((current) => ({
+              ...current, tabSize: Number(event.target.value) as EditorPreferences['tabSize'],
+            }))}
+          >
+            {TAB_SIZES.map((size) => <option key={size} value={size}>{size} spaces</option>)}
+          </select>
+          <label className="editor-setting-checkbox" htmlFor="editor-word-wrap">
+            <input
+              id="editor-word-wrap"
+              type="checkbox"
+              checked={editorPreferences.wordWrap}
+              onChange={(event) => setEditorPreferences((current) => ({
+                ...current, wordWrap: event.target.checked,
+              }))}
+            />
+            Wrap long lines
+          </label>
+          <button
+            className="settings-reset"
+            type="button"
+            onClick={() => setEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES })}
+          >Restore defaults</button>
+        </section>
+      )}
       <div className="studio-main">
         <aside className="sidebar" aria-label="Scarp file explorer">
           <div className="sidebar-heading">EXPLORER</div>
@@ -335,9 +403,12 @@ export default function App() {
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
                 options={{
-                  automaticLayout: true, fontSize: 14, fontFamily: 'Consolas, monospace',
+                  automaticLayout: true, fontSize: editorPreferences.fontSize,
+                  fontFamily: 'Consolas, monospace',
                   minimap: { enabled: false }, scrollBeyondLastLine: false,
-                  tabSize: 4, wordWrap: 'on', detectIndentation: false,
+                  tabSize: editorPreferences.tabSize,
+                  wordWrap: editorPreferences.wordWrap ? 'on' : 'off',
+                  detectIndentation: false,
                 }}
               />
             ) : (
