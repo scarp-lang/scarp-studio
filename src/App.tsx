@@ -44,6 +44,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
+  // Prevent overlapping native discard prompts on repeated close attempts.
+  const exitConfirmationInProgress = useRef(false);
 
   const active = documents.find((document) => document.id === activeId) || null;
 
@@ -59,12 +61,15 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(async (event) => {
       const pending = liveEditor.current.documents.filter(isDirty);
-      if (!pending.length && !saveInProgress.current) return;
+      if (!pending.length && !saveInProgress.current &&
+          !exitConfirmationInProgress.current) return;
       event.preventDefault();
       if (saveInProgress.current) {
         setError('A file is being saved. Finish saving before exiting.');
         return;
       }
+      if (exitConfirmationInProgress.current) return;
+      exitConfirmationInProgress.current = true;
       try {
         if (await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
@@ -79,6 +84,8 @@ export default function App() {
         }
       } catch (caught) {
         setError(toMessage(caught));
+      } finally {
+        exitConfirmationInProgress.current = false;
       }
     }).then((cleanup) => {
       if (removed) cleanup();
@@ -348,7 +355,7 @@ export default function App() {
         <span>{busy ? 'Working…' : notice}</span>
         <span>{active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}</span>
         <span>Scarp · .srp</span>
-        <span>v0.0.1-alpha.1</span>
+        <span>v0.0.1-alpha.2</span>
       </footer>
     </div>
   );
