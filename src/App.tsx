@@ -39,6 +39,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
+  const [folderListingLimited, setFolderListingLimited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
   const [busy, setBusy] = useState(false);
@@ -123,7 +124,9 @@ export default function App() {
       if (!result) return;
       setFolderPath(result.path);
       setFolderEntries(result.files);
-      setNotice(result.files.length + ' top-level .srp files found');
+      setFolderListingLimited(result.truncated);
+      setNotice(result.files.length + ' top-level .srp files shown' +
+        (result.truncated ? ' (large folder; listing limited)' : ''));
     } catch (caught) {
       setError('Could not open folder: ' + toMessage(caught));
     } finally {
@@ -134,7 +137,7 @@ export default function App() {
   async function openFolderFile(path: string): Promise<void> {
     setError(null);
     try {
-      const content = await readFolderSource(path);
+      const content = await readFolderSource(path, folderEntries);
       activateOpenedFile(path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
@@ -249,6 +252,12 @@ export default function App() {
             <section className="sidebar-section">
               <div className="folder-label" title={folderPath}>▾ {fileName(folderPath)}</div>
               <div className="sidebar-note">Top-level Scarp files</div>
+              {folderListingLimited && (
+                <p className="sidebar-note" role="status">
+                  Large folder: the listing is limited to 200 Scarp files from the first
+                  4096 directory entries. Some files may not appear.
+                </p>
+              )}
               {folderEntries.length ? folderEntries.map((entry) => (
                 <button
                   className="file-row"
