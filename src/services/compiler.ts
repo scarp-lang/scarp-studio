@@ -9,8 +9,9 @@ export function probeScarp(binary: string): Promise<string> {
 
 export function executeScarp(
   binary: string, source: string, mode: ScarpMode, expectedContent: string,
+  stdinText: string,
 ): Promise<string> {
-  return invoke<string>('scarp_execute', { binary, source, mode, expectedContent });
+  return invoke<string>('scarp_execute', { binary, source, mode, expectedContent, stdinText });
 }
 
 export function stopScarp(): Promise<boolean> {
