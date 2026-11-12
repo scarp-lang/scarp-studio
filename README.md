@@ -38,4 +38,8 @@ CI builds an **experimental NSIS installer candidate**. Both `package-lock.json`
 - Automated Windows builds and package checksum checks passed for the published experimental release, but **hands-on launch/open/save/discard validation and unsigned-installer security review remain open** in [issue #2](https://github.com/scarp-lang/scarp-studio/issues/2). Later release candidates require their own gates; successful CI is not proof of GUI correctness.
 - The next compiler-integrated release is **not yet published**. Manual Windows 11 testing and review are required for PRs #5 and #6; see [issue #3](https://github.com/scarp-lang/scarp-studio/issues/3).
 
+## Support Scarp Studio
+
+This is an experimental open-source IDE. Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) helps support development and testing; sponsorship does not provide early access, private repository access, or guarantees about releases.
+
 **Repository:** https://github.com/scarp-lang/scarp-studio
