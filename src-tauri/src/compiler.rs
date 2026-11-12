@@ -18,6 +18,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const EXEC_TIMEOUT: Duration = Duration::from_secs(20);
 const PROBE_OUTPUT_LIMIT: usize = 32 * 1024;
 const EXEC_OUTPUT_LIMIT: usize = 256 * 1024;
+// Bound native source snapshots independently from compiler output budgets.
+const MAX_SOURCE_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Clone)]
 struct ActiveJob {
@@ -269,12 +271,36 @@ fn probe(binary: &str) -> Result<(PathBuf, String), String> {
 }
 
 fn ensure_matching_disk_snapshot(source: &Path, expected_content: &str) -> Result<(), String> {
-    let disk_content = fs::read_to_string(source)
+    if expected_content.len() as u64 > MAX_SOURCE_BYTES {
+        return Err("Scarp source exceeds Studio's 4 MiB execution safety limit.".into());
+    }
+    // Avoid unbounded reads if the on-disk file grew after it was opened.
+    let file = fs::File::open(source)
         .map_err(|e| format!("Could not check saved Scarp source: {e}"))?;
-    if disk_content != expected_content {
+    let mut disk_content = Vec::new();
+    file.take(MAX_SOURCE_BYTES + 1)
+        .read_to_end(&mut disk_content)
+        .map_err(|e| format!("Could not check saved Scarp source: {e}"))?;
+    if disk_content.len() as u64 > MAX_SOURCE_BYTES {
+        return Err("Scarp source exceeds Studio's 4 MiB execution safety limit.".into());
+    }
+    if disk_content != expected_content.as_bytes() {
         return Err("Scarp file changed on disk. Reload or Save As before Run/Verify.".into());
     }
     Ok(())
+}
+
+/// Re-check the source after CLI capability probes, immediately before launch.
+/// A file may change in a separate editor while those subprocesses run.
+fn with_verified_source_snapshot<T>(
+    source: &Path,
+    expected_content: &str,
+    probe: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    ensure_matching_disk_snapshot(source, expected_content)?;
+    let verified = probe()?;
+    ensure_matching_disk_snapshot(source, expected_content)?;
+    Ok(verified)
 }
 
 fn command_args(mode: &str, source: &Path) -> Result<Vec<OsString>, String> {
@@ -320,11 +346,10 @@ pub async fn scarp_execute(
     let runtime = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let source = source_file(&source)?;
-        // Refuse to execute or verify disk content changed outside Studio.
-        // This comparison happens before any compiler process is started.
-        ensure_matching_disk_snapshot(&source, &expected_content)?;
-        let (binary, version) = probe(&binary)?;
+        // Reject unsupported actions without launching even a capability probe.
         let args = command_args(&mode, &source)?;
+        let (binary, version) =
+            with_verified_source_snapshot(&source, &expected_content, || probe(&binary))?;
         let result = process(
             &binary,
             &args,
@@ -425,6 +450,49 @@ mod tests {
         assert!(ensure_matching_disk_snapshot(&path, "print(\"stale\");").is_err());
         fs::remove_file(&path).unwrap();
         assert!(ensure_matching_disk_snapshot(&path, "print(\"original\");").is_err());
+    }
+
+    #[test]
+    fn source_changes_during_compiler_probe_are_rejected() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "studio-snapshot-race-{}-{unique}.srp",
+            std::process::id()
+        ));
+        fs::write(&path, "print(1);").unwrap();
+        let result = with_verified_source_snapshot(&path, "print(1);", || {
+            fs::write(&path, "print(2);").unwrap();
+            Ok(())
+        });
+        assert!(result.unwrap_err().contains("changed on disk"));
+        fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn source_snapshot_checks_enforce_a_bounded_native_read() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "studio-source-limit-{}-{unique}.srp",
+            std::process::id()
+        ));
+        fs::write(&path, b"short").unwrap();
+        let oversized = "x".repeat(MAX_SOURCE_BYTES as usize + 1);
+        assert!(ensure_matching_disk_snapshot(&path, &oversized)
+            .unwrap_err()
+            .contains("4 MiB"));
+        fs::write(&path, oversized.as_bytes()).unwrap();
+        assert!(ensure_matching_disk_snapshot(&path, "short")
+            .unwrap_err()
+            .contains("4 MiB"));
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
