@@ -17,7 +17,19 @@ export function isScarpPath(path: string): boolean {
 export function sameFilePath(left: string, right: string): boolean {
   const isWindows = (path: string) => /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path);
   if (isWindows(left) && isWindows(right)) {
-    return left.replace(/[\\/]+/g, '\\').toLowerCase() === right.replace(/[\\/]+/g, '\\').toLowerCase();
+    const normalize = (path: string) => {
+      let normalized = path.replace(/\//g, '\\');
+      // std::fs::canonicalize on Windows can prepend the extended-length
+      // namespace. Only strip its documented drive and UNC spellings:
+      // arbitrary device namespace paths must not alias ordinary files.
+      if (/^\\\\\?\\[A-Za-z]:\\/.test(normalized)) {
+        normalized = normalized.slice(4);
+      } else if (/^\\\\\?\\UNC\\/i.test(normalized)) {
+        normalized = '\\\\' + normalized.slice(8);
+      }
+      return normalized.replace(/\\+/g, '\\').toLowerCase();
+    };
+    return normalize(left) === normalize(right);
   }
   return left === right;
 }
