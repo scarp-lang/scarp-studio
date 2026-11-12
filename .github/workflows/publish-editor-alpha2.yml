@@ -62,23 +62,30 @@ jobs:
       - name: Install pinned dependencies
         if: steps.gate.outputs.ready == 'true'
         run: npm ci --no-audit --no-fund
-      - name: TypeScript and frontend checks
+      - name: TypeScript typecheck
         if: steps.gate.outputs.ready == 'true'
-        run: |
-          npm run typecheck
-          npm test
-          npm run build
-      - name: Rust format, compilation and tests
+        run: npm run typecheck
+      - name: Frontend unit tests
         if: steps.gate.outputs.ready == 'true'
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-          cargo check --locked --manifest-path src-tauri/Cargo.toml
-          cargo test --locked --manifest-path src-tauri/Cargo.toml
-      - name: Package Windows executable and NSIS installer
+        run: npm test
+      - name: Frontend production build
         if: steps.gate.outputs.ready == 'true'
-        run: |
-          npm run tauri build -- --no-bundle
-          npm run tauri build -- --bundles nsis
+        run: npm run build
+      - name: Rust formatting
+        if: steps.gate.outputs.ready == 'true'
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Rust locked compilation
+        if: steps.gate.outputs.ready == 'true'
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+      - name: Rust unit tests
+        if: steps.gate.outputs.ready == 'true'
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build Windows executable
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run tauri build -- --no-bundle
+      - name: Build Windows NSIS installer
+        if: steps.gate.outputs.ready == 'true'
+        run: npm run tauri build -- --bundles nsis
       - name: Produce release SHA-256 manifest and verify lockfiles
         if: steps.gate.outputs.ready == 'true'
         shell: pwsh
