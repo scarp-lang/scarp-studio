@@ -500,6 +500,36 @@ mod tests {
         assert!(execute.stdout.contains("Studio backend integration"));
         assert!(!execute.truncated);
         assert!(!execute.cancelled);
+
+        // Validate the real published CLI's failure envelope, not just a
+        // hand-written frontend diagnostic fixture. Studio relies on this
+        // exact JSON schema being emitted on stderr by failed static verify.
+        let invalid_source = "print(unknown_name);";
+        fs::write(&source, invalid_source).unwrap();
+        ensure_matching_disk_snapshot(&validated, invalid_source).unwrap();
+        let failed_verify = process(
+            &binary,
+            &command_args("verify", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("native diagnostic verify process");
+        assert!(!failed_verify.status.success(), "invalid source was accepted");
+        assert!(!failed_verify.cancelled);
+        assert!(!failed_verify.truncated);
+        let diagnostic = failed_verify.stderr.trim();
+        assert!(
+            diagnostic.starts_with(
+                "{\\"schema_version\\":1,\\"severity\\":\\"error\\",\\"code\\":\\"E0010\\""
+            ),
+            "unexpected CLI diagnostic envelope: {diagnostic}"
+        );
+        assert!(diagnostic.contains("\\"span_encoding\\":\\"utf-8-bytes\\""));
+        assert!(diagnostic.contains("\\"column_encoding\\":\\"unicode-scalar\\""));
+        assert!(diagnostic.contains("\\"position_base\\":1"));
+        assert!(diagnostic.contains("\\"primary\\":{"));
         fs::remove_file(&source).unwrap();
         assert!(runtime.active.lock().unwrap().is_none());
     }
