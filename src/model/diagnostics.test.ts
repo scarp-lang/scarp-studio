@@ -29,6 +29,26 @@ describe('published Scarp JSON error diagnostics', () => {
       help: 'Keep primitive types consistent',
     });
   });
+  it('navigates alpha.8 E0065 assertion diagnostics after Unicode scalars', () => {
+    const source = 'print("👋"); assert(false);';
+    const diagnostic = parseScarpDiagnostic(stderr({
+      ...fixture,
+      code: 'E0065',
+      message: 'assertion failed',
+      primary: {
+        ...fixture.primary,
+        path: 'main.srp',
+        start: { line: 1, column: 13 },
+        end: { line: 1, column: 19 },
+      },
+    }));
+    expect(diagnostic).toMatchObject({
+      code: 'E0065', message: 'assertion failed', path: 'main.srp',
+      line: 1, column: 13,
+    });
+    expect(diagnosticSourcePosition(diagnostic, 'C:/Project/main.srp', source))
+      .toEqual({ lineNumber: 1, column: 14 });
+  });
   it('allows a diagnostic without a source position', () => {
     expect(parseScarpDiagnostic(stderr({
       ...fixture, code: null, primary: null, help: null,
