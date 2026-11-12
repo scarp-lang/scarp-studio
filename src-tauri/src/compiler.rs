@@ -275,8 +275,8 @@ fn ensure_matching_disk_snapshot(source: &Path, expected_content: &str) -> Resul
         return Err("Scarp source exceeds Studio's 4 MiB execution safety limit.".into());
     }
     // Avoid unbounded reads if the on-disk file grew after it was opened.
-    let file = fs::File::open(source)
-        .map_err(|e| format!("Could not check saved Scarp source: {e}"))?;
+    let file =
+        fs::File::open(source).map_err(|e| format!("Could not check saved Scarp source: {e}"))?;
     let mut disk_content = Vec::new();
     file.take(MAX_SOURCE_BYTES + 1)
         .read_to_end(&mut disk_content)
