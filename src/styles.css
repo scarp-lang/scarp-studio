@@ -79,3 +79,10 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .compiler-meta { color: var(--muted); font-size: 10px; padding: 0 12px 6px; }
 .compiler-output { font: 12px/1.5 Consolas, "Cascadia Code", monospace; margin: 0; padding: 8px 12px; color: var(--text); background: var(--bg); flex: 1; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-height: 660px) { .compiler-panel { flex-basis: 140px; } }
+
+.compiler-diagnostic { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 7px 12px; font-size: 11px; border-top: 1px solid var(--border); background: var(--raised); }
+.compiler-diagnostic strong { font-weight: 700; color: var(--text); }
+.compiler-diagnostic span { color: var(--text); }
+.compiler-diagnostic-help { color: var(--muted) !important; }
+.compiler-diagnostic button { border: 1px solid var(--accent); color: var(--text); background: var(--surface); border-radius: 4px; padding: 4px 7px; font-size: 11px; }
+.compiler-diagnostic button:hover { background: var(--bg); }

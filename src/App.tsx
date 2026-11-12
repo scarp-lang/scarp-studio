@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import type { editor as MonacoEditorApi } from 'monaco-editor';
 import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  fileName, isDirty,
+  fileName, isDirty, sameFilePath,
 } from './model/documents';
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { runnableSource } from './model/compilerReadiness';
 import { exitBlockReason } from './model/exitGuards';
+import {
+  parseScarpDiagnostic, diagnosticBelongsToSource, scalarColumnToUtf16,
+} from './model/diagnostics';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
 type Theme = 'dark' | 'light';
@@ -61,8 +65,21 @@ export default function App() {
     'Source files are never executed automatically.',
   );
   const [compilerBusy, setCompilerBusy] = useState(false);
+  const [compilerOutputSource, setCompilerOutputSource] = useState<{
+    path: string; content: string;
+  } | null>(null);
+  const editorRef = useRef<MonacoEditorApi.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const diagnostic = parseScarpDiagnostic(compilerOutput);
+  const canNavigateDiagnostic = Boolean(
+    diagnostic?.path && diagnostic.line && diagnostic.column &&
+    active?.path && compilerOutputSource &&
+    sameFilePath(active.path, compilerOutputSource.path) &&
+    active.content === compilerOutputSource.content &&
+    diagnosticBelongsToSource(diagnostic.path, active.path) &&
+    diagnostic.line <= active.content.split(/\r?\n/).length,
+  );
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -208,6 +225,7 @@ export default function App() {
       const info = await probeScarp(chosen);
       setCompilerPath(chosen);
       setCompilerInfo(info);
+      setCompilerOutputSource(null);
       try { localStorage.setItem('studio.compilerPath', chosen); } catch { /* optional persistence */ }
       setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
       setNotice('Scarp compiler configured');
@@ -241,6 +259,7 @@ export default function App() {
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
+    setCompilerOutputSource({ path: source, content: expectedContent });
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(compilerPath, source, mode, expectedContent);
@@ -254,6 +273,25 @@ export default function App() {
       commandInProgress.current = false;
       setCompilerBusy(false);
     }
+  }
+
+  function revealDiagnostic(path: string, line: number, scalarColumn: number): void {
+    const current = liveEditor.current.documents.find(
+      (item) => item.id === liveEditor.current.activeId,
+    );
+    if (!current?.path || !compilerOutputSource ||
+        !sameFilePath(current.path, compilerOutputSource.path) ||
+        current.content !== compilerOutputSource.content ||
+        !diagnosticBelongsToSource(path, current.path)) return;
+    const sourceLines = current.content.split(/\r?\n/);
+    if (line < 1 || line > sourceLines.length) return;
+    const position = {
+      lineNumber: line,
+      column: scalarColumnToUtf16(sourceLines[line - 1], scalarColumn),
+    };
+    editorRef.current?.revealPositionInCenter(position);
+    editorRef.current?.setPosition(position);
+    editorRef.current?.focus();
   }
 
   async function stopCompiler(): Promise<void> {
@@ -428,6 +466,7 @@ export default function App() {
                   dispatch({ type: 'edit', id: active.id, content: content ?? '' });
                 }}
                 onMount={(editor) => {
+                  editorRef.current = editor;
                   editor.onDidChangeCursorPosition((event) => {
                     setCursor({ line: event.position.lineNumber, column: event.position.column });
                   });
@@ -469,6 +508,20 @@ export default function App() {
             <div className="compiler-meta">{compilerInfo || (compilerPath
               ? 'Compiler configured; version checked on the next Run/Verify.'
               : 'No compiler selected')}</div>
+            {diagnostic && (
+              <div className="compiler-diagnostic" role="status">
+                <strong>{diagnostic.code || 'Scarp error'}</strong>
+                <span>{diagnostic.message}</span>
+                {canNavigateDiagnostic && diagnostic.path && diagnostic.line && diagnostic.column && (
+                  <button type="button"
+                    onClick={() => revealDiagnostic(diagnostic.path!, diagnostic.line!, diagnostic.column!)}
+                    title="Focus the reported error location in the open Scarp file">
+                    Go to line {diagnostic.line}, column {diagnostic.column}
+                  </button>
+                )}
+                {diagnostic.help && <span className="compiler-diagnostic-help">{diagnostic.help}</span>}
+              </div>
+            )}
             <pre className="compiler-output" role="log" aria-live="polite">{compilerOutput}</pre>
           </section>
         </main>
