@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createUntitled, type StudioDocument } from './documents';
 import {
-  MAX_SEARCH_CONTENT_UNITS, MAX_SEARCH_DOCUMENTS, MAX_SEARCH_QUERY_UNITS,
-  MAX_SEARCH_RESULTS, searchOpenFiles,
+  MAX_SEARCH_CANDIDATES, MAX_SEARCH_CONTENT_UNITS, MAX_SEARCH_DOCUMENTS,
+  MAX_SEARCH_QUERY_UNITS, MAX_SEARCH_RESULTS, isCurrentSearchHit, searchOpenFiles,
 } from './openFileSearch';
 
 const defaults = { caseSensitive: false, wholeWord: false };
@@ -106,6 +106,25 @@ describe('bounded search across open Scarp buffers', () => {
     expect(result.hits[0].sourceContent).toBe(docs[0].content);
     expect(result.hits[0].matchText).toBe('hello');
     expect(result.hits[0].preview).toContain('print');
+  });
+
+  it('rejects stale, closed or malformed result locations', () => {
+    const initial = source(1, 'alpha beta');
+    const hit = searchOpenFiles([initial], 'beta', defaults).hits[0];
+    expect(isCurrentSearchHit(initial, hit)).toBe(true);
+    expect(isCurrentSearchHit({ ...initial, content: 'alpha Xbeta' }, hit)).toBe(false);
+    expect(isCurrentSearchHit(undefined, hit)).toBe(false);
+    expect(isCurrentSearchHit(source(2, 'alpha beta'), hit)).toBe(false);
+    expect(isCurrentSearchHit(initial, { ...hit, offset: -1 })).toBe(false);
+  });
+
+  it('caps candidate processing even when all whole-word matches are rejected', () => {
+    const sourceText = 'varname '.repeat(MAX_SEARCH_CANDIDATES + 5);
+    const result = searchOpenFiles([source(1, sourceText)], 'var', {
+      caseSensitive: false, wholeWord: true,
+    });
+    expect(result.hits).toHaveLength(0);
+    expect(result.truncated).toBe(true);
   });
 
   it('rejects oversized or multi-line search input', () => {

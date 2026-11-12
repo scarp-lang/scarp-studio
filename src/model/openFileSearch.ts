@@ -7,6 +7,8 @@ export const MAX_SEARCH_DOCUMENTS = 32;
 export const MAX_SEARCH_CONTENT_UNITS = 1_000_000;
 export const MAX_SEARCH_QUERY_UNITS = 120;
 export const MAX_SEARCH_RESULTS = 200;
+// Also cap candidate matches rejected by whole-word filtering to avoid UI freezes.
+export const MAX_SEARCH_CANDIDATES = 10_000;
 
 export interface SearchOptions {
   caseSensitive: boolean;
@@ -67,6 +69,16 @@ function linePreview(content: string, start: number, lineStart: number, matchLen
     (snippetEnd < lineEnd ? '…' : '');
 }
 
+/** Validate the exact buffer and selected range at the time of navigation. */
+export function isCurrentSearchHit(
+  document: StudioDocument | undefined,
+  hit: OpenFileSearchHit,
+): boolean {
+  return document?.id === hit.documentId &&
+    document.content === hit.sourceContent &&
+    document.content.slice(hit.offset, hit.offset + hit.matchText.length) === hit.matchText;
+}
+
 export function searchOpenFiles(
   documents: readonly StudioDocument[],
   query: string,
@@ -88,6 +100,7 @@ export function searchOpenFiles(
   const hits: OpenFileSearchHit[] = [];
   let skippedDocuments = Math.max(0, documents.length - MAX_SEARCH_DOCUMENTS);
   let truncated = documents.length > MAX_SEARCH_DOCUMENTS;
+  let candidatesExamined = 0;
 
   for (const document of documents.slice(0, MAX_SEARCH_DOCUMENTS)) {
     const content = document.content;
@@ -101,6 +114,10 @@ export function searchOpenFiles(
     let lineStart = 0;
     let newlineCursor = 0;
     for (const match of content.matchAll(regex)) {
+      candidatesExamined++;
+      if (candidatesExamined > MAX_SEARCH_CANDIDATES) {
+        return { hits, skippedDocuments, truncated: true, error: null };
+      }
       if (options.wholeWord && !isWholeWord(content, match.index, match.index + match[0].length)) {
         continue;
       }

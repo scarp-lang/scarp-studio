@@ -11,7 +11,7 @@ import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocume
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import {
-  searchOpenFiles, type OpenFileSearchHit,
+  isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
 } from './model/openFileSearch';
 
 type Theme = 'dark' | 'light';
@@ -206,7 +206,7 @@ export default function App() {
     // A click must not navigate to a position computed for earlier buffer contents.
     const current = liveEditor.current;
     const document = current.documents.find((item) => item.id === match.documentId);
-    if (!document || document.content !== match.sourceContent) {
+    if (!isCurrentSearchHit(document, match)) {
       setError('Search results changed. Review the updated matches and try again.');
       return;
     }
@@ -413,7 +413,7 @@ export default function App() {
                     ? `${openFileMatches.hits.length} matches in open files`
                     : 'Search only already-open Scarp files. No files are read from disk.')}
                 {openFileMatches.truncated &&
-                  ` · Results limited to 200; ${openFileMatches.skippedDocuments} buffers skipped.`}
+                  ` · Search budget reached; results may be incomplete. ${openFileMatches.skippedDocuments} buffers skipped.`}
               </div>
               {searchQuery && !openFileMatches.error && (
                 <div className="search-results" role="list" aria-label="Matches in open Scarp files">
@@ -468,7 +468,7 @@ export default function App() {
                     const current = liveEditor.current.documents.find(
                       (item) => item.id === pending.documentId,
                     );
-                    if (current?.content === pending.sourceContent) {
+                    if (isCurrentSearchHit(current, pending)) {
                       revealSearchLocation(editor, pending);
                     }
                     pendingSearchLocation.current = null;
