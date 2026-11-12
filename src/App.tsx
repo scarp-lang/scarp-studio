@@ -199,6 +199,12 @@ export default function App() {
         multiple: false,
       });
       if (typeof chosen !== 'string') return;
+      const approved = await ask(
+        'Scarp Studio will launch the selected executable to check its version and supported commands. ' +
+        'Only continue if you trust this file. Do you want to continue?',
+        { title: 'Trust the selected Scarp compiler?', kind: 'warning' },
+      );
+      if (!approved) return;
       const info = await probeScarp(chosen);
       setCompilerPath(chosen);
       setCompilerInfo(info);
@@ -447,7 +453,7 @@ export default function App() {
               <strong>SCARP OUTPUT</strong>
               <div className="compiler-actions">
                 <button onClick={() => void selectCompiler()} disabled={compilerBusy || compilerSelecting}
-                  title="Choose a trusted Scarp executable; nothing runs on selection">
+                  title="Choose a trusted Scarp executable; Studio will execute it to verify its version">
                   {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Select Compiler'}
                 </button>
                 <button onClick={() => void runCompiler('exec')}
