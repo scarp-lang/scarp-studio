@@ -33,7 +33,12 @@ jobs:
           $tauri = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           $cargo = Get-Content src-tauri/Cargo.toml -Raw
           $cargoLock = Get-Content src-tauri/Cargo.lock -Raw
-          if ($pkg.version -ne $expected -or $npmLock['version'] -ne $expected -or
+          if ($pkg.version -ne $expected) {
+            'ready=false' | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Host 'Another version is checked out; this one-time release workflow is inert.'
+            exit 0
+          }
+          if ($npmLock['version'] -ne $expected -or
               $npmLock['packages']['']['version'] -ne $expected -or $tauri.version -ne $expected -or
               $cargo -notmatch '(?m)^version = "0\.0\.1-alpha\.2"$' -or
               $cargoLock -notmatch '(?m)name = "scarp-studio"\r?\nversion = "0\.0\.1-alpha\.2"') {
