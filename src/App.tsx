@@ -10,6 +10,7 @@ import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocume
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { runnableSource } from './model/compilerReadiness';
+import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
 import { exitBlockReason } from './model/exitGuards';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
@@ -60,6 +61,8 @@ export default function App() {
     'Source files are never executed automatically.',
   );
   const [compilerBusy, setCompilerBusy] = useState(false);
+  // This input is session-local, not persisted or stored in source files.
+  const [stdinText, setStdinText] = useState('');
 
   const active = documents.find((document) => document.id === activeId) || null;
 
@@ -232,6 +235,7 @@ export default function App() {
       source = runnableSource(selected);
       expectedContent = selected!.savedContent;
       if (!compilerPath) throw new Error('Select the trusted Scarp compiler first.');
+      if (mode === 'exec') validateProgramInput(stdinText);
     } catch (caught) {
       setError(toMessage(caught));
       return;
@@ -241,7 +245,10 @@ export default function App() {
     setError(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
-      const result = await executeScarp(compilerPath, source, mode, expectedContent);
+      const result = await executeScarp(
+        compilerPath, source, mode, expectedContent,
+        mode === 'exec' ? stdinText : '',
+      );
       setCompilerOutput(result);
       setNotice('Scarp ' + mode + ' finished; see output');
     } catch (caught) {
@@ -467,6 +474,25 @@ export default function App() {
             <div className="compiler-meta">{compilerInfo || (compilerPath
               ? 'Compiler configured; version checked on the next Run/Verify.'
               : 'No compiler selected')}</div>
+            <div className="compiler-stdin">
+              <label htmlFor="scarp-stdin">Program input (Run only; one line per read_line call)</label>
+              <textarea
+                id="scarp-stdin"
+                value={stdinText}
+                onChange={(event) => setStdinText(event.target.value)}
+                disabled={compilerBusy}
+                maxLength={MAX_INPUT_BYTES}
+                rows={2}
+                spellCheck={false}
+                aria-describedby="scarp-stdin-help"
+                placeholder="Optional UTF-8 input for read_line()"
+              />
+              <div id="scarp-stdin-help" className="compiler-meta">
+                {programInputBytes(stdinText)} / {MAX_INPUT_BYTES} UTF-8 bytes ·
+                Max 4096 bytes per line and 256 lines. Input is not saved;
+                avoid entering passwords or secrets.
+              </div>
+            </div>
             <pre className="compiler-output" role="log" aria-live="polite">{compilerOutput}</pre>
           </section>
         </main>

@@ -3,7 +3,7 @@
 use std::{
     ffi::OsString,
     fs,
-    io::Read,
+    io::{Read, Write},
     path::{Path, PathBuf},
     process::{Child, Command, ExitStatus, Stdio},
     sync::{
@@ -20,6 +20,30 @@ const PROBE_OUTPUT_LIMIT: usize = 32 * 1024;
 const EXEC_OUTPUT_LIMIT: usize = 256 * 1024;
 // Bound native source snapshots independently from compiler output budgets.
 const MAX_SOURCE_BYTES: u64 = 4 * 1024 * 1024;
+// Smaller opt-in Studio stdin budgets; Scarp also enforces its own CLI limits.
+const MAX_STDIN_BYTES: usize = 16 * 1024;
+const MAX_STDIN_LINE_BYTES: usize = 4096;
+const MAX_STDIN_LINES: usize = 256;
+
+fn validate_stdin(input: &str) -> Result<(), String> {
+    if input.len() > MAX_STDIN_BYTES {
+        return Err("Program input exceeds Studio's 16 KiB UTF-8 limit.".into());
+    }
+    if input.is_empty() {
+        return Ok(());
+    }
+    let mut lines = 0;
+    for line in input.as_bytes().split_inclusive(|byte| *byte == b'\n') {
+        lines += 1;
+        if lines > MAX_STDIN_LINES {
+            return Err("Program input exceeds Studio's 256-line limit.".into());
+        }
+        if line.len() > MAX_STDIN_LINE_BYTES {
+            return Err("Program input line exceeds 4096 UTF-8 bytes including CR/LF.".into());
+        }
+    }
+    Ok(())
+}
 
 #[derive(Clone)]
 struct ActiveJob {
@@ -62,18 +86,23 @@ fn read_bounded<R: Read>(mut source: R, limit: usize) -> Result<(String, bool), 
     Ok((String::from_utf8_lossy(&captured).into_owned(), truncated))
 }
 
-fn process(
+fn process_with_input(
     binary: &Path,
     args: &[OsString],
     cwd: Option<&Path>,
     timeout: Duration,
     output_limit: usize,
     runtime: Option<&CompilerRuntime>,
+    stdin_text: Option<&str>,
 ) -> Result<ProcessResult, String> {
     let mut command = Command::new(binary);
     command
         .args(args)
-        .stdin(Stdio::null())
+        .stdin(if stdin_text.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(directory) = cwd {
@@ -117,7 +146,7 @@ fn process(
     };
 
     let execution = (|| {
-        let (stdout, stderr) = {
+        let (stdout, stderr, stdin_pipe) = {
             let mut child = child.lock().map_err(|e| e.to_string())?;
             (
                 child
@@ -128,8 +157,20 @@ fn process(
                     .stderr
                     .take()
                     .ok_or("Compiler stderr was unavailable")?,
+                child.stdin.take(),
             )
         };
+        // A small, owned snapshot is written off-thread so a child that never
+        // reads stdin cannot block Stop or the process timeout loop.
+        // BrokenPipe is expected if source exits without consuming every byte.
+        let input_thread =
+            stdin_pipe
+                .zip(stdin_text.map(str::to_owned))
+                .map(|(mut pipe, payload)| {
+                    thread::spawn(move || {
+                        let _ = pipe.write_all(payload.as_bytes());
+                    })
+                });
         let output_thread = thread::spawn(move || read_bounded(stdout, output_limit));
         let error_thread = thread::spawn(move || read_bounded(stderr, output_limit));
         let started = Instant::now();
@@ -160,6 +201,11 @@ fn process(
         let (stderr, stderr_truncated) = error_thread
             .join()
             .map_err(|_| "Scarp stderr reader thread failed".to_string())??;
+        if let Some(writer) = input_thread {
+            writer
+                .join()
+                .map_err(|_| "Scarp input writer thread failed".to_owned())?;
+        }
         if timed_out {
             return Err(format!(
                 "Scarp exceeded the {} second time limit and was stopped.",
@@ -183,6 +229,18 @@ fn process(
         }
     }
     execution
+}
+
+// Keep legacy probes and all existing callers on null stdin.
+fn process(
+    binary: &Path,
+    args: &[OsString],
+    cwd: Option<&Path>,
+    timeout: Duration,
+    output_limit: usize,
+    runtime: Option<&CompilerRuntime>,
+) -> Result<ProcessResult, String> {
+    process_with_input(binary, args, cwd, timeout, output_limit, runtime, None)
 }
 
 fn compiler_binary(path: &str) -> Result<PathBuf, String> {
@@ -321,6 +379,33 @@ fn command_args(mode: &str, source: &Path) -> Result<Vec<OsString>, String> {
     Ok(args)
 }
 
+fn command_args_with_input(
+    mode: &str,
+    source: &Path,
+    has_input: bool,
+) -> Result<Vec<OsString>, String> {
+    let mut args = command_args(mode, source)?;
+    if has_input {
+        if mode != "exec" {
+            return Err("Static Verify does not accept runtime input.".into());
+        }
+        args.splice(
+            1..1,
+            [
+                "--max-input-line-bytes",
+                "4096",
+                "--max-input-bytes",
+                "16384",
+                "--max-input-reads",
+                "256",
+            ]
+            .into_iter()
+            .map(OsString::from),
+        );
+    }
+    Ok(args)
+}
+
 /// Probe only the executable selected by the user. No execution or PATH search.
 #[tauri::command]
 pub async fn scarp_probe(binary: String) -> Result<String, String> {
@@ -341,22 +426,29 @@ pub async fn scarp_execute(
     source: String,
     mode: String,
     expected_content: String,
+    stdin_text: String,
     state: tauri::State<'_, CompilerRuntime>,
 ) -> Result<String, String> {
     let runtime = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let source = source_file(&source)?;
-        // Reject unsupported actions without launching even a capability probe.
-        let args = command_args(&mode, &source)?;
+        // Reject excessive/foreign input before probing or executing any binary.
+        validate_stdin(&stdin_text)?;
+        let args = command_args_with_input(&mode, &source, !stdin_text.is_empty())?;
         let (binary, version) =
             with_verified_source_snapshot(&source, &expected_content, || probe(&binary))?;
-        let result = process(
+        let result = process_with_input(
             &binary,
             &args,
             source.parent(),
             EXEC_TIMEOUT,
             EXEC_OUTPUT_LIMIT,
             Some(&runtime),
+            if mode == "exec" {
+                Some(stdin_text.as_str())
+            } else {
+                None
+            },
         )?;
         let exit = result
             .status
@@ -434,6 +526,21 @@ mod tests {
         assert!(!verify.iter().any(|value| value == "--max-steps"));
         assert!(command_args("run", source).is_err());
         assert!(command_args("launch", source).is_err());
+    }
+
+    #[test]
+    fn bounded_stdin_rejects_oversized_utf8_lines_and_excess_lines() {
+        assert!(validate_stdin("").is_ok());
+        assert!(validate_stdin("नमस्ते 👋\r\nAda").is_ok());
+        assert!(validate_stdin(&"a".repeat(4096)).is_ok());
+        assert!(validate_stdin(&"a".repeat(4097)).is_err());
+        assert!(validate_stdin(&"👋".repeat(1025)).is_err());
+        assert!(validate_stdin(&"a\n".repeat(257)).is_err());
+        assert!(validate_stdin(&("a".repeat(4000) + &"\n".repeat(13000))).is_err());
+        assert!(command_args_with_input("verify", Path::new("main.srp"), true).is_err());
+        let args = command_args_with_input("exec", Path::new("main.srp"), true).unwrap();
+        assert!(args.contains(&OsString::from("--max-input-bytes")));
+        assert_eq!(args.last().unwrap(), "main.srp");
     }
 
     #[test]
@@ -602,6 +709,35 @@ mod tests {
             runtime_failure.stdout.is_empty(),
             "failed execution replayed user stdout"
         );
+
+        // Exercise Scarp alpha.8's real read_line stdin contract using a pipe.
+        let input_source = "bind name = read_line(); print(\"Hello\", name);";
+        fs::write(&source, input_source).unwrap();
+        ensure_matching_disk_snapshot(&validated, input_source).unwrap();
+        let static_input = process(
+            &binary,
+            &command_args("verify", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("static read_line verification");
+        assert!(static_input.status.success(), "{}", static_input.stderr);
+        assert!(static_input.stdout.is_empty());
+
+        let input_run = process_with_input(
+            &binary,
+            &command_args_with_input("exec", &validated, true).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+            Some("नमस्ते 👋\n"),
+        )
+        .expect("native bounded stdin execution");
+        assert!(input_run.status.success(), "{}", input_run.stderr);
+        assert_eq!(input_run.stdout, "Hello नमस्ते 👋\n");
 
         fs::remove_file(&source).unwrap();
         assert!(runtime.active.lock().unwrap().is_none());
