@@ -732,7 +732,14 @@ mod tests {
         let binary = std::env::current_exe().unwrap();
         let runtime = CompilerRuntime::default();
         let reserved = reserve_job(&runtime).expect("reserve probe");
-        assert!(runtime.active.lock().unwrap().as_ref().unwrap().child.is_none());
+        assert!(runtime
+            .active
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .child
+            .is_none());
         assert!(cancel_active_job(&runtime).unwrap());
         assert!(reserved.cancelled.load(Ordering::SeqCst));
 
@@ -747,10 +754,10 @@ mod tests {
             Some(&runtime),
             Some(&reserved),
         );
-        assert!(
-            result.err().expect("pending operation must not launch")
-                .contains("cancelled before launch")
-        );
+        assert!(result
+            .err()
+            .expect("pending operation must not launch")
+            .contains("cancelled before launch"));
         release_job(&runtime, reserved.id);
         assert!(!cancel_active_job(&runtime).unwrap());
     }
