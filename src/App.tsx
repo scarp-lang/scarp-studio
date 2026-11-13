@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import type * as Monaco from 'monaco-editor';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -9,9 +10,31 @@ import {
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
+import {
+  clampLineLocation, cycleTabId, filterNavigationEntries, parseLineLocation,
+  type NavigationEntry,
+} from './model/navigation';
+import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
+type PaletteMode = 'files' | 'commands' | 'line';
+
+/** Actions are deliberately limited to the Scarp-only editor. */
+const studioCommands: readonly NavigationEntry[] = [
+  { id: 'new', label: 'New Scarp File', detail: 'Ctrl+N' },
+  { id: 'open', label: 'Open Scarp File', detail: 'Ctrl+O' },
+  { id: 'folder', label: 'Choose Scarp Folder', detail: 'Explorer' },
+  { id: 'save', label: 'Save Current File', detail: 'Ctrl+S' },
+  { id: 'save-as', label: 'Save Current File As', detail: 'Ctrl+Shift+S' },
+  { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
+  { id: 'quick-open', label: 'Quick Open Tabs', detail: 'Ctrl+P' },
+  { id: 'go-to-line', label: 'Go to Line and Column', detail: 'Ctrl+G' },
+  { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
+  { id: 'previous-tab', label: 'Previous Open Tab', detail: 'Ctrl+Shift+Tab' },
+  { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
+  { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
+];
 
 function getInitialTheme(): Theme {
   try {
@@ -39,6 +62,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
+  const [explorerVisible, setExplorerVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
   const [busy, setBusy] = useState(false);
@@ -46,8 +70,101 @@ export default function App() {
   const saveInProgress = useRef(false);
   // Prevent overlapping native discard prompts on repeated close attempts.
   const exitConfirmationInProgress = useRef(false);
+  const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
+  const [paletteQuery, setPaletteQuery] = useState('');
+  const [paletteIndex, setPaletteIndex] = useState(0);
+  const paletteInput = useRef<HTMLInputElement | null>(null);
+  const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const functionOutline = useMemo(
+    () => active ? scanScarpFunctions(active.content) : [],
+    [active?.content],
+  );
+
+  function jumpToFunction(symbol: ScarpFunctionSymbol): void {
+    const editor = editorHandle.current;
+    if (!editor) return;
+    const position = { lineNumber: symbol.line, column: symbol.startColumn };
+    editor.setPosition(position);
+    editor.revealPositionInCenter(position);
+    editor.focus();
+    setNotice('Scarp function: ' + symbol.name);
+  }
+
+  const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
+    ? documents.map((item) => ({
+      id: item.id,
+      label: item.name,
+      detail: (item.path ?? 'Unsaved Scarp source') + (isDirty(item) ? ' • modified' : ''),
+    }))
+    : studioCommands;
+  const paletteResults = paletteMode === 'line'
+    ? []
+    : filterNavigationEntries(paletteEntries, paletteQuery);
+
+  function showPalette(mode: PaletteMode): void {
+    setPaletteMode(mode);
+    setPaletteQuery('');
+    setPaletteIndex(0);
+  }
+
+  function hidePalette(): void {
+    setPaletteMode(null);
+    setPaletteQuery('');
+    setPaletteIndex(0);
+  }
+
+  useEffect(() => {
+    if (paletteMode !== null) paletteInput.current?.focus();
+    else editorHandle.current?.focus();
+  }, [paletteMode, activeId]);
+
+  function cycleTab(direction: 1 | -1): void {
+    const state = liveEditor.current;
+    const id = cycleTabId(state.documents.map((item) => item.id), state.activeId, direction);
+    if (id !== null) dispatch({ type: 'activate', id });
+  }
+
+  function goToLine(): void {
+    const location = parseLineLocation(paletteQuery);
+    const editor = editorHandle.current;
+    const model = editor?.getModel();
+    if (!location || !editor || !model) return;
+    const position = clampLineLocation(location, model.getLineCount(), (line) => model.getLineMaxColumn(line));
+    const monacoPosition = { lineNumber: position.line, column: position.column };
+    editor.setPosition(monacoPosition);
+    editor.revealPositionInCenter(monacoPosition);
+    hidePalette();
+    editor.focus();
+    setNotice('Jumped to line ' + position.line + ', column ' + position.column);
+  }
+
+  function executePaletteEntry(entry: NavigationEntry): void {
+    const mode = paletteMode;
+    hidePalette();
+    if (mode === 'files') {
+      dispatch({ type: 'activate', id: entry.id });
+      return;
+    }
+    if (mode !== 'commands') return;
+    switch (entry.id) {
+      case 'new': newFile(); break;
+      case 'open': void openFile(); break;
+      case 'folder': void openFolder(); break;
+      case 'save': void saveFile(); break;
+      case 'save-as': void saveFile(true); break;
+      case 'close':
+        if (liveEditor.current.activeId) void closeFile(liveEditor.current.activeId);
+        break;
+      case 'quick-open': showPalette('files'); break;
+      case 'go-to-line': showPalette('line'); break;
+      case 'next-tab': cycleTab(1); break;
+      case 'previous-tab': cycleTab(-1); break;
+      case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
+      case 'explorer': setExplorerVisible((visible) => !visible); break;
+    }
+  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -197,10 +314,32 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
+      if (paletteMode !== null && event.key === 'Escape') {
+        event.preventDefault();
+        hidePalette();
+        return;
+      }
       const modifier = event.ctrlKey || event.metaKey;
       if (!modifier || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === 's') {
+      if (key === 'p') {
+        event.preventDefault();
+        showPalette(event.shiftKey ? 'commands' : 'files');
+        return;
+      }
+      if (key === 'g' && !event.shiftKey) {
+        event.preventDefault();
+        showPalette('line');
+        return;
+      }
+      if (paletteMode !== null) return;
+      if (key === 'tab' && event.ctrlKey) {
+        event.preventDefault();
+        cycleTab(event.shiftKey ? -1 : 1);
+      } else if (key === 'b' && !event.shiftKey) {
+        event.preventDefault();
+        setExplorerVisible((visible) => !visible);
+      } else if (key === 's') {
         event.preventDefault();
         void saveFile(event.shiftKey);
       } else if (key === 'n') {
@@ -230,6 +369,10 @@ export default function App() {
           <button onClick={newFile} title="New (Ctrl+N)">New</button>
           <button onClick={() => void openFile()} title="Open (Ctrl+O)">Open</button>
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
+          <button onClick={() => showPalette('commands')} title="Commands (Ctrl+Shift+P)">Commands</button>
+          <button onClick={() => setExplorerVisible((visible) => !visible)}
+            aria-expanded={explorerVisible} aria-controls="scarp-explorer"
+            title="Toggle Explorer (Ctrl+B)">Explorer</button>
           <button onClick={() => void saveFile()} disabled={!active || busy} title="Save (Ctrl+S)">Save</button>
           <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
         </nav>
@@ -243,7 +386,7 @@ export default function App() {
       </header>
 
       <div className="studio-main">
-        <aside className="sidebar" aria-label="Scarp file explorer">
+        <aside id="scarp-explorer" className={'sidebar' + (explorerVisible ? '' : ' sidebar-hidden')} aria-label="Scarp file explorer">
           <div className="sidebar-heading">EXPLORER</div>
           {folderPath ? (
             <section className="sidebar-section">
@@ -278,6 +421,22 @@ export default function App() {
               </button>
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
+          </section>
+          <section className="sidebar-section" aria-label="Scarp function outline">
+            <div className="sidebar-heading">FUNCTION OUTLINE</div>
+            {functionOutline.map((symbol) => (
+              <button type="button" className="file-row outline-row"
+                key={symbol.line + ':' + symbol.name}
+                onClick={() => jumpToFunction(symbol)}
+                title={'Go to ' + symbol.name + ' at line ' + symbol.line}>
+                <span className="file-glyph" aria-hidden="true">ƒ</span>
+                <span className="file-name">{symbol.name}</span>
+                <span className="outline-line">:{symbol.line}</span>
+              </button>
+            ))}
+            {!functionOutline.length && <p className="sidebar-note">No function declarations in this file.</p>}
+            {functionOutline.length >= 500 &&
+              <p className="sidebar-note" role="status">Function outline limited to 500 entries.</p>}
           </section>
         </aside>
 
@@ -329,6 +488,7 @@ export default function App() {
                   dispatch({ type: 'edit', id: active.id, content: content ?? '' });
                 }}
                 onMount={(editor) => {
+                  editorHandle.current = editor;
                   editor.onDidChangeCursorPosition((event) => {
                     setCursor({ line: event.position.lineNumber, column: event.position.column });
                   });
@@ -351,9 +511,68 @@ export default function App() {
           </div>
         </main>
       </div>
+      {paletteMode !== null && (
+        <div
+          className="nav-overlay"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) hidePalette(); }}
+        >
+          <section className="nav-dialog" role="dialog" aria-modal="true"
+            aria-label={paletteMode === 'files' ? 'Quick Open Scarp tabs' : paletteMode === 'commands' ? 'Scarp Studio commands' : 'Go to line'}>
+            <div className="nav-query-row">
+              <span aria-hidden="true">{paletteMode === 'files' ? '▤' : paletteMode === 'commands' ? '⌘' : ':'}</span>
+              <input
+                ref={paletteInput}
+                aria-label={paletteMode === 'files' ? 'Search open Scarp tabs' : paletteMode === 'commands' ? 'Search editor commands' : 'Line and optional column'}
+                placeholder={paletteMode === 'files' ? 'Find an open .srp file…' : paletteMode === 'commands' ? 'Type a Studio command…' : 'Line or line:column (e.g. 12:4)'}
+                value={paletteQuery}
+                onChange={(event) => { setPaletteQuery(event.target.value); setPaletteIndex(0); }}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                    event.preventDefault();
+                    if (paletteMode !== 'line') {
+                      setPaletteIndex((current) => paletteResults.length
+                        ? (current + (event.key === 'ArrowDown' ? 1 : -1) + paletteResults.length) % paletteResults.length
+                        : 0);
+                    }
+                  } else if (event.key === 'Enter') {
+                    event.preventDefault();
+                    if (paletteMode === 'line') goToLine();
+                    else if (paletteResults[paletteIndex]) executePaletteEntry(paletteResults[paletteIndex]);
+                  }
+                }}
+              />
+              <button type="button" className="nav-dismiss" onClick={hidePalette} aria-label="Close navigation">×</button>
+            </div>
+            {paletteMode === 'line' ? (
+              <div className="nav-hint">
+                {parseLineLocation(paletteQuery)
+                  ? 'Press Enter to move the cursor. Out-of-range locations are clamped to the document.'
+                  : 'Enter a positive line number, optionally followed by :column.'}
+              </div>
+            ) : (
+              <div className="nav-results" role="listbox" aria-label="Navigation results">
+                {paletteResults.map((item, index) => (
+                  <button type="button" role="option" aria-selected={index === paletteIndex}
+                    key={item.id} className={'nav-result' + (index === paletteIndex ? ' selected' : '')}
+                    onMouseEnter={() => setPaletteIndex(index)}
+                    onClick={() => executePaletteEntry(item)}>
+                    <span className="nav-result-name">{item.label}</span>
+                    <span className="nav-result-detail">{item.detail}</span>
+                  </button>
+                ))}
+                {!paletteResults.length && <p className="nav-hint">No matching Scarp Studio items.</p>}
+              </div>
+            )}
+            <div className="nav-footer">↑ ↓ Navigate · Enter Select · Esc Close</div>
+          </section>
+        </div>
+      )}
       <footer className="status-bar">
         <span>{busy ? 'Working…' : notice}</span>
-        <span>{active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}</span>
+        <button className="status-nav" onClick={() => showPalette('line')} disabled={!active}
+          title="Go to Line (Ctrl+G)">
+          {active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}
+        </button>
         <span>Scarp · .srp</span>
         <span>v0.0.1-alpha.2</span>
       </footer>
