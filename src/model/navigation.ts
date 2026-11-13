@@ -48,3 +48,15 @@ export function clampLineLocation(
   const line = Math.max(1, Math.min(location.line, lineCount));
   return { line, column: Math.max(1, Math.min(location.column, maxColumn(line))) };
 }
+
+/** Cycle only through currently open tabs, including untitled documents. */
+export function cycleTabId(
+  ids: readonly string[],
+  activeId: string | null,
+  direction: 1 | -1,
+): string | null {
+  if (!ids.length) return null;
+  const current = activeId === null ? -1 : ids.indexOf(activeId);
+  if (current === -1) return direction === 1 ? ids[0] : ids[ids.length - 1];
+  return ids[(current + direction + ids.length) % ids.length];
+}
