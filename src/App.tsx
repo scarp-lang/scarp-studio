@@ -15,6 +15,7 @@ import {
   type NavigationEntry,
 } from './model/navigation';
 import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
+import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterTemplates';
 import { runnableSource } from './model/compilerReadiness';
 import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
 import { exitBlockReason } from './model/exitGuards';
@@ -42,6 +43,11 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'run-scarp', label: 'Run Current Scarp Source', detail: 'F5 · saved .srp only' },
   { id: 'verify-scarp', label: 'Verify Current Scarp Source', detail: 'Ctrl+F5 · static analysis' },
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
+  ...scarpStarterTemplates.map((starter) => ({
+    id: 'template:' + starter.id,
+    label: 'Template: ' + starter.title,
+    detail: starter.description,
+  })),
 ];
 
 function getInitialTheme(): Theme {
@@ -170,6 +176,10 @@ export default function App() {
       return;
     }
     if (mode !== 'commands') return;
+    if (entry.id.startsWith('template:')) {
+      createFromTemplate(entry.id.slice('template:'.length));
+      return;
+    }
     switch (entry.id) {
       case 'new': newFile(); break;
       case 'open': void openFile(); break;
@@ -242,6 +252,25 @@ export default function App() {
     }).catch((caught: unknown) => setError(toMessage(caught)));
     return () => { removed = true; unlisten?.(); };
   }, []);
+
+  function createFromTemplate(id: string): void {
+    const template = getScarpStarterTemplate(id);
+    if (!template) {
+      setError('Unknown Scarp starter template.');
+      return;
+    }
+    // The new tab is intentionally unsaved and its content is not executed.
+    dispatch({ type: 'new' });
+    const idOfNewTab = liveEditor.current.activeId;
+    if (idOfNewTab) dispatch({ type: 'edit', id: idOfNewTab, content: template.source });
+    setNotice('Created ' + template.title + ' starter · save as .srp before running');
+    setError(null);
+  }
+
+  function showStarterTemplates(): void {
+    showPalette('commands');
+    setPaletteQuery('template');
+  }
 
   function newFile(): void {
     dispatch({ type: 'new' });
@@ -489,6 +518,7 @@ export default function App() {
           <button onClick={() => void openFile()} title="Open (Ctrl+O)">Open</button>
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
           <button onClick={() => showPalette('commands')} title="Commands (Ctrl+Shift+P)">Commands</button>
+          <button onClick={showStarterTemplates} title="New Scarp starter source templates">Examples</button>
           <button onClick={() => setExplorerVisible((visible) => !visible)}
             aria-expanded={explorerVisible} aria-controls="scarp-explorer"
             title="Toggle Explorer (Ctrl+B)">Explorer</button>
