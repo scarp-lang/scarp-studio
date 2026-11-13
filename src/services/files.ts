@@ -18,7 +18,7 @@ export async function pickSourceFile(): Promise<{ path: string; content: string 
 export async function writeSourceFile(
   document: StudioDocument,
   forceSaveAs: boolean,
-  otherOpenPaths: string[],
+  otherOpenPaths: readonly string[] | (() => readonly string[]),
 ): Promise<string | null> {
   assertScarpSourceText(document.content);
   let path = forceSaveAs ? null : document.path;
@@ -31,7 +31,12 @@ export async function writeSourceFile(
   }
   if (!path) return null;
   if (!isScarpPath(path)) throw new Error('Scarp source files must end in .srp.');
-  if (otherOpenPaths.some((otherPath) => sameFilePath(otherPath, path))) {
+  // Save As is asynchronous: another file may have opened while the native
+  // chooser was on screen. Resolve occupied paths only after it closes.
+  const occupiedPaths = typeof otherOpenPaths === 'function'
+    ? otherOpenPaths()
+    : otherOpenPaths;
+  if (occupiedPaths.some((otherPath) => sameFilePath(otherPath, path))) {
     throw new Error('That file is already open in another tab.');
   }
 
