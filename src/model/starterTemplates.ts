@@ -43,7 +43,7 @@ export const scarpStarterTemplates: readonly ScarpStarterTemplate[] = [
     id: 'bigint',
     title: 'Exact Big Integers (alpha.9+)',
     description: 'Arbitrary-length decimal integers with bounded execution',
-    source: '// Requires official Scarp v0.0.6-alpha.9 or newer.\\nbind large: bigint = bigint("999999999999999999999999999999");\\nbind next = large + bigint_from_integer(1);\\nprint(next);\\n',
+    source: '// Requires official Scarp v0.0.6-alpha.9 or newer.\nbind large: bigint = bigint("999999999999999999999999999999");\nbind next = large + bigint_from_integer(1);\nprint(next);\n',
   },
   {
     id: 'input',
