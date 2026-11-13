@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { ask } from '@tauri-apps/plugin-dialog';
@@ -14,6 +14,7 @@ import {
   clampLineLocation, cycleTabId, filterNavigationEntries, parseLineLocation,
   type NavigationEntry,
 } from './model/navigation';
+import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -76,6 +77,20 @@ export default function App() {
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const functionOutline = useMemo(
+    () => active ? scanScarpFunctions(active.content) : [],
+    [active?.content],
+  );
+
+  function jumpToFunction(symbol: ScarpFunctionSymbol): void {
+    const editor = editorHandle.current;
+    if (!editor) return;
+    const position = { lineNumber: symbol.line, column: symbol.startColumn };
+    editor.setPosition(position);
+    editor.revealPositionInCenter(position);
+    editor.focus();
+    setNotice('Scarp function: ' + symbol.name);
+  }
 
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
     ? documents.map((item) => ({
@@ -406,6 +421,22 @@ export default function App() {
               </button>
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
+          </section>
+          <section className="sidebar-section" aria-label="Scarp function outline">
+            <div className="sidebar-heading">FUNCTION OUTLINE</div>
+            {functionOutline.map((symbol) => (
+              <button type="button" className="file-row outline-row"
+                key={symbol.line + ':' + symbol.name}
+                onClick={() => jumpToFunction(symbol)}
+                title={'Go to ' + symbol.name + ' at line ' + symbol.line}>
+                <span className="file-glyph" aria-hidden="true">ƒ</span>
+                <span className="file-name">{symbol.name}</span>
+                <span className="outline-line">:{symbol.line}</span>
+              </button>
+            ))}
+            {!functionOutline.length && <p className="sidebar-note">No function declarations in this file.</p>}
+            {functionOutline.length >= 500 &&
+              <p className="sidebar-note" role="status">Function outline limited to 500 entries.</p>}
           </section>
         </aside>
 
