@@ -151,7 +151,9 @@ export default function App() {
       const path = await writeSourceFile(
         document,
         forceSaveAs,
-        liveEditor.current.documents
+        // Resolve occupied destinations *after* the native Save As dialog
+        // returns. Other tabs can be opened while the picker is displayed.
+        () => liveEditor.current.documents
           .filter((item) => item.id !== document.id && item.path !== null)
           .map((item) => item.path as string),
       );
