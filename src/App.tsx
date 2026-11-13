@@ -115,8 +115,9 @@ export default function App() {
     const model = editor?.getModel();
     if (!location || !editor || !model) return;
     const position = clampLineLocation(location, model.getLineCount(), (line) => model.getLineMaxColumn(line));
-    editor.setPosition(position);
-    editor.revealPositionInCenter(position);
+    const monacoPosition = { lineNumber: position.line, column: position.column };
+    editor.setPosition(monacoPosition);
+    editor.revealPositionInCenter(monacoPosition);
     hidePalette();
     editor.focus();
     setNotice('Jumped to line ' + position.line + ', column ' + position.column);
