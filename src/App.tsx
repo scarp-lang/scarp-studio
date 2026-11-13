@@ -32,6 +32,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
   { id: 'previous-tab', label: 'Previous Open Tab', detail: 'Ctrl+Shift+Tab' },
   { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
+  { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
 ];
 
 function getInitialTheme(): Theme {
@@ -60,6 +61,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
+  const [explorerVisible, setExplorerVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
   const [busy, setBusy] = useState(false);
@@ -145,6 +147,7 @@ export default function App() {
       case 'next-tab': cycleTab(1); break;
       case 'previous-tab': cycleTab(-1); break;
       case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
+      case 'explorer': setExplorerVisible((visible) => !visible); break;
     }
   }
 
@@ -318,6 +321,9 @@ export default function App() {
       if (key === 'tab' && event.ctrlKey) {
         event.preventDefault();
         cycleTab(event.shiftKey ? -1 : 1);
+      } else if (key === 'b' && !event.shiftKey) {
+        event.preventDefault();
+        setExplorerVisible((visible) => !visible);
       } else if (key === 's') {
         event.preventDefault();
         void saveFile(event.shiftKey);
@@ -349,6 +355,9 @@ export default function App() {
           <button onClick={() => void openFile()} title="Open (Ctrl+O)">Open</button>
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
           <button onClick={() => showPalette('commands')} title="Commands (Ctrl+Shift+P)">Commands</button>
+          <button onClick={() => setExplorerVisible((visible) => !visible)}
+            aria-expanded={explorerVisible} aria-controls="scarp-explorer"
+            title="Toggle Explorer (Ctrl+B)">Explorer</button>
           <button onClick={() => void saveFile()} disabled={!active || busy} title="Save (Ctrl+S)">Save</button>
           <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
         </nav>
@@ -362,7 +371,7 @@ export default function App() {
       </header>
 
       <div className="studio-main">
-        <aside className="sidebar" aria-label="Scarp file explorer">
+        <aside id="scarp-explorer" className={'sidebar' + (explorerVisible ? '' : ' sidebar-hidden')} aria-label="Scarp file explorer">
           <div className="sidebar-heading">EXPLORER</div>
           {folderPath ? (
             <section className="sidebar-section">
