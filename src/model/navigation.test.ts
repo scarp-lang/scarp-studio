@@ -57,3 +57,20 @@ describe('go to line parser', () => {
       .toEqual({ line: 2, column: 3 });
   });
 });
+
+describe('open-tab cycling', () => {
+  it('wraps forward and backward across open tabs', async () => {
+    const { cycleTabId } = await import('./navigation');
+    const ids = ['first', 'second', 'third'];
+    expect(cycleTabId(ids, 'third', 1)).toBe('first');
+    expect(cycleTabId(ids, 'first', -1)).toBe('third');
+    expect(cycleTabId(ids, 'first', 1)).toBe('second');
+  });
+
+  it('handles an empty editor and a missing active tab', async () => {
+    const { cycleTabId } = await import('./navigation');
+    expect(cycleTabId([], null, 1)).toBeNull();
+    expect(cycleTabId(['first', 'second'], 'removed', 1)).toBe('first');
+    expect(cycleTabId(['first', 'second'], null, -1)).toBe('second');
+  });
+});
