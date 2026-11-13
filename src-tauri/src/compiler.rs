@@ -747,7 +747,10 @@ mod tests {
             Some(&runtime),
             Some(&reserved),
         );
-        assert!(result.unwrap_err().contains("cancelled before launch"));
+        assert!(
+            result.err().expect("pending operation must not launch")
+                .contains("cancelled before launch")
+        );
         release_job(&runtime, reserved.id);
         assert!(!cancel_active_job(&runtime).unwrap());
     }
