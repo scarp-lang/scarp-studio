@@ -9,6 +9,7 @@ import {
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
+import { NativeDialogGate } from './model/dialogGate';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -44,8 +45,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
-  // Prevent overlapping native discard prompts on repeated close attempts.
-  const exitConfirmationInProgress = useRef(false);
+  // Serialize native confirmation dialogs (tab close and window exit).
+  const nativeDialogGate = useRef(new NativeDialogGate());
 
   const active = documents.find((document) => document.id === activeId) || null;
 
@@ -61,15 +62,15 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(async (event) => {
       const pending = liveEditor.current.documents.filter(isDirty);
-      if (!pending.length && !saveInProgress.current &&
-          !exitConfirmationInProgress.current) return;
+      const gate = nativeDialogGate.current;
+      if (!pending.length && !saveInProgress.current && !gate.isActive) return;
       event.preventDefault();
       if (saveInProgress.current) {
         setError('A file is being saved. Finish saving before exiting.');
         return;
       }
-      if (exitConfirmationInProgress.current) return;
-      exitConfirmationInProgress.current = true;
+      // A tab-close prompt may already be open; never stack native dialogs.
+      if (!gate.begin('window-exit')) return;
       try {
         if (await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
@@ -85,7 +86,7 @@ export default function App() {
       } catch (caught) {
         setError(toMessage(caught));
       } finally {
-        exitConfirmationInProgress.current = false;
+        gate.finish('window-exit');
       }
     }).then((cleanup) => {
       if (removed) cleanup();
@@ -172,27 +173,35 @@ export default function App() {
       setError('Finish the current save before closing a tab.');
       return;
     }
-    const document = liveEditor.current.documents.find((item) => item.id === id);
-    if (!document) return;
-    if (isDirty(document)) {
-      try {
-        const discard = await ask('Discard unsaved changes to ' + document.name + '?', {
-          title: 'Close file',
-          kind: 'warning',
-        });
-        if (!discard) return;
-      } catch (caught) {
-        setError('Could not confirm close: ' + toMessage(caught));
+    // Ctrl+W and close buttons can be pressed repeatedly while ask() is pending.
+    // Also block tab closes during the window-exit confirmation.
+    const gate = nativeDialogGate.current;
+    if (!gate.begin('tab-close')) return;
+    try {
+      const document = liveEditor.current.documents.find((item) => item.id === id);
+      if (!document) return;
+      if (isDirty(document)) {
+        try {
+          const discard = await ask('Discard unsaved changes to ' + document.name + '?', {
+            title: 'Close file',
+            kind: 'warning',
+          });
+          if (!discard) return;
+        } catch (caught) {
+          setError('Could not confirm close: ' + toMessage(caught));
+          return;
+        }
+      }
+      const current = liveEditor.current.documents.find((item) => item.id === id);
+      if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
+        setError('The file changed while confirming close. Review the changes and try again.');
         return;
       }
+      dispatch({ type: 'close', id, snapshot: document });
+      setNotice('Closed ' + document.name);
+    } finally {
+      gate.finish('tab-close');
     }
-    const current = liveEditor.current.documents.find((item) => item.id === id);
-    if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
-      setError('The file changed while confirming close. Review the changes and try again.');
-      return;
-    }
-    dispatch({ type: 'close', id, snapshot: document });
-    setNotice('Closed ' + document.name);
   }
 
   useEffect(() => {
