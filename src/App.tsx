@@ -15,6 +15,7 @@ import {
   type NavigationEntry,
 } from './model/navigation';
 import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
+import { NativeDialogGate } from './model/dialogGate';
 import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterTemplates';
 import { runnableSource } from './model/compilerReadiness';
 import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
@@ -76,6 +77,7 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
+  const [folderListingLimited, setFolderListingLimited] = useState(false);
   const [explorerVisible, setExplorerVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
@@ -83,7 +85,7 @@ export default function App() {
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
   // Prevent overlapping native discard prompts on repeated close attempts.
-  const exitConfirmationInProgress = useRef(false);
+  const nativeDialogGate = useRef(new NativeDialogGate());
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
   const [compilerSelecting, setCompilerSelecting] = useState(false);
@@ -217,14 +219,13 @@ export default function App() {
       const blocked = exitBlockReason(
         saveInProgress.current, commandInProgress.current, selectionInProgress.current,
       );
-      if (!pending.length && !blocked && !exitConfirmationInProgress.current) return;
+      if (!pending.length && !blocked && !nativeDialogGate.current.isActive) return;
       event.preventDefault();
       if (blocked) {
         setError(blocked);
         return;
       }
-      if (exitConfirmationInProgress.current) return;
-      exitConfirmationInProgress.current = true;
+      if (!nativeDialogGate.current.begin('window-exit')) return;
       try {
         if (await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
@@ -244,7 +245,7 @@ export default function App() {
       } catch (caught) {
         setError(toMessage(caught));
       } finally {
-        exitConfirmationInProgress.current = false;
+        nativeDialogGate.current.finish('window-exit');
       }
     }).then((cleanup) => {
       if (removed) cleanup();
@@ -301,7 +302,9 @@ export default function App() {
       if (!result) return;
       setFolderPath(result.path);
       setFolderEntries(result.files);
-      setNotice(result.files.length + ' top-level .srp files found');
+      setFolderListingLimited(result.truncated);
+      setNotice(result.files.length + ' top-level .srp files shown' +
+        (result.truncated ? ' (large folder; listing limited)' : ''));
     } catch (caught) {
       setError('Could not open folder: ' + toMessage(caught));
     } finally {
@@ -312,7 +315,7 @@ export default function App() {
   async function openFolderFile(path: string): Promise<void> {
     setError(null);
     try {
-      const content = await readFolderSource(path);
+      const content = await readFolderSource(path, folderEntries);
       activateOpenedFile(path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
@@ -329,7 +332,8 @@ export default function App() {
       const path = await writeSourceFile(
         document,
         forceSaveAs,
-        liveEditor.current.documents
+        // Re-evaluate open tabs after any native Save As dialog resolves.
+        () => liveEditor.current.documents
           .filter((item) => item.id !== document.id && item.path !== null)
           .map((item) => item.path as string),
       );
@@ -431,27 +435,35 @@ export default function App() {
       setError('Finish the current save before closing a tab.');
       return;
     }
-    const document = liveEditor.current.documents.find((item) => item.id === id);
-    if (!document) return;
-    if (isDirty(document)) {
-      try {
-        const discard = await ask('Discard unsaved changes to ' + document.name + '?', {
-          title: 'Close file',
-          kind: 'warning',
-        });
-        if (!discard) return;
-      } catch (caught) {
-        setError('Could not confirm close: ' + toMessage(caught));
+    // Ctrl+W and close buttons can be pressed repeatedly while ask() is pending.
+    // Also block tab closes during the window-exit confirmation.
+    const gate = nativeDialogGate.current;
+    if (!gate.begin('tab-close')) return;
+    try {
+      const document = liveEditor.current.documents.find((item) => item.id === id);
+      if (!document) return;
+      if (isDirty(document)) {
+        try {
+          const discard = await ask('Discard unsaved changes to ' + document.name + '?', {
+            title: 'Close file',
+            kind: 'warning',
+          });
+          if (!discard) return;
+        } catch (caught) {
+          setError('Could not confirm close: ' + toMessage(caught));
+          return;
+        }
+      }
+      const current = liveEditor.current.documents.find((item) => item.id === id);
+      if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
+        setError('The file changed while confirming close. Review the changes and try again.');
         return;
       }
+      dispatch({ type: 'close', id, snapshot: document });
+      setNotice('Closed ' + document.name);
+    } finally {
+      gate.finish('tab-close');
     }
-    const current = liveEditor.current.documents.find((item) => item.id === id);
-    if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
-      setError('The file changed while confirming close. Review the changes and try again.');
-      return;
-    }
-    dispatch({ type: 'close', id, snapshot: document });
-    setNotice('Closed ' + document.name);
   }
 
   useEffect(() => {
@@ -541,6 +553,12 @@ export default function App() {
             <section className="sidebar-section">
               <div className="folder-label" title={folderPath}>▾ {fileName(folderPath)}</div>
               <div className="sidebar-note">Top-level Scarp files</div>
+              {folderListingLimited && (
+                <p className="sidebar-note" role="status">
+                  Large folder: listing limited to 200 Scarp files from the first
+                  4096 directory entries. Some files may not appear.
+                </p>
+              )}
               {folderEntries.length ? folderEntries.map((entry) => (
                 <button
                   className="file-row"
