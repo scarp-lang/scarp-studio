@@ -1,6 +1,7 @@
 import { join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
+import { readDir } from '@tauri-apps/plugin-fs';
+import { readScarpSource } from './sourceRead';
 import { isScarpPath, sameFilePath } from '../model/documents';
 import { collectTopLevelScarpNames } from '../model/folderListing';
 
@@ -39,5 +40,5 @@ export async function readFolderSource(
   if (!selected) {
     throw new Error('Choose a Scarp file from the current folder listing.');
   }
-  return readTextFile(selected.path);
+  return readScarpSource(selected.path);
 }
