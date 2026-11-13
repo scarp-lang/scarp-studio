@@ -51,6 +51,27 @@ describe('safe .srp file writes', () => {
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
+  it('rejects a file opened in another tab while Save As was waiting', async () => {
+    const livePaths: string[] = [];
+    vi.mocked(save).mockImplementation(async () => {
+      livePaths.push(String.raw`C:\Project\new.srp`);
+      return 'c:/project/NEW.SRP';
+    });
+    const getPaths = vi.fn(() => livePaths);
+    await expect(writeSourceFile(createUntitled(2), true, getPaths))
+      .rejects.toThrow('already open');
+    expect(getPaths).toHaveBeenCalledTimes(1);
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('does not inspect other tab paths when Save As is cancelled', async () => {
+    vi.mocked(save).mockResolvedValue(null);
+    const getPaths = vi.fn(() => ['C:/project/new.srp']);
+    await expect(writeSourceFile(createUntitled(2), true, getPaths)).resolves.toBeNull();
+    expect(getPaths).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
   it('rejects destinations without the Scarp extension', async () => {
     vi.mocked(save).mockResolvedValue('/tmp/other.rs');
     await expect(writeSourceFile(createUntitled(1), true, []))
