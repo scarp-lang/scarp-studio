@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
+import { readDir, readTextFile, stat } from '@tauri-apps/plugin-fs';
 import { chooseSourceFolder, readFolderSource } from './folders';
 
 vi.mock('@tauri-apps/api/path', () => ({
@@ -13,11 +13,13 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 vi.mock('@tauri-apps/plugin-fs', () => ({
   readDir: vi.fn(),
   readTextFile: vi.fn(),
+  stat: vi.fn(),
 }));
 
 describe('selected-folder Scarp source reads', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(stat).mockResolvedValue({ isFile: true, size: 64 } as Awaited<ReturnType<typeof stat>>);
   });
 
   it('does not request directory entries if the chooser was cancelled', async () => {
