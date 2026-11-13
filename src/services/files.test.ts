@@ -31,6 +31,42 @@ describe('safe .srp file writes', () => {
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
+  it('rejects a file opened in another tab while Save As is waiting', async () => {
+    const livePaths: string[] = [];
+    vi.mocked(save).mockImplementation(async () => {
+      // A different tab opens this path while the native picker is active.
+      livePaths.push(String.raw`C:\Project\new.srp`);
+      return 'c:/project/NEW.SRP';
+    });
+    const currentPaths = vi.fn(() => livePaths);
+    await expect(writeSourceFile(createUntitled(2), true, currentPaths))
+      .rejects.toThrow('already open');
+    expect(currentPaths).toHaveBeenCalledTimes(1);
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('does not evaluate live tab paths when the Save As chooser is cancelled', async () => {
+    vi.mocked(save).mockResolvedValue(null);
+    const currentPaths = vi.fn(() => ['C:/project/example.srp']);
+    await expect(writeSourceFile(createUntitled(2), true, currentPaths)).resolves.toBeNull();
+    expect(currentPaths).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('uses the latest live tabs when saving an existing file', async () => {
+    const document = {
+      ...createUntitled(7),
+      path: 'C:/project/existing.srp',
+      savedContent: 'old',
+      content: 'edited',
+    };
+    const currentPaths = vi.fn(() => [String.raw`c:\PROJECT\EXISTING.srp`]);
+    await expect(writeSourceFile(document, false, currentPaths)).rejects.toThrow('already open');
+    expect(currentPaths).toHaveBeenCalledTimes(1);
+    expect(readTextFile).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
   it('rejects destinations without the Scarp extension', async () => {
     vi.mocked(save).mockResolvedValue('/tmp/other.rs');
     await expect(writeSourceFile(createUntitled(1), true, []))
