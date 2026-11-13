@@ -1,6 +1,6 @@
 [package]
 name = "scarp-studio"
-version = "0.0.1-alpha.2"
+version = "0.0.2-alpha.1"
 description = "A native IDE dedicated to Scarp"
 edition = "2021"
 license = "Apache-2.0"
