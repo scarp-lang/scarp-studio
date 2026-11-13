@@ -24,7 +24,8 @@ const MAX_SOURCE_BYTES: u64 = 4 * 1024 * 1024;
 #[derive(Clone)]
 struct ActiveJob {
     id: u64,
-    child: Arc<Mutex<Child>>,
+    // None while the selected compiler is being probed, Some once launched.
+    child: Option<Arc<Mutex<Child>>>,
     cancelled: Arc<AtomicBool>,
 }
 
@@ -62,6 +63,30 @@ fn read_bounded<R: Read>(mut source: R, limit: usize) -> Result<(String, bool), 
     Ok((String::from_utf8_lossy(&captured).into_owned(), truncated))
 }
 
+/// Reserve a command slot before CLI probing so Stop can cancel a pending Run.
+fn reserve_job(runtime: &CompilerRuntime) -> Result<ActiveJob, String> {
+    let mut slot = runtime.active.lock().map_err(|e| e.to_string())?;
+    if slot.is_some() {
+        return Err("Scarp is already running or being checked. Stop it first.".into());
+    }
+    let job = ActiveJob {
+        id: runtime.sequence.fetch_add(1, Ordering::Relaxed),
+        child: None,
+        cancelled: Arc::new(AtomicBool::new(false)),
+    };
+    *slot = Some(job.clone());
+    Ok(job)
+}
+
+/// Release only the caller's slot, never a newer operation's slot.
+fn release_job(runtime: &CompilerRuntime, id: u64) {
+    if let Ok(mut slot) = runtime.active.lock() {
+        if slot.as_ref().is_some_and(|job| job.id == id) {
+            *slot = None;
+        }
+    }
+}
+
 fn process(
     binary: &Path,
     args: &[OsString],
@@ -69,6 +94,21 @@ fn process(
     timeout: Duration,
     output_limit: usize,
     runtime: Option<&CompilerRuntime>,
+) -> Result<ProcessResult, String> {
+    process_with_reservation(binary, args, cwd, timeout, output_limit, runtime, None)
+}
+
+/// Start either an ordinary native subprocess or the command previously reserved
+/// for an async Run/Verify. Checking cancellation and attaching the new Child
+/// under the same runtime lock closes the Stop-versus-spawn race.
+fn process_with_reservation(
+    binary: &Path,
+    args: &[OsString],
+    cwd: Option<&Path>,
+    timeout: Duration,
+    output_limit: usize,
+    runtime: Option<&CompilerRuntime>,
+    reservation: Option<&ActiveJob>,
 ) -> Result<ProcessResult, String> {
     let mut command = Command::new(binary);
     command
@@ -89,7 +129,16 @@ fn process(
     // launch two compiler processes concurrently.
     let (child, job_id, cancelled) = if let Some(runtime) = runtime {
         let mut slot = runtime.active.lock().map_err(|e| e.to_string())?;
-        if slot.is_some() {
+        if let Some(pending) = reservation {
+            // Both the Stop command and process registration hold this lock.
+            // If Stop won, never launch the program after CLI probing.
+            if !slot.as_ref().is_some_and(|job| job.id == pending.id) {
+                return Err("The pending Scarp operation is no longer active.".into());
+            }
+            if pending.cancelled.load(Ordering::SeqCst) {
+                return Err("Scarp operation was cancelled before launch.".into());
+            }
+        } else if slot.is_some() {
             return Err(
                 "Scarp is already running. Stop it before starting another command.".into(),
             );
@@ -99,11 +148,15 @@ fn process(
                 .spawn()
                 .map_err(|e| format!("Could not start Scarp: {e}"))?,
         ));
-        let id = runtime.sequence.fetch_add(1, Ordering::Relaxed);
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let id = reservation
+            .map(|pending| pending.id)
+            .unwrap_or_else(|| runtime.sequence.fetch_add(1, Ordering::Relaxed));
+        let cancelled = reservation
+            .map(|pending| pending.cancelled.clone())
+            .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
         *slot = Some(ActiveJob {
             id,
-            child: child.clone(),
+            child: Some(child.clone()),
             cancelled: cancelled.clone(),
         });
         (child, Some(id), cancelled)
@@ -344,48 +397,59 @@ pub async fn scarp_execute(
     state: tauri::State<'_, CompilerRuntime>,
 ) -> Result<String, String> {
     let runtime = state.inner().clone();
+    // Reserve *before* spawn_blocking, so a quick Stop can cancel even while
+    // the worker is starting or validating compiler CLI capabilities.
+    let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let source = source_file(&source)?;
-        // Reject unsupported actions without launching even a capability probe.
-        let args = command_args(&mode, &source)?;
-        let (binary, version) =
-            with_verified_source_snapshot(&source, &expected_content, || probe(&binary))?;
-        let result = process(
-            &binary,
-            &args,
-            source.parent(),
-            EXEC_TIMEOUT,
-            EXEC_OUTPUT_LIMIT,
-            Some(&runtime),
-        )?;
-        let exit = result
-            .status
-            .code()
-            .map_or("terminated by signal".to_owned(), |code| code.to_string());
-        let outcome = if result.cancelled {
-            "cancelled"
-        } else if result.status.success() {
-            "completed"
-        } else {
-            "failed"
-        };
-        let cap_notice = if result.truncated {
-            "\n[Output truncated to the configured safety limit.]"
-        } else {
-            ""
-        };
-        Ok(format!(
-            "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
-            source.display(),
-            result.stdout,
-            if result.stderr.is_empty() {
-                ""
+        let execution = (|| {
+            if reserved.cancelled.load(Ordering::SeqCst) {
+                return Err("Scarp operation was cancelled before launch.".into());
+            }
+            let source = source_file(&source)?;
+            // Reject unsupported actions without launching even a capability probe.
+            let args = command_args(&mode, &source)?;
+            let (binary, version) =
+                with_verified_source_snapshot(&source, &expected_content, || probe(&binary))?;
+            let result = process_with_reservation(
+                &binary,
+                &args,
+                source.parent(),
+                EXEC_TIMEOUT,
+                EXEC_OUTPUT_LIMIT,
+                Some(&runtime),
+                Some(&reserved),
+            )?;
+            let exit = result
+                .status
+                .code()
+                .map_or("terminated by signal".to_owned(), |code| code.to_string());
+            let outcome = if result.cancelled {
+                "cancelled"
+            } else if result.status.success() {
+                "completed"
             } else {
-                "\nCompiler diagnostics:\n"
-            },
-            result.stderr,
-            cap_notice
-        ))
+                "failed"
+            };
+            let cap_notice = if result.truncated {
+                "\n[Output truncated to the configured safety limit.]"
+            } else {
+                ""
+            };
+            Ok(format!(
+                "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
+                source.display(),
+                result.stdout,
+                if result.stderr.is_empty() {
+                    ""
+                } else {
+                    "\nCompiler diagnostics:\n"
+                },
+                result.stderr,
+                cap_notice
+            ))
+        })();
+        release_job(&runtime, reserved.id);
+        execution
     })
     .await
     .map_err(|e| format!("Scarp execution worker failed: {e}"))?
@@ -397,8 +461,12 @@ fn cancel_active_job(runtime: &CompilerRuntime) -> Result<bool, String> {
         return Ok(false);
     };
     job.cancelled.store(true, Ordering::SeqCst);
-    let mut child = job.child.lock().map_err(|e| e.to_string())?;
-    let _ = child.kill(); // Already exited is harmless; completion resolves separately.
+    if let Some(child) = &job.child {
+        let mut child = child.lock().map_err(|e| e.to_string())?;
+        let _ = child.kill(); // Already exited is harmless; completion resolves separately.
+    }
+    // When child is None, the request is still probing. The cancellation
+    // flag will be checked atomically before any source execution starts.
     Ok(true)
 }
 
@@ -657,6 +725,45 @@ mod tests {
         assert!(!result.status.success(), "Stop must terminate the child");
         assert!(runtime.active.lock().unwrap().is_none());
         assert!(!cancel_active_job(&runtime).unwrap());
+    }
+
+    #[test]
+    fn stop_during_capability_probe_prevents_a_later_launch() {
+        let binary = std::env::current_exe().unwrap();
+        let runtime = CompilerRuntime::default();
+        let reserved = reserve_job(&runtime).expect("reserve probe");
+        assert!(runtime.active.lock().unwrap().as_ref().unwrap().child.is_none());
+        assert!(cancel_active_job(&runtime).unwrap());
+        assert!(reserved.cancelled.load(Ordering::SeqCst));
+
+        // A valid executable exists, but the native process must never spawn
+        // once Stop cancelled its pending reservation.
+        let result = process_with_reservation(
+            &binary,
+            &slow_test_process_args(),
+            None,
+            Duration::from_secs(12),
+            4096,
+            Some(&runtime),
+            Some(&reserved),
+        );
+        assert!(result.unwrap_err().contains("cancelled before launch"));
+        release_job(&runtime, reserved.id);
+        assert!(!cancel_active_job(&runtime).unwrap());
+    }
+
+    #[test]
+    fn only_one_probe_can_reserve_the_native_execution_slot() {
+        let runtime = CompilerRuntime::default();
+        let first = reserve_job(&runtime).unwrap();
+        assert!(reserve_job(&runtime).is_err());
+        release_job(&runtime, first.id);
+        let second = reserve_job(&runtime).unwrap();
+        assert_ne!(first.id, second.id);
+        release_job(&runtime, first.id);
+        assert!(runtime.active.lock().unwrap().is_some());
+        release_job(&runtime, second.id);
+        assert!(runtime.active.lock().unwrap().is_none());
     }
 
     #[test]
