@@ -19,6 +19,10 @@ function captureProvider(): TokenProvider {
       setMonarchTokensProvider: vi.fn((_language: string, provider: TokenProvider) => {
         captured = provider;
       }),
+      registerCompletionItemProvider: vi.fn(),
+      registerHoverProvider: vi.fn(),
+      registerDocumentSymbolProvider: vi.fn(),
+      CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
     },
   };
   registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
@@ -100,10 +104,63 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
         register,
         setLanguageConfiguration: vi.fn(),
         setMonarchTokensProvider,
+        registerCompletionItemProvider: vi.fn(),
+        registerHoverProvider: vi.fn(),
+        registerDocumentSymbolProvider: vi.fn(),
+        CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
       },
     };
     registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
     expect(register).not.toHaveBeenCalled();
     expect(setMonarchTokensProvider).not.toHaveBeenCalled();
+  });
+});
+
+describe('Scarp editor assistance registration', () => {
+  it('registers code completion, hover, and document symbols for .srp only', () => {
+    const provideCompletion = vi.fn();
+    const provideHover = vi.fn();
+    const provideSymbols = vi.fn();
+    const mockMonaco = {
+      Range: class {
+        constructor(public startLineNumber: number, public startColumn: number,
+          public endLineNumber: number, public endColumn: number) {}
+      },
+      languages: {
+        getLanguages: () => [],
+        register: vi.fn(),
+        setLanguageConfiguration: vi.fn(),
+        setMonarchTokensProvider: vi.fn(),
+        registerCompletionItemProvider: provideCompletion,
+        registerHoverProvider: provideHover,
+        registerDocumentSymbolProvider: provideSymbols,
+        CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
+        CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
+        SymbolKind: { Function: 11 },
+      },
+    };
+    registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
+    for (const spy of [provideCompletion, provideHover, provideSymbols]) {
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0]).toBe('scarp');
+    }
+    const handler = provideCompletion.mock.calls[0][1] as {
+      provideCompletionItems: (model: unknown, position: unknown) => { suggestions: Array<{ label: string }> },
+    };
+    const model = {
+      getLineContent: () => 'func',
+      getWordUntilPosition: () => ({ word: 'func', startColumn: 1, endColumn: 5 }),
+    };
+    const position = { lineNumber: 1, column: 5 };
+    expect(handler.provideCompletionItems(model, position).suggestions.some((s) => s.label === 'funcra')).toBe(true);
+    const commentModel = { ...model, getLineContent: () => '// func' };
+    expect(handler.provideCompletionItems(commentModel, { lineNumber: 1, column: 8 }).suggestions).toEqual([]);
+    const outline = provideSymbols.mock.calls[0][1] as {
+      provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
+    };
+    expect(outline.provideDocumentSymbols({
+      getValue: () => 'funcra add(a: integer) -> integer { return a; }',
+      getLineMaxColumn: () => 44,
+    }).map((item) => item.name)).toEqual(['add']);
   });
 });

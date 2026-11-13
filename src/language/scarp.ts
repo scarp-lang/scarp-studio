@@ -1,4 +1,8 @@
 import type * as Monaco from 'monaco-editor';
+import {
+  isScarpCodePosition, scanScarpFunctions, scarpCompletions, scarpTokenHelp,
+  type ScarpCompletion,
+} from './assist';
 
 /** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.8.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
@@ -50,6 +54,72 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         [/\\./, 'string.invalid'],
         [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }],
       ],
+    },
+  });
+
+  // These are editor-only conveniences. Source acceptance remains the job of
+  // the separately installed official Scarp compiler.
+  const completionKinds: Record<ScarpCompletion['kind'], Monaco.languages.CompletionItemKind> = {
+    keyword: monaco.languages.CompletionItemKind.Keyword,
+    type: monaco.languages.CompletionItemKind.Class,
+    function: monaco.languages.CompletionItemKind.Function,
+    snippet: monaco.languages.CompletionItemKind.Snippet,
+  };
+  monaco.languages.registerCompletionItemProvider('scarp', {
+    provideCompletionItems(model, position) {
+      const line = model.getLineContent(position.lineNumber);
+      if (!isScarpCodePosition(line, position.column - 1)) return { suggestions: [] };
+      const word = model.getWordUntilPosition(position);
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn: word.endColumn,
+      };
+      return {
+        suggestions: scarpCompletions(word.word).map((item) => ({
+          label: item.label,
+          kind: completionKinds[item.kind],
+          insertText: item.insertText,
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range,
+          detail: item.detail,
+          documentation: item.documentation,
+        })),
+      };
+    },
+  });
+
+  monaco.languages.registerHoverProvider('scarp', {
+    provideHover(model, position) {
+      const line = model.getLineContent(position.lineNumber);
+      if (!isScarpCodePosition(line, position.column - 1)) return null;
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      const item = scarpTokenHelp(word.word);
+      if (!item) return null;
+      return {
+        range: new monaco.Range(position.lineNumber, word.startColumn,
+          position.lineNumber, word.endColumn),
+        contents: [
+          { value: '**Scarp: ' + item.label + '**' },
+          { value: item.documentation },
+        ],
+      };
+    },
+  });
+
+  monaco.languages.registerDocumentSymbolProvider('scarp', {
+    provideDocumentSymbols(model) {
+      return scanScarpFunctions(model.getValue()).map((symbol) => ({
+        name: symbol.name,
+        detail: 'Scarp function',
+        kind: monaco.languages.SymbolKind.Function,
+        tags: [],
+        range: new monaco.Range(symbol.line, 1, symbol.line, model.getLineMaxColumn(symbol.line)),
+        selectionRange: new monaco.Range(symbol.line, symbol.startColumn,
+          symbol.line, symbol.endColumn),
+      }));
     },
   });
 }

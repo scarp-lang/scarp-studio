@@ -69,3 +69,6 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .status-bar span:first-child { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .sidebar { width: 180px; flex-basis: 180px; } .identity { font-size: 14px; } }
 @media (max-width: 690px) { .sidebar { display: none; } .toolbar { gap: 8px; } .theme-button { margin-left: 0; } }
+
+.outline-row { min-height: 28px; }
+.outline-line { color: var(--muted); font-size: 10px; }

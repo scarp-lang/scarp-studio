@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import type * as Monaco from 'monaco-editor';
 import { ask } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -9,6 +10,7 @@ import {
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
+import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -46,8 +48,23 @@ export default function App() {
   const saveInProgress = useRef(false);
   // Prevent overlapping native discard prompts on repeated close attempts.
   const exitConfirmationInProgress = useRef(false);
+  const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const functionOutline = useMemo(
+    () => active ? scanScarpFunctions(active.content) : [],
+    [active?.content],
+  );
+
+  function jumpToFunction(symbol: ScarpFunctionSymbol): void {
+    const editor = editorHandle.current;
+    if (!editor) return;
+    const location = { lineNumber: symbol.line, column: symbol.startColumn };
+    editor.setPosition(location);
+    editor.revealPositionInCenter(location);
+    editor.focus();
+    setNotice('Scarp function: ' + symbol.name);
+  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -279,6 +296,22 @@ export default function App() {
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
           </section>
+          <section className="sidebar-section" aria-label="Scarp function outline">
+            <div className="sidebar-heading">FUNCTION OUTLINE</div>
+            {functionOutline.map((symbol) => (
+              <button type="button" className="file-row outline-row"
+                key={symbol.line + ':' + symbol.name}
+                onClick={() => jumpToFunction(symbol)}
+                title={'Go to ' + symbol.name + ' at line ' + symbol.line}>
+                <span className="file-glyph" aria-hidden="true">ƒ</span>
+                <span className="file-name">{symbol.name}</span>
+                <span className="outline-line">:{symbol.line}</span>
+              </button>
+            ))}
+            {!functionOutline.length && <p className="sidebar-note">No function declarations in this file.</p>}
+            {functionOutline.length >= 500 &&
+              <p className="sidebar-note" role="status">Function outline limited to 500 entries.</p>}
+          </section>
         </aside>
 
         <main className="workspace">
@@ -329,6 +362,7 @@ export default function App() {
                   dispatch({ type: 'edit', id: active.id, content: content ?? '' });
                 }}
                 onMount={(editor) => {
+                  editorHandle.current = editor;
                   editor.onDidChangeCursorPosition((event) => {
                     setCursor({ line: event.position.lineNumber, column: event.position.column });
                   });
