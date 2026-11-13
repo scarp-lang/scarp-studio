@@ -27,7 +27,7 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       'needs', 'ensures', 'assert',
       'print', 'println', 'write', 'eprint', 'ewrite',
     ],
-    typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple'],
+    typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint'],
     // Old declaration spellings are reserved but rejected by the current compiler.
     legacyKeywords: ['let', 'mut'],
     tokenizer: {
