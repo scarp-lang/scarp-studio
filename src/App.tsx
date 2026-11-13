@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
-import { ask } from '@tauri-apps/plugin-dialog';
+import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
@@ -15,6 +15,10 @@ import {
   type NavigationEntry,
 } from './model/navigation';
 import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
+import { runnableSource } from './model/compilerReadiness';
+import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
+import { exitBlockReason } from './model/exitGuards';
+import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -34,6 +38,10 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'previous-tab', label: 'Previous Open Tab', detail: 'Ctrl+Shift+Tab' },
   { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
+  { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
+  { id: 'run-scarp', label: 'Run Current Scarp Source', detail: 'F5 · saved .srp only' },
+  { id: 'verify-scarp', label: 'Verify Current Scarp Source', detail: 'Ctrl+F5 · static analysis' },
+  { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
 ];
 
 function getInitialTheme(): Theme {
@@ -70,6 +78,21 @@ export default function App() {
   const saveInProgress = useRef(false);
   // Prevent overlapping native discard prompts on repeated close attempts.
   const exitConfirmationInProgress = useRef(false);
+  const commandInProgress = useRef(false);
+  const selectionInProgress = useRef(false);
+  const exitConfirmationInProgress = useRef(false);
+  const [compilerSelecting, setCompilerSelecting] = useState(false);
+  // Never silently trust a stored compiler path across sessions: an executable
+  // may be replaced after the user previously approved it.
+  const [compilerPath, setCompilerPath] = useState<string | null>(null);
+  const [compilerInfo, setCompilerInfo] = useState<string | null>(null);
+  const [compilerOutput, setCompilerOutput] = useState(
+    'Select a trusted official Scarp executable to enable Run and Verify.\n' +
+    'Source files are never executed automatically.',
+  );
+  const [compilerBusy, setCompilerBusy] = useState(false);
+  // This input is session-local, not persisted or stored in source files.
+  const [stdinText, setStdinText] = useState('');
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -163,6 +186,10 @@ export default function App() {
       case 'previous-tab': cycleTab(-1); break;
       case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
       case 'explorer': setExplorerVisible((visible) => !visible); break;
+      case 'select-compiler': void selectCompiler(); break;
+      case 'run-scarp': void runCompiler('exec'); break;
+      case 'verify-scarp': void runCompiler('verify'); break;
+      case 'stop-scarp': void stopCompiler(); break;
     }
   }
 
@@ -178,11 +205,13 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(async (event) => {
       const pending = liveEditor.current.documents.filter(isDirty);
-      if (!pending.length && !saveInProgress.current &&
-          !exitConfirmationInProgress.current) return;
+      const blocked = exitBlockReason(
+        saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+      );
+      if (!pending.length && !blocked && !exitConfirmationInProgress.current) return;
       event.preventDefault();
-      if (saveInProgress.current) {
-        setError('A file is being saved. Finish saving before exiting.');
+      if (blocked) {
+        setError(blocked);
         return;
       }
       if (exitConfirmationInProgress.current) return;
@@ -192,9 +221,13 @@ export default function App() {
           title: 'Unsaved changes',
           kind: 'warning',
         })) {
-          if (saveInProgress.current ||
+          const newBlocker = exitBlockReason(
+            saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+          );
+          if (newBlocker ||
               !sameDirtyDocuments(pending, liveEditor.current.documents)) {
-            setError('Files changed while confirming exit. Review your edits and try again.');
+            setError(newBlocker ||
+              'Files changed while confirming exit. Review your edits and try again.');
             return;
           }
           await getCurrentWindow().destroy();
@@ -284,6 +317,87 @@ export default function App() {
     }
   }
 
+  async function selectCompiler(): Promise<void> {
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    selectionInProgress.current = true;
+    setCompilerSelecting(true);
+    setError(null);
+    try {
+      const chosen = await open({
+        title: 'Select the trusted official Scarp executable (scarp.exe on Windows)',
+        multiple: false,
+      });
+      if (typeof chosen !== 'string') return;
+      const approved = await ask(
+        'Scarp Studio will launch the selected executable to check its version and supported commands. ' +
+        'Only continue if you trust this file. Do you want to continue?',
+        { title: 'Trust the selected Scarp compiler?', kind: 'warning' },
+      );
+      if (!approved) return;
+      const info = await probeScarp(chosen);
+      setCompilerPath(chosen);
+      setCompilerInfo(info);
+      setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
+      setNotice('Scarp compiler configured');
+    } catch (caught) {
+      setError('Compiler selection failed: ' + toMessage(caught));
+    } finally {
+      selectionInProgress.current = false;
+      setCompilerSelecting(false);
+    }
+  }
+
+  async function runCompiler(mode: ScarpMode): Promise<void> {
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    if (saveInProgress.current) {
+      setError('Finish saving before running the compiler.');
+      return;
+    }
+    let source: string;
+    let expectedContent: string;
+    try {
+      const selected = liveEditor.current.documents.find(
+        (item) => item.id === liveEditor.current.activeId,
+      ) ?? null;
+      source = runnableSource(selected);
+      expectedContent = selected!.savedContent;
+      if (!compilerPath) throw new Error('Select the trusted Scarp compiler first.');
+      if (mode === 'exec') validateProgramInput(stdinText);
+    } catch (caught) {
+      setError(toMessage(caught));
+      return;
+    }
+    commandInProgress.current = true;
+    setCompilerBusy(true);
+    setError(null);
+    setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
+    try {
+      const result = await executeScarp(
+        compilerPath, source, mode, expectedContent,
+        mode === 'exec' ? stdinText : '',
+      );
+      setCompilerOutput(result);
+      setNotice('Scarp ' + mode + ' finished; see output');
+    } catch (caught) {
+      const message = toMessage(caught);
+      setCompilerOutput('Scarp ' + mode + ' could not complete:\n' + message);
+      setError(message);
+    } finally {
+      commandInProgress.current = false;
+      setCompilerBusy(false);
+    }
+  }
+
+  async function stopCompiler(): Promise<void> {
+    if (!isTauri()) return;
+    try {
+      const stopping = await stopScarp();
+      setNotice(stopping ? 'Scarp stop signal sent' : 'No active Scarp process to stop');
+    } catch (caught) {
+      setError('Could not stop Scarp: ' + toMessage(caught));
+    }
+  }
+
   async function closeFile(id: string): Promise<void> {
     if (saveInProgress.current) {
       setError('Finish the current save before closing a tab.');
@@ -317,6 +431,12 @@ export default function App() {
       if (paletteMode !== null && event.key === 'Escape') {
         event.preventDefault();
         hidePalette();
+        return;
+      }
+      if (paletteMode === null && event.key === 'F5' && !event.altKey) {
+        event.preventDefault();
+        if (event.shiftKey) void stopCompiler();
+        else void runCompiler(event.ctrlKey ? 'verify' : 'exec');
         return;
       }
       const modifier = event.ctrlKey || event.metaKey;
@@ -509,6 +629,48 @@ export default function App() {
               </div>
             )}
           </div>
+          <section className="compiler-panel" aria-label="Scarp compiler output">
+            <div className="compiler-heading">
+              <strong>SCARP OUTPUT</strong>
+              <div className="compiler-actions">
+                <button onClick={() => void selectCompiler()} disabled={compilerBusy || compilerSelecting}
+                  title="Choose a trusted Scarp executable; Studio will execute it to verify its version">
+                  {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Select Compiler'}
+                </button>
+                <button onClick={() => void runCompiler('exec')}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
+                  title="Execute the saved Scarp source using the official compiler">Run</button>
+                <button onClick={() => void runCompiler('verify')}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
+                  title="Statically verify saved Scarp source without runtime execution">Verify</button>
+                <button onClick={() => void stopCompiler()} disabled={!compilerBusy}
+                  title="Stop the active compiler process">Stop</button>
+              </div>
+            </div>
+            <div className="compiler-meta">{compilerInfo || (compilerPath
+              ? 'Compiler configured; version checked on the next Run/Verify.'
+              : 'No compiler selected')}</div>
+            <div className="compiler-stdin">
+              <label htmlFor="scarp-stdin">Program input (Run only; one line per read_line call)</label>
+              <textarea
+                id="scarp-stdin"
+                value={stdinText}
+                onChange={(event) => setStdinText(event.target.value)}
+                disabled={compilerBusy}
+                maxLength={MAX_INPUT_BYTES}
+                rows={2}
+                spellCheck={false}
+                aria-describedby="scarp-stdin-help"
+                placeholder="Optional UTF-8 input for read_line()"
+              />
+              <div id="scarp-stdin-help" className="compiler-meta">
+                {programInputBytes(stdinText)} / {MAX_INPUT_BYTES} UTF-8 bytes ·
+                Max 4096 bytes per line and 256 lines. Input is not saved;
+                avoid entering passwords or secrets.
+              </div>
+            </div>
+            <pre className="compiler-output" role="log" aria-live="polite">{compilerOutput}</pre>
+          </section>
         </main>
       </div>
       {paletteMode !== null && (
@@ -574,7 +736,7 @@ export default function App() {
           {active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}
         </button>
         <span>Scarp · .srp</span>
-        <span>v0.0.1-alpha.2</span>
+        <span>0.0.2-alpha.1 · development candidate</span>
       </footer>
     </div>
   );
