@@ -109,3 +109,22 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 
 .outline-row { min-height: 28px; }
 .outline-line { color: var(--muted); font-size: 10px; }
+
+.compiler-panel { flex: 0 0 285px; min-height: 180px; display: flex; flex-direction: column; border-top: 1px solid var(--border); background: var(--surface); }
+.compiler-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 7px 12px; }
+.compiler-heading strong { font-size: 10px; letter-spacing: .1em; color: var(--muted); }
+.compiler-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.compiler-actions button { border: 1px solid var(--border); background: var(--raised); color: var(--text); padding: 5px 10px; border-radius: 5px; font-size: 11px; }
+.compiler-actions button:not(:disabled):hover { border-color: var(--accent); }
+.compiler-meta { color: var(--muted); font-size: 10px; padding: 0 12px 6px; }
+.compiler-output { font: 12px/1.5 Consolas, "Cascadia Code", monospace; margin: 0; padding: 8px 12px; color: var(--text); background: var(--bg); flex: 1; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.compiler-stdin { padding: 0 12px 6px; display: flex; flex-direction: column; gap: 4px; }
+.compiler-stdin label { color: var(--text); font-size: 11px; font-weight: 600; }
+.compiler-stdin textarea {
+  width: 100%; resize: vertical; max-height: 90px; min-height: 36px;
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 5px; padding: 5px 7px; font: 12px/1.4 Consolas, monospace;
+}
+.compiler-stdin textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.compiler-stdin .compiler-meta { padding: 0; line-height: 1.4; }
+@media (max-height: 660px) { .compiler-panel { flex-basis: 220px; } .compiler-stdin textarea { max-height: 54px; } }
