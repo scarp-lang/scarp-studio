@@ -104,3 +104,5 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .status-nav { border: 0; background: transparent; padding: 1px 5px; font: inherit; color: inherit; white-space: nowrap; }
 .status-nav:hover:not(:disabled) { text-decoration: underline; }
 @media (max-width: 520px) { .nav-result-detail { max-width: 30%; } }
+
+.sidebar.sidebar-hidden { display: none; }
