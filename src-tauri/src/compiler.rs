@@ -120,7 +120,16 @@ fn process_with_input(
     runtime: Option<&CompilerRuntime>,
     stdin_text: Option<&str>,
 ) -> Result<ProcessResult, String> {
-    process_with_input_reserved(binary, args, cwd, timeout, output_limit, runtime, stdin_text, None)
+    process_with_input_reserved(
+        binary,
+        args,
+        cwd,
+        timeout,
+        output_limit,
+        runtime,
+        stdin_text,
+        None,
+    )
 }
 
 fn process_with_input_reserved(
@@ -489,54 +498,54 @@ pub async fn scarp_execute(
             if reserved.cancelled.load(Ordering::SeqCst) {
                 return Err("Scarp operation was cancelled before launch.".into());
             }
-        let source = source_file(&source)?;
-        // Reject excessive/foreign input before probing or executing any binary.
-        validate_stdin(&stdin_text)?;
-        let args = command_args_with_input(&mode, &source, !stdin_text.is_empty())?;
-        let (binary, version) =
-            with_verified_source_snapshot(&source, &expected_content, || probe(&binary))?;
-        let result = process_with_input_reserved(
-            &binary,
-            &args,
-            source.parent(),
-            EXEC_TIMEOUT,
-            EXEC_OUTPUT_LIMIT,
-            Some(&runtime),
-            if mode == "exec" {
-                Some(stdin_text.as_str())
+            let source = source_file(&source)?;
+            // Reject excessive/foreign input before probing or executing any binary.
+            validate_stdin(&stdin_text)?;
+            let args = command_args_with_input(&mode, &source, !stdin_text.is_empty())?;
+            let (binary, version) =
+                with_verified_source_snapshot(&source, &expected_content, || probe(&binary))?;
+            let result = process_with_input_reserved(
+                &binary,
+                &args,
+                source.parent(),
+                EXEC_TIMEOUT,
+                EXEC_OUTPUT_LIMIT,
+                Some(&runtime),
+                if mode == "exec" {
+                    Some(stdin_text.as_str())
+                } else {
+                    None
+                },
+                Some(&reserved),
+            )?;
+            let exit = result
+                .status
+                .code()
+                .map_or("terminated by signal".to_owned(), |code| code.to_string());
+            let outcome = if result.cancelled {
+                "cancelled"
+            } else if result.status.success() {
+                "completed"
             } else {
-                None
-            },
-            Some(&reserved),
-        )?;
-        let exit = result
-            .status
-            .code()
-            .map_or("terminated by signal".to_owned(), |code| code.to_string());
-        let outcome = if result.cancelled {
-            "cancelled"
-        } else if result.status.success() {
-            "completed"
-        } else {
-            "failed"
-        };
-        let cap_notice = if result.truncated {
-            "\n[Output truncated to the configured safety limit.]"
-        } else {
-            ""
-        };
-        Ok(format!(
-            "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
-            source.display(),
-            result.stdout,
-            if result.stderr.is_empty() {
+                "failed"
+            };
+            let cap_notice = if result.truncated {
+                "\n[Output truncated to the configured safety limit.]"
+            } else {
                 ""
-            } else {
-                "\nCompiler diagnostics:\n"
-            },
-            result.stderr,
-            cap_notice
-        ))
+            };
+            Ok(format!(
+                "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
+                source.display(),
+                result.stdout,
+                if result.stderr.is_empty() {
+                    ""
+                } else {
+                    "\nCompiler diagnostics:\n"
+                },
+                result.stderr,
+                cap_notice
+            ))
         })();
         release_job(&runtime, reserved.id);
         execution
