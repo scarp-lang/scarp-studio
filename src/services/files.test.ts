@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { save } from '@tauri-apps/plugin-dialog';
-import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
+import { readTextFile, stat, writeTextFile } from '@tauri-apps/plugin-fs';
 import { createUntitled } from '../model/documents';
 import { writeSourceFile } from './files';
 
@@ -10,12 +10,32 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 }));
 vi.mock('@tauri-apps/plugin-fs', () => ({
   readTextFile: vi.fn(),
+  stat: vi.fn(),
   writeTextFile: vi.fn(),
 }));
 
 describe('safe .srp file writes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.mocked(stat).mockResolvedValue({ isFile: true, size: 16 } as Awaited<ReturnType<typeof stat>>);
+  });
+
+  it('rejects oversized UTF-8 editor buffers before opening a save dialog', async () => {
+    const document = { ...createUntitled(9), content: '🙂'.repeat(1_048_577) };
+    await expect(writeSourceFile(document, true, [])).rejects.toThrow('4 MiB');
+    expect(save).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('refuses to overwrite an original source that grew beyond 4 MiB', async () => {
+    const document = {
+      ...createUntitled(9), path: 'C:/project/main.srp',
+      savedContent: 'small', content: 'edited',
+    };
+    vi.mocked(stat).mockResolvedValue({ isFile: true, size: 4 * 1024 * 1024 + 1 } as Awaited<ReturnType<typeof stat>>);
+    await expect(writeSourceFile(document, false, [])).rejects.toThrow('4 MiB');
+    expect(readTextFile).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
   });
 
   it('does not write when Save As is cancelled', async () => {
