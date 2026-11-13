@@ -80,7 +80,6 @@ export default function App() {
   const exitConfirmationInProgress = useRef(false);
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
-  const exitConfirmationInProgress = useRef(false);
   const [compilerSelecting, setCompilerSelecting] = useState(false);
   // Never silently trust a stored compiler path across sessions: an executable
   // may be replaced after the user previously approved it.
