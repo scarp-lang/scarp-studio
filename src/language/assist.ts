@@ -66,6 +66,26 @@ const templates: readonly ScarpCompletion[] = [
     insertText: 'write(${1:value});',
   },
   {
+    label: 'bigint', kind: 'function', detail: 'Exact signed integer (alpha.9+)',
+    documentation: 'Since Scarp v0.0.6-alpha.9, construct an exact signed integer from ASCII decimal text. No implicit numeric widening.',
+    insertText: 'bigint("${1:12345678901234567890}")',
+  },
+  {
+    label: 'bigint_from_integer', kind: 'function', detail: 'Convert integer to bigint (alpha.9+)',
+    documentation: 'Convert a signed 64-bit integer to exact bigint without losing precision.',
+    insertText: 'bigint_from_integer(${1:value})',
+  },
+  {
+    label: 'bigint_to_integer', kind: 'function', detail: 'Checked bigint to integer (alpha.9+)',
+    documentation: 'Convert exact bigint to signed 64-bit integer; reports an error if out of range.',
+    insertText: 'bigint_to_integer(${1:value})',
+  },
+  {
+    label: 'bigint_abs', kind: 'function', detail: 'Absolute bigint (alpha.9+)',
+    documentation: 'Return the nonnegative absolute value of an exact bigint.',
+    insertText: 'bigint_abs(${1:value})',
+  },
+  {
     label: 'read_line', kind: 'function', detail: 'Read one line of text',
     documentation: 'Read UTF-8 input from standard input. Requires a compiler build with input support.',
     insertText: 'read_line()',
@@ -81,7 +101,7 @@ const templates: readonly ScarpCompletion[] = [
       documentation: 'Scarp language keyword. Available syntax depends on the selected compiler version.',
       insertText: label,
     })),
-  ...(['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple'] as const).map((label) => ({
+  ...(['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint'] as const).map((label) => ({
     label, kind: 'type' as const, detail: 'Scarp type',
     documentation: 'Scarp built-in type. Availability depends on the selected compiler version.',
     insertText: label,

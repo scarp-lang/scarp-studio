@@ -26,6 +26,17 @@ describe('Scarp completion catalog', () => {
   });
 });
 
+describe('Scarp alpha.9 exact integer assistance', () => {
+  it('offers checked BigInt functions without suggesting unbounded numeric literals', () => {
+    for (const name of ['bigint', 'bigint_from_integer', 'bigint_to_integer', 'bigint_abs']) {
+      expect(scarpCompletions(name).some((item) => item.label === name)).toBe(true);
+    }
+    const constructor = scarpCompletions('bigint').find((item) => item.kind === 'function' && item.label === 'bigint');
+    expect(constructor?.insertText).toContain('bigint("');
+    expect(constructor?.documentation).toContain('alpha.9');
+  });
+});
+
 describe('lexical completion safety', () => {
   it('suppresses suggestions inside comments and quoted strings', () => {
     const line = 'print("https://test"); // trailing comment';

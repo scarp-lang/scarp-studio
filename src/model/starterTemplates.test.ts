@@ -4,9 +4,9 @@ import { getScarpStarterTemplate, scarpStarterTemplates } from './starterTemplat
 describe('Scarp-only starter templates', () => {
   it('offers independent real Scarp learning scenarios', () => {
     expect(scarpStarterTemplates.map(({ id }) => id)).toEqual([
-      'hello', 'bindings', 'functions', 'decisions', 'loops', 'input',
+      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input',
     ]);
-    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(6);
+    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(7);
   });
 
   it('uses only .srp snippets that can be edited in an untitled buffer', () => {
@@ -23,6 +23,13 @@ describe('Scarp-only starter templates', () => {
   it('includes an explicit saved-source compiler input example', () => {
     expect(getScarpStarterTemplate('input')?.source).toContain('read_line()');
     expect(getScarpStarterTemplate('input')?.source).toContain('Program Input');
+  });
+
+  it('includes a version-gated exact decimal BigInt example', () => {
+    const source = getScarpStarterTemplate('bigint')?.source ?? '';
+    expect(source).toContain('alpha.9');
+    expect(source).toContain('bind large: bigint');
+    expect(source).toContain('bigint_from_integer(1)');
   });
 
   it('looks up only registered templates without accepting arbitrary source', () => {

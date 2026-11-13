@@ -43,7 +43,7 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     ]) {
       expect(provider.keywords, word).toContain(word);
     }
-    for (const type of ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple']) {
+    for (const type of ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint']) {
       expect(provider.typeKeywords, type).toContain(type);
     }
   });
