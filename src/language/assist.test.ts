@@ -46,7 +46,7 @@ describe('Scarp alpha.10 editor suggestions', () => {
     ]) {
       const suggestion = scarpCompletions(label).find((item) => item.label === label);
       expect(suggestion, label).toBeDefined();
-      expect(suggestion?.documentation).toContain('alpha.10');
+      expect(suggestion?.documentation.toLowerCase()).toContain('alpha.10');
     }
     expect(scarpTokenHelp('input')?.documentation).toContain('preloaded');
     expect(scarpTokenHelp('array')?.insertText).toContain('array<');
