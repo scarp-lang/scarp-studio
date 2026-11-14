@@ -114,31 +114,54 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Scarp list project tests failed" }
           & $binary.FullName test --require-tests -- studio-project-smoke
           if ($LASTEXITCODE -ne 0) { throw "Scarp run project tests failed" }
-          # Nonzero native statuses are inspected explicitly below, including
-          # the deliberately failing suite. PowerShell must not terminate first.
-          $PSNativeCommandUseErrorActionPreference = $false
-          Write-Host "Verifying official Scarp JSON v2 project-test listing"
-          $listedJson = & $binary.FullName test --json=v2 --list -- studio-project-smoke 2>&1
-          $listedExit = $LASTEXITCODE
-          if ($listedExit -ne 0) {
-            Write-Host "Scarp test list exit: $listedExit; output: $($listedJson | Out-String)"
+          # Launch through System.Diagnostics.Process to match Studio's
+          # native Command API and capture stdout/stderr even on exit status 1.
+          function Invoke-ScarpProjectTestJson {
+            param([string[]]$CommandArgs)
+            $info = [System.Diagnostics.ProcessStartInfo]::new()
+            $info.FileName = $binary.FullName
+            $info.WorkingDirectory = (Get-Location).Path
+            $info.UseShellExecute = $false
+            $info.RedirectStandardOutput = $true
+            $info.RedirectStandardError = $true
+            foreach ($arg in $CommandArgs) { [void]$info.ArgumentList.Add($arg) }
+            $process = [System.Diagnostics.Process]::Start($info)
+            if (-not $process) { throw "Could not start pinned Scarp test compiler" }
+            try {
+              $stderrTask = $process.StandardError.ReadToEndAsync()
+              $stdoutText = $process.StandardOutput.ReadToEnd()
+              $stderrText = $stderrTask.GetAwaiter().GetResult()
+              $process.WaitForExit()
+              Write-Host "Scarp JSON v2 test exit: $($process.ExitCode)"
+              return @{ Exit = $process.ExitCode; Output = $stdoutText; ErrorText = $stderrText }
+            } finally {
+              $process.Dispose()
+            }
+          }
+          $listed = Invoke-ScarpProjectTestJson @("test", "--json=v2", "--list", "--", "studio-project-smoke")
+          if ($listed.Exit -ne 0) {
+            Write-Host "Listing stdout: $($listed.Output); stderr: $($listed.ErrorText)"
             throw "Scarp project JSON v2 test listing failed"
           }
-          $listedReport = $listedJson | ConvertFrom-Json
+          $listedReport = $listed.Output | ConvertFrom-Json
           if ($listedReport.schema_version -ne 2 -or $listedReport.mode -ne "list" -or $listedReport.discovered -ne 1) {
             throw "Unexpected Scarp test discovery JSON schema"
           }
-          $passingJson = & $binary.FullName test --json=v2 --require-tests -- studio-project-smoke
-          if ($LASTEXITCODE -ne 0) { throw "Scarp project JSON v2 test run failed" }
-          $passingReport = $passingJson | ConvertFrom-Json
+          $passing = Invoke-ScarpProjectTestJson @("test", "--json=v2", "--require-tests", "--", "studio-project-smoke")
+          if ($passing.Exit -ne 0) {
+            Write-Host "Passing suite stdout: $($passing.Output); stderr: $($passing.ErrorText)"
+            throw "Scarp project JSON v2 test run failed"
+          }
+          $passingReport = $passing.Output | ConvertFrom-Json
           if ($passingReport.schema_version -ne 2 -or $passingReport.passed -ne 1 -or $passingReport.failed -ne 0) {
             throw "Unexpected Scarp test run JSON schema"
           }
           'assert(false, "expected Studio test failure");' | Set-Content -Path studio-project-smoke/tests/failing.srp -Encoding utf8
-          $failedJson = & $binary.FullName test --json=v2 --require-tests -- studio-project-smoke
-          if ($LASTEXITCODE -eq 0) { throw "Failing test unexpectedly passed" }
-          $failedReport = $failedJson | ConvertFrom-Json
+          $failed = Invoke-ScarpProjectTestJson @("test", "--json=v2", "--require-tests", "--", "studio-project-smoke")
+          if ($failed.Exit -eq 0) { throw "Failing test unexpectedly passed" }
+          $failedReport = $failed.Output | ConvertFrom-Json
           if ($failedReport.schema_version -ne 2 -or $failedReport.failed -ne 1 -or $failedReport.tests.Count -ne 2) {
+            Write-Host "Failing suite stdout: $($failed.Output); stderr: $($failed.ErrorText)"
             throw "Unexpected structured failing test report"
           }
           Remove-Item studio-project-smoke/tests/failing.srp
