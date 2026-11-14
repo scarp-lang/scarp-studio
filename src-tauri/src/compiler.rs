@@ -823,7 +823,33 @@ mod tests {
             "failed execution replayed user stdout"
         );
 
-        // Exercise Scarp alpha.8's real read_line stdin contract using a pipe.
+        // Verify the real, published alpha.10 JSON stderr envelope. The
+        // editor may navigate these errors only from failed static Verify.
+        let invalid_source = "print(unknown_name);";
+        fs::write(&source, invalid_source).unwrap();
+        ensure_matching_disk_snapshot(&validated, invalid_source).unwrap();
+        let failed_verify = process(
+            &binary,
+            &command_args("verify", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("native failed Verify diagnostics");
+        assert!(!failed_verify.status.success());
+        assert!(!failed_verify.truncated);
+        assert!(!failed_verify.cancelled);
+        let first_json = failed_verify.stderr.lines().next().unwrap_or("");
+        assert!(
+            first_json.contains("\"schema_version\":1")
+                && first_json.contains("\"span_encoding\":\"utf-8-bytes\"")
+                && first_json.contains("\"column_encoding\":\"unicode-scalar\""),
+            "Scarp Verify JSON contract changed: {first_json}"
+        );
+        assert!(failed_verify.stdout.is_empty());
+
+        // Exercise Scarp alpha.10's real read_line stdin contract using a pipe.
         let input_source = "bind name = read_line(); print(\"Hello\", name);";
         fs::write(&source, input_source).unwrap();
         ensure_matching_disk_snapshot(&validated, input_source).unwrap();
