@@ -497,7 +497,7 @@ pub async fn scarp_execute(
     stdin_text: String,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let runtime = state.inner().clone();
     // Claim the native execution slot before the background worker probes
     // compiler CLI support, so Stop prevents later source execution.
@@ -549,7 +549,21 @@ pub async fn scarp_execute(
             } else {
                 ""
             };
-            Ok(format!(
+            // Static Verify never executes user source. Only its complete,
+            // non-cancelled failure stderr can be used for navigation.
+            // Interactive Run can flush user-written stderr: NEVER treat that
+            // stream as trusted diagnostic JSON (even on a failing exit).
+            let diagnostic_stderr = if mode == "verify"
+                && !result.status.success()
+                && !result.cancelled
+                && !result.truncated
+                && !result.stderr.is_empty()
+            {
+                Some(result.stderr.clone())
+            } else {
+                None
+            };
+            let display = format!(
                 "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
                 source.display(),
                 result.stdout,
@@ -560,7 +574,8 @@ pub async fn scarp_execute(
                 },
                 result.stderr,
                 cap_notice
-            ))
+            );
+            Ok((display, diagnostic_stderr))
         })();
         release_job(&runtime, reserved.id);
         execution
@@ -808,7 +823,33 @@ mod tests {
             "failed execution replayed user stdout"
         );
 
-        // Exercise Scarp alpha.8's real read_line stdin contract using a pipe.
+        // Verify the real, published alpha.10 JSON stderr envelope. The
+        // editor may navigate these errors only from failed static Verify.
+        let invalid_source = "print(unknown_name);";
+        fs::write(&source, invalid_source).unwrap();
+        ensure_matching_disk_snapshot(&validated, invalid_source).unwrap();
+        let failed_verify = process(
+            &binary,
+            &command_args("verify", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("native failed Verify diagnostics");
+        assert!(!failed_verify.status.success());
+        assert!(!failed_verify.truncated);
+        assert!(!failed_verify.cancelled);
+        let first_json = failed_verify.stderr.lines().next().unwrap_or("");
+        assert!(
+            first_json.contains("\"schema_version\":1")
+                && first_json.contains("\"span_encoding\":\"utf-8-bytes\"")
+                && first_json.contains("\"column_encoding\":\"unicode-scalar\""),
+            "Scarp Verify JSON contract changed: {first_json}"
+        );
+        assert!(failed_verify.stdout.is_empty());
+
+        // Exercise Scarp alpha.10's real read_line stdin contract using a pipe.
         let input_source = "bind name = read_line(); print(\"Hello\", name);";
         fs::write(&source, input_source).unwrap();
         ensure_matching_disk_snapshot(&validated, input_source).unwrap();
