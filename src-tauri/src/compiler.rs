@@ -390,9 +390,13 @@ fn project_action_args(action: &str, folder: &Path) -> Result<Vec<OsString>, Str
         "verify" => &["verify", "--diagnostic-format=json"],
         "list-tests" => &["test", "--list"],
         "run-tests" => &["test", "--require-tests"],
-        _ => return Err("Only Scarp project info, verify, list-tests and run-tests are allowed.".into()),
+        _ => {
+            return Err(
+                "Only Scarp project info, verify, list-tests and run-tests are allowed.".into(),
+            )
+        }
     };
-    let mut args: Vec<OsString> = verbs.iter().map(OsString::from).collect();
+    let mut args: Vec<OsString> = verbs.iter().map(|verb| OsString::from(*verb)).collect();
     args.push(OsString::from("--"));
     args.push(folder.as_os_str().to_owned());
     Ok(args)
@@ -738,7 +742,7 @@ mod tests {
         assert_eq!(info[0], "project");
         assert_eq!(info[1], "info");
         assert!(info.contains(&OsString::from("--json")));
-        assert_eq!(info[info.len()-2], "--");
+        assert_eq!(info[info.len() - 2], "--");
         assert_eq!(info.last().unwrap(), root.as_os_str());
         let verify = project_action_args("verify", root).unwrap();
         assert_eq!(verify[0], "verify");
@@ -758,13 +762,19 @@ mod tests {
     fn project_folder_requires_absolute_existing_manifest_root() {
         use std::time::{SystemTime, UNIX_EPOCH};
         assert!(selected_project_root("relative-path").is_err());
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("studio-project-{}-{unique}", std::process::id()));
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("studio-project-{}-{unique}", std::process::id()));
         fs::create_dir(&root).unwrap();
         assert!(selected_project_root(root.to_str().unwrap()).is_err());
         fs::write(root.join("scarp.project"), "scarp-project: 1\n").unwrap();
-        assert_eq!(selected_project_root(root.to_str().unwrap()).unwrap(),
-            fs::canonicalize(&root).unwrap());
+        assert_eq!(
+            selected_project_root(root.to_str().unwrap()).unwrap(),
+            fs::canonicalize(&root).unwrap()
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

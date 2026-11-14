@@ -524,7 +524,7 @@ export default function App() {
       setNotice('Scarp project ' + action + ' finished');
     } catch (caught) {
       const message = toMessage(caught);
-      setCompilerOutput('Scarp project ' + action + ' could not complete:\\n' + message);
+      setCompilerOutput('Scarp project ' + action + ' could not complete:\n' + message);
       setError(message);
     } finally {
       commandInProgress.current = false;
