@@ -6,6 +6,7 @@ type TokenProvider = {
   keywords: string[];
   typeKeywords: string[];
   legacyKeywords: string[];
+  builtinFunctions: string[];
   tokenizer: { root: TokenRule[]; string: TokenRule[] };
 };
 
@@ -65,6 +66,18 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
         '@default': 'identifier',
       },
     });
+  });
+
+  it('recognizes alpha.10 calls but keeps them distinct from Scarp keywords', () => {
+    const provider = captureProvider();
+    for (const builtin of ['input', 'ask', 'ask_or', 'input_integer', 'input_bigint',
+      'try_read_line', 'flush_stdout', 'bigint_gcd', 'bigint_divmod']) {
+      expect(provider.builtinFunctions).toContain(builtin);
+      expect(provider.keywords).not.toContain(builtin);
+    }
+    const contextualType = provider.tokenizer.root.find(([, token]) => token === 'type')?.[0];
+    expect(contextualType?.test('array<integer, 2>')).toBe(true);
+    expect(contextualType?.test('array = 2')).toBe(false);
   });
 
   it('does not show unsupported hexadecimal, binary or underscored literals as numbers', () => {

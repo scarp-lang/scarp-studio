@@ -37,6 +37,24 @@ describe('Scarp alpha.9 exact integer assistance', () => {
   });
 });
 
+describe('Scarp alpha.10 editor suggestions', () => {
+  it('offers official prompted input, EOF-aware reads and exact-number operations', () => {
+    for (const label of [
+      'input', 'ask', 'ask_or', 'input_integer', 'input_float', 'input_bigint',
+      'try_read_line', 'flush_stdout', 'flush_stderr', 'array',
+      'bigint_gcd', 'bigint_divmod', 'bigint_pow_mod', 'bigint_to_radix',
+    ]) {
+      const suggestion = scarpCompletions(label).find((item) => item.label === label);
+      expect(suggestion, label).toBeDefined();
+      expect(suggestion?.documentation).toContain('alpha.10');
+    }
+    expect(scarpTokenHelp('input')?.documentation).toContain('preloaded');
+    expect(scarpTokenHelp('array')?.insertText).toContain('array<');
+    expect(scarpTokenHelp('try_read_line')?.documentation).toContain('EOF');
+    expect(scarpCompletions('bigint_').length).toBeLessThanOrEqual(40);
+  });
+});
+
 describe('lexical completion safety', () => {
   it('suppresses suggestions inside comments and quoted strings', () => {
     const line = 'print("https://test"); // trailing comment';

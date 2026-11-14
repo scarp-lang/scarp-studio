@@ -4,7 +4,7 @@ import {
   type ScarpCompletion,
 } from './assist';
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.8.
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.10.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco): void {
@@ -28,6 +28,15 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       'print', 'println', 'write', 'eprint', 'ewrite',
     ],
     typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint'],
+    // Calls are not keywords: names such as ask and array can occur as bindings.
+    builtinFunctions: [
+      'input', 'ask', 'ask_or', 'input_integer', 'input_float', 'input_bigint',
+      'try_read_line', 'flush_stdout', 'flush_stderr',
+      'bigint_pow', 'bigint_gcd', 'bigint_lcm', 'bigint_sqrt', 'bigint_bit_length',
+      'bigint_to_text', 'bigint_from_radix', 'bigint_to_radix', 'bigint_and',
+      'bigint_or', 'bigint_xor', 'bigint_not', 'bigint_shl', 'bigint_shr',
+      'bigint_pow_mod', 'bigint_divmod',
+    ],
     // Old declaration spellings are reserved but rejected by the current compiler.
     legacyKeywords: ['let', 'mut'],
     tokenizer: {
@@ -39,6 +48,11 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         // Hex/binary prefixes and numeric separators are not valid Scarp literals.
         [/\b(?:0[xX][A-Za-z0-9_]*|0[bB][A-Za-z0-9_]*|[0-9]+_[A-Za-z0-9_]*)\b/, 'number.invalid'],
         [/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b/, 'number'],
+        [/\barray(?=\s*<)/, 'type'],
+        [/[a-zA-Z_][\w]*(?=\s*\()/, {
+          cases: { '@keywords': 'keyword', '@builtinFunctions': 'predefined',
+            '@legacyKeywords': 'invalid', '@default': 'identifier' },
+        }],
         [/[a-zA-Z_][\w]*/, {
           cases: { '@keywords': 'keyword', '@typeKeywords': 'type', '@legacyKeywords': 'invalid', '@default': 'identifier' },
         }],
