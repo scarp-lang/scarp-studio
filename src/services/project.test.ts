@@ -16,6 +16,16 @@ describe('Scarp project command bridge', () => {
     });
   });
 
+  it('passes preloaded UTF-8 input only with explicit Run Project', async () => {
+    vi.mocked(invoke).mockResolvedValue('Hello Studio');
+    await expect(scarpProjectAction('C:/scarp.exe', 'C:/project', 'run',
+      'नमस्ते\r\nStudio', true)).resolves.toBe('Hello Studio');
+    expect(invoke).toHaveBeenCalledWith('scarp_project_action', {
+      binary: 'C:/scarp.exe', folder: 'C:/project', action: 'run',
+      stdinText: 'नमस्ते\r\nStudio', interactive: true,
+    });
+  });
+
   it('supports only named static verify and test actions', async () => {
     for (const action of ['verify', 'list-tests', 'run-tests'] as const) {
       vi.mocked(invoke).mockResolvedValue('completed');

@@ -101,6 +101,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Scarp project info failed" }
           & $binary.FullName verify --diagnostic-format=json -- studio-project-smoke
           if ($LASTEXITCODE -ne 0) { throw "Scarp project verify failed" }
+          $defaultRun = & $binary.FullName run --max-input-line-bytes 4096 --max-input-bytes 16384 --max-input-reads 256 --diagnostic-format=json -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp project entrypoint run failed" }
+          'bind name = input("Name? "); print("Hello", name);' | Set-Content -Path studio-project-smoke/src/main.srp -Encoding utf8
+          $interactiveRun = 'Studio' | & $binary.FullName run --max-input-line-bytes 4096 --max-input-bytes 16384 --max-input-reads 256 --diagnostic-format=json --interactive -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0 -or $interactiveRun -notmatch "Hello Studio") {
+            throw "Scarp project alpha.10 interactive Run smoke failed"
+          }
           New-Item -ItemType Directory -Force studio-project-smoke/tests | Out-Null
           'assert(2 + 2 == 4);' | Set-Content -Path studio-project-smoke/tests/check.srp -Encoding utf8
           & $binary.FullName test --list -- studio-project-smoke
