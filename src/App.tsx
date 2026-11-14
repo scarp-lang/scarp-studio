@@ -510,6 +510,19 @@ export default function App() {
       setError('Select the official compiler and a Scarp project folder first.');
       return;
     }
+    if (action === 'run') {
+      try {
+        validateProgramInput(stdinText);
+        // Project Run reads saved files from disk, including imported modules.
+        // A dirty open editor tab could otherwise give misleading results.
+        if (liveEditor.current.documents.some(isDirty)) {
+          throw new Error('Save all modified Scarp tabs before Run Project; it executes files saved on disk.');
+        }
+      } catch (caught) {
+        setError(toMessage(caught));
+        return;
+      }
+    }
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
@@ -519,7 +532,11 @@ export default function App() {
     setCompilerOutputSource(null);
     setCompilerOutput('Scarp project ' + action + '…');
     try {
-      const output = await scarpProjectAction(compilerPath, folderPath, action);
+      const output = await scarpProjectAction(
+        compilerPath, folderPath, action,
+        action === 'run' ? stdinText : '',
+        action === 'run' && promptInputMode,
+      );
       setCompilerOutput(output);
       setNotice('Scarp project ' + action + ' finished');
     } catch (caught) {
@@ -957,6 +974,10 @@ export default function App() {
               <button type="button" onClick={() => void runProjectAction('verify')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
                 title="Verify the chosen Scarp project without executing code">Verify Project</button>
+              <button type="button" onClick={() => void runProjectAction('run')}
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
+                  documents.some(isDirty)}
+                title="Execute the project entrypoint with preloaded input; save modified tabs first">Run Project</button>
               <button type="button" onClick={() => void runProjectAction('list-tests')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
                 title="List discovered project tests without running them">List Tests</button>
@@ -966,15 +987,16 @@ export default function App() {
               <span>{folderPath ? fileName(folderPath) : 'Choose a Scarp project folder'}</span>
             </div>
             <div className="compiler-stdin">
-              <label htmlFor="scarp-stdin">Program input (Run only; preloaded UTF-8 lines)</label>
+              <label htmlFor="scarp-stdin">Program input (Run / Run Project; preloaded UTF-8 lines)</label>
               <label className="compiler-input-mode">
                 <input type="checkbox" checked={promptInputMode} disabled={compilerBusy}
                   onChange={(event) => setPromptInputMode(event.target.checked)} />
                 Enable alpha.10 prompt functions (input/ask)
               </label>
               <div className="compiler-meta">
-                All replies must be entered before Run. This enables the official --interactive
-                flag for alpha.10; it is not a live terminal. Output appears after completion.
+                All replies must be entered before Run or Run Project. The official
+                --interactive flag requires alpha.10; this is not a live terminal.
+                Output appears after completion.
               </div>
               <textarea
                 id="scarp-stdin"

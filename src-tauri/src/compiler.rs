@@ -402,6 +402,30 @@ fn project_action_args(action: &str, folder: &Path) -> Result<Vec<OsString>, Str
     Ok(args)
 }
 
+/// Project Run executes only the selected manifest entrypoint, not any
+/// arbitrary source path. It inherits the same input quotas as single-file Run.
+fn project_run_args(folder: &Path, interactive: bool) -> Vec<OsString> {
+    let mut args: Vec<OsString> = [
+        "run",
+        "--max-input-line-bytes",
+        "4096",
+        "--max-input-bytes",
+        "16384",
+        "--max-input-reads",
+        "256",
+        "--diagnostic-format=json",
+    ]
+    .into_iter()
+    .map(OsString::from)
+    .collect();
+    if interactive {
+        args.push(OsString::from("--interactive"));
+    }
+    args.push(OsString::from("--"));
+    args.push(folder.as_os_str().to_owned());
+    args
+}
+
 /// A project command is a separate, explicit user action. No file-open or
 /// background hook triggers it. Stop cancels the same native process slot.
 #[tauri::command]
@@ -409,6 +433,8 @@ pub async fn scarp_project_action(
     binary: String,
     folder: String,
     action: String,
+    stdin_text: Option<String>,
+    interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
 ) -> Result<String, String> {
     let runtime = state.inner().clone();
@@ -418,12 +444,31 @@ pub async fn scarp_project_action(
             if reserved.cancelled.load(Ordering::SeqCst) {
                 return Err("Scarp project operation was cancelled before launch.".into());
             }
+            let input = stdin_text.unwrap_or_default();
+            validate_stdin(&input)?;
+            let wants_prompt = interactive.unwrap_or(false);
+            if action != "run" && (!input.is_empty() || wants_prompt) {
+                return Err("Program input and prompt mode are allowed only for Run Project.".into());
+            }
             let root = selected_project_root(&folder)?;
-            let args = project_action_args(&action, &root)?;
+            let args = if action == "run" {
+                project_run_args(&root, wants_prompt)
+            } else {
+                project_action_args(&action, &root)?
+            };
             let (binary, version) = probe(&binary)?;
+            if action == "run" && wants_prompt && !supports_prompt_input(&version) {
+                return Err("Project prompt Run requires Scarp v0.0.6-alpha.10 or newer alpha with --interactive support.".into());
+            }
             let result = process_with_input_reserved(
-                &binary, &args, Some(&root), EXEC_TIMEOUT, EXEC_OUTPUT_LIMIT,
-                Some(&runtime), None, Some(&reserved),
+                &binary,
+                &args,
+                Some(&root),
+                EXEC_TIMEOUT,
+                EXEC_OUTPUT_LIMIT,
+                Some(&runtime),
+                if action == "run" { Some(input.as_str()) } else { None },
+                Some(&reserved),
             )?;
             let exit = result.status.code()
                 .map_or("terminated by signal".to_owned(), |value| value.to_string());
@@ -756,6 +801,26 @@ mod tests {
         for action in ["run", "exec", "init", "delete", "test --all", "../run", ""] {
             assert!(project_action_args(action, root).is_err(), "{action}");
         }
+    }
+
+    #[test]
+    fn project_run_uses_only_manifest_directory_and_bounded_input_flags() {
+        let root = Path::new("C:/Scarp Project");
+        let ordinary = project_run_args(root, false);
+        assert_eq!(ordinary[0], "run");
+        assert!(ordinary.contains(&OsString::from("--max-input-line-bytes")));
+        assert!(ordinary.contains(&OsString::from("4096")));
+        assert!(ordinary.contains(&OsString::from("--max-input-bytes")));
+        assert!(ordinary.contains(&OsString::from("16384")));
+        assert!(ordinary.contains(&OsString::from("--max-input-reads")));
+        assert!(ordinary.contains(&OsString::from("256")));
+        assert!(ordinary.contains(&OsString::from("--diagnostic-format=json")));
+        assert!(!ordinary.contains(&OsString::from("--interactive")));
+        assert_eq!(ordinary[ordinary.len() - 2], "--");
+        assert_eq!(ordinary.last().unwrap(), root.as_os_str());
+        let prompted = project_run_args(root, true);
+        assert!(prompted.contains(&OsString::from("--interactive")));
+        assert_eq!(prompted.last().unwrap(), root.as_os_str());
     }
 
     #[test]
