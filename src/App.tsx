@@ -91,6 +91,7 @@ export default function App() {
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
+  const [unavailableProjectFolders, setUnavailableProjectFolders] = useState<string[]>([]);
   const [explorerVisible, setExplorerVisible] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
@@ -363,8 +364,10 @@ export default function App() {
       setFolderPath(result.path);
       setFolderEntries(result.files);
       setFolderListingLimited(result.truncated);
-      setNotice(result.files.length + ' top-level .srp files shown' +
-        (result.truncated ? ' (large folder; listing limited)' : ''));
+      setUnavailableProjectFolders(result.unavailableFolders);
+      setNotice(result.files.length + ' Scarp sources shown' +
+        (result.truncated ? ' (listing limited)' : '') +
+        (result.unavailableFolders.length ? ' (some project folders were inaccessible)' : ''));
     } catch (caught) {
       setError('Could not open folder: ' + toMessage(caught));
     } finally {
@@ -745,11 +748,17 @@ export default function App() {
           {folderPath ? (
             <section className="sidebar-section">
               <div className="folder-label" title={folderPath}>▾ {fileName(folderPath)}</div>
-              <div className="sidebar-note">Top-level Scarp files</div>
+              <div className="sidebar-note">Scarp sources: root, src/, tests/, examples/</div>
               {folderListingLimited && (
                 <p className="sidebar-note" role="status">
-                  Large folder: listing limited to 200 Scarp files from the first
-                  4096 directory entries. Some files may not appear.
+                  Project file listing limited to 200 sources (at most 4096 entries
+                  inspected per directory). Some files may not appear.
+                </p>
+              )}
+              {unavailableProjectFolders.length > 0 && (
+                <p className="sidebar-note" role="status">
+                  Could not browse: {unavailableProjectFolders.join(', ')}.
+                  Check folder access permissions.
                 </p>
               )}
               {folderEntries.length ? folderEntries.map((entry) => (

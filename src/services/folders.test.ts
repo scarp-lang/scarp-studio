@@ -45,6 +45,89 @@ describe('selected-folder Scarp source reads', () => {
     expect(join).toHaveBeenCalledTimes(2);
   });
 
+  it('shows standard src, tests and examples Scarp sources without recursion', async () => {
+    vi.mocked(open).mockResolvedValue('C:/project');
+    vi.mocked(readDir).mockImplementation(async (path) => {
+      if (path === 'C:/project') return [
+        { name: 'src', isFile: false, isDirectory: true, isSymlink: false },
+        { name: 'tests', isFile: false, isDirectory: true, isSymlink: false },
+        { name: 'examples', isFile: false, isDirectory: true, isSymlink: false },
+        { name: 'vendor', isFile: false, isDirectory: true, isSymlink: false },
+        { name: 'linked-src', isFile: false, isDirectory: true, isSymlink: true },
+      ];
+      if (path === 'C:/project/src') return [
+        { name: 'main.srp', isFile: true, isDirectory: false, isSymlink: false },
+        { name: 'child', isFile: false, isDirectory: true, isSymlink: false },
+      ];
+      if (path === 'C:/project/tests') return [
+        { name: 'hello.srp', isFile: true, isDirectory: false, isSymlink: false },
+      ];
+      if (path === 'C:/project/examples') return [
+        { name: 'demo.srp', isFile: true, isDirectory: false, isSymlink: false },
+        { name: 'external.srp', isFile: true, isDirectory: false, isSymlink: true },
+      ];
+      throw new Error('unexpected recursive scan ' + path);
+    });
+    const listing = await chooseSourceFolder();
+    expect(listing?.files).toEqual([
+      { name: 'examples/demo.srp', path: 'C:/project/examples/demo.srp' },
+      { name: 'src/main.srp', path: 'C:/project/src/main.srp' },
+      { name: 'tests/hello.srp', path: 'C:/project/tests/hello.srp' },
+    ]);
+    expect(listing?.truncated).toBe(false);
+    expect(listing?.unavailableFolders).toEqual([]);
+    expect(readDir).toHaveBeenCalledTimes(4);
+  });
+
+  it('reports unreadable project subdirectories while retaining root files', async () => {
+    vi.mocked(open).mockResolvedValue('C:/project');
+    vi.mocked(readDir).mockImplementation(async (path) => {
+      if (path === 'C:/project') return [
+        { name: 'root.srp', isFile: true, isDirectory: false, isSymlink: false },
+        { name: 'src', isFile: false, isDirectory: true, isSymlink: false },
+      ];
+      throw new Error('Access denied to project sources');
+    });
+    const listing = await chooseSourceFolder();
+    expect(listing?.files).toEqual([{ name: 'root.srp', path: 'C:/project/root.srp' }]);
+    expect(listing?.unavailableFolders).toEqual(['src']);
+  });
+
+  it('never traverses symlinked project subdirectories', async () => {
+    vi.mocked(open).mockResolvedValue('C:/project');
+    vi.mocked(readDir).mockResolvedValue([
+      { name: 'src', isFile: false, isDirectory: true, isSymlink: true },
+      { name: 'tests', isFile: false, isDirectory: true, isSymlink: true },
+    ]);
+    expect((await chooseSourceFolder())?.files).toEqual([]);
+    expect(readDir).toHaveBeenCalledTimes(1);
+  });
+
+  it('enforces a combined 200-file limit across root and project subfolders', async () => {
+    vi.mocked(open).mockResolvedValue('C:/project');
+    const asFile = (name: string) => ({ name, isFile: true, isDirectory: false, isSymlink: false });
+    vi.mocked(readDir).mockImplementation(async (path) =>
+      path === 'C:/project'
+        ? [
+          ...Array.from({ length: 195 }, (_, i) => asFile('root' + i + '.srp')),
+          { name: 'src', isFile: false, isDirectory: true, isSymlink: false },
+        ]
+        : Array.from({ length: 40 }, (_, i) => asFile('nested' + i + '.srp')));
+    const listing = await chooseSourceFolder();
+    expect(listing?.files).toHaveLength(200);
+    expect(listing?.truncated).toBe(true);
+  });
+
+  it('opens a nested source only when it was explicitly listed', async () => {
+    vi.mocked(readTextFile).mockResolvedValue('print("nested");');
+    const selected = [{ name: 'src/main.srp', path: 'C:/project/src/main.srp' }];
+    await expect(readFolderSource('C:/project/src/main.srp', selected))
+      .resolves.toBe('print("nested");');
+    await expect(readFolderSource('C:/project/src/hidden.srp', selected))
+      .rejects.toThrow('current folder listing');
+    expect(readTextFile).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses paths not present in the current selected listing', async () => {
     await expect(readFolderSource('C:/another/outside.srp', [
       { name: 'file.srp', path: 'C:/project/file.srp' },
