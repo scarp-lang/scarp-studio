@@ -7,13 +7,17 @@ export function probeScarp(binary: string): Promise<string> {
   return invoke<string>('scarp_probe', { binary });
 }
 
-export function executeScarp(
+export async function executeScarp(
   binary: string, source: string, mode: ScarpMode, expectedContent: string,
   stdinText: string, interactive = false,
-): Promise<string> {
+): Promise<{ output: string; diagnosticStderr: string | null }> {
   const args = { binary, source, mode, expectedContent, stdinText };
-  // Preserve the existing native invocation contract when prompt mode is off.
-  return invoke<string>('scarp_execute', interactive ? { ...args, interactive: true } : args);
+  // Native returns a distinct, Verify-only stderr field for diagnostics.
+  // Raw program stdout is never parsed as a source location.
+  const [output, diagnosticStderr] = await invoke<[string, string | null]>(
+    'scarp_execute', interactive ? { ...args, interactive: true } : args,
+  );
+  return { output, diagnosticStderr };
 }
 
 export function stopScarp(): Promise<boolean> {

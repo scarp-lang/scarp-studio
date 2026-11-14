@@ -5,7 +5,7 @@ import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  fileName, isDirty,
+  fileName, isDirty, sameFilePath,
 } from './model/documents';
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
@@ -21,6 +21,7 @@ import { runnableSource } from './model/compilerReadiness';
 import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
 import { exitBlockReason } from './model/exitGuards';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
+import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -75,7 +76,11 @@ export default function App() {
   const liveEditor = useRef(editorState);
   const { documents, activeId } = editorState;
   function dispatch(action: EditorAction): void {
-    const next = editorReducer(liveEditor.current, action);
+    const before = liveEditor.current;
+    const next = editorReducer(before, action);
+    if (next === before) return;
+    // Source positions are invalid after edits, saving, or tab transitions.
+    setCompilerOutputSource(null);
     liveEditor.current = next;
     setEditorState(next);
   }
@@ -111,6 +116,8 @@ export default function App() {
     'Source files are never executed automatically.',
   );
   const [compilerBusy, setCompilerBusy] = useState(false);
+  const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
+  const [compilerOutputSource, setCompilerOutputSource] = useState<{path: string; content: string} | null>(null);
   // This input is session-local, not persisted or stored in source files.
   const [stdinText, setStdinText] = useState('');
   const [promptInputMode, setPromptInputMode] = useState(false);
@@ -121,6 +128,11 @@ export default function App() {
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const diagnostic = parseScarpDiagnostic(compilerDiagnosticStderr);
+  const diagnosticPosition = active?.path && compilerOutputSource &&
+    sameFilePath(active.path, compilerOutputSource.path) &&
+    active.content === compilerOutputSource.content
+    ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
   const functionOutline = useMemo(
     () => active ? scanScarpFunctions(active.content) : [],
     [active?.content],
@@ -394,6 +406,8 @@ export default function App() {
       const info = await probeScarp(chosen);
       setCompilerPath(chosen);
       setCompilerInfo(info);
+      setCompilerOutputSource(null);
+      setCompilerDiagnosticStderr(null);
       setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
       setNotice('Scarp compiler configured');
     } catch (caught) {
@@ -427,6 +441,8 @@ export default function App() {
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
+    setCompilerOutputSource({ path: source, content: expectedContent });
+    setCompilerDiagnosticStderr(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(
@@ -434,16 +450,36 @@ export default function App() {
         mode === 'exec' ? stdinText : '',
         mode === 'exec' && promptInputMode,
       );
-      setCompilerOutput(result);
+      setCompilerOutput(result.output);
+      setCompilerDiagnosticStderr(result.diagnosticStderr);
       setNotice('Scarp ' + mode + ' finished; see output');
     } catch (caught) {
       const message = toMessage(caught);
+      setCompilerOutputSource(null);
+      setCompilerDiagnosticStderr(null);
       setCompilerOutput('Scarp ' + mode + ' could not complete:\n' + message);
       setError(message);
     } finally {
       commandInProgress.current = false;
       setCompilerBusy(false);
     }
+  }
+
+  function revealDiagnostic(): void {
+    const current = liveEditor.current.documents.find(
+      (item) => item.id === liveEditor.current.activeId,
+    );
+    if (!current?.path || !compilerOutputSource ||
+        !sameFilePath(current.path, compilerOutputSource.path) ||
+        current.content !== compilerOutputSource.content ||
+        mountedEditorDocumentId.current !== current.id) return;
+    const position = diagnosticSourcePosition(diagnostic, current.path, current.content);
+    const editor = mountedEditor.current;
+    if (!position || !editor) return;
+    pendingSearchLocation.current = null;
+    editor.setPosition(position);
+    editor.revealPositionInCenter(position);
+    editor.focus();
   }
 
   async function stopCompiler(): Promise<void> {
@@ -883,6 +919,19 @@ export default function App() {
                 avoid entering passwords or secrets.
               </div>
             </div>
+            {diagnostic && (
+              <div className="compiler-diagnostic" role="status">
+                <strong>{diagnostic.code || 'Scarp Verify error'}</strong>
+                <span>{diagnostic.message}</span>
+                {diagnosticPosition && (
+                  <button type="button" onClick={revealDiagnostic}
+                    title="Navigate to this Verify error in the unchanged Scarp source">
+                    Go to line {diagnostic.line}, column {diagnostic.column}
+                  </button>
+                )}
+                {diagnostic.help && <span className="compiler-diagnostic-help">{diagnostic.help}</span>}
+              </div>
+            )}
             <pre className="compiler-output" role="log" aria-live="polite">{compilerOutput}</pre>
           </section>
         </main>

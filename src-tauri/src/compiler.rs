@@ -497,7 +497,7 @@ pub async fn scarp_execute(
     stdin_text: String,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let runtime = state.inner().clone();
     // Claim the native execution slot before the background worker probes
     // compiler CLI support, so Stop prevents later source execution.
@@ -549,7 +549,21 @@ pub async fn scarp_execute(
             } else {
                 ""
             };
-            Ok(format!(
+            // Static Verify never executes user source. Only its complete,
+            // non-cancelled failure stderr can be used for navigation.
+            // Interactive Run can flush user-written stderr: NEVER treat that
+            // stream as trusted diagnostic JSON (even on a failing exit).
+            let diagnostic_stderr = if mode == "verify"
+                && !result.status.success()
+                && !result.cancelled
+                && !result.truncated
+                && !result.stderr.is_empty()
+            {
+                Some(result.stderr.clone())
+            } else {
+                None
+            };
+            let display = format!(
                 "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
                 source.display(),
                 result.stdout,
@@ -560,7 +574,8 @@ pub async fn scarp_execute(
                 },
                 result.stderr,
                 cap_notice
-            ))
+            );
+            Ok((display, diagnostic_stderr))
         })();
         release_job(&runtime, reserved.id);
         execution
