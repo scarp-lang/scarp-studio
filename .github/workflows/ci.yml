@@ -114,6 +114,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Scarp list project tests failed" }
           & $binary.FullName test --require-tests -- studio-project-smoke
           if ($LASTEXITCODE -ne 0) { throw "Scarp run project tests failed" }
+          $listedJson = & $binary.FullName test --json=v2 --list -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp project JSON v2 test listing failed" }
+          $listedReport = $listedJson | ConvertFrom-Json
+          if ($listedReport.schema_version -ne 2 -or $listedReport.mode -ne "list" -or $listedReport.discovered -ne 1) {
+            throw "Unexpected Scarp test discovery JSON schema"
+          }
+          $passingJson = & $binary.FullName test --json=v2 --require-tests -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp project JSON v2 test run failed" }
+          $passingReport = $passingJson | ConvertFrom-Json
+          if ($passingReport.schema_version -ne 2 -or $passingReport.passed -ne 1 -or $passingReport.failed -ne 0) {
+            throw "Unexpected Scarp test run JSON schema"
+          }
+          'assert(false, "expected Studio test failure");' | Set-Content -Path studio-project-smoke/tests/failing.srp -Encoding utf8
+          $failedJson = & $binary.FullName test --json=v2 --require-tests -- studio-project-smoke
+          if ($LASTEXITCODE -eq 0) { throw "Failing test unexpectedly passed" }
+          $failedReport = $failedJson | ConvertFrom-Json
+          if ($failedReport.schema_version -ne 2 -or $failedReport.failed -ne 1 -or $failedReport.tests.Count -ne 2) {
+            throw "Unexpected structured failing test report"
+          }
+          Remove-Item studio-project-smoke/tests/failing.srp
 
       - name: Test Studio native process service against pinned Scarp compiler
         shell: pwsh

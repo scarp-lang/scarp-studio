@@ -426,6 +426,23 @@ fn project_run_args(folder: &Path, interactive: bool) -> Vec<OsString> {
     args
 }
 
+// The official test JSON v2 envelope was published in alpha.9. Older
+// compilers keep the human-readable report without any schema assumption.
+fn supports_structured_project_tests(version: &str) -> bool {
+    version
+        .strip_prefix("0.0.6-alpha.")
+        .and_then(|suffix| suffix.parse::<u16>().ok())
+        .is_some_and(|alpha| alpha >= 9)
+}
+
+fn project_test_args(action: &str, folder: &Path, version: &str) -> Result<Vec<OsString>, String> {
+    let mut args = project_action_args(action, folder)?;
+    if matches!(action, "list-tests" | "run-tests") && supports_structured_project_tests(version) {
+        args.insert(1, OsString::from("--json=v2"));
+    }
+    Ok(args)
+}
+
 /// A project command is a separate, explicit user action. No file-open or
 /// background hook triggers it. Stop cancels the same native process slot.
 #[tauri::command]
@@ -436,7 +453,7 @@ pub async fn scarp_project_action(
     stdin_text: Option<String>,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let runtime = state.inner().clone();
     let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -451,12 +468,12 @@ pub async fn scarp_project_action(
                 return Err("Program input and prompt mode are allowed only for Run Project.".into());
             }
             let root = selected_project_root(&folder)?;
+            let (binary, version) = probe(&binary)?;
             let args = if action == "run" {
                 project_run_args(&root, wants_prompt)
             } else {
-                project_action_args(&action, &root)?
+                project_test_args(&action, &root, &version)?
             };
-            let (binary, version) = probe(&binary)?;
             if action == "run" && wants_prompt && !supports_prompt_input(&version) {
                 return Err("Project prompt Run requires Scarp v0.0.6-alpha.10 or newer alpha with --interactive support.".into());
             }
@@ -477,12 +494,26 @@ pub async fn scarp_project_action(
             let cap_notice = if result.truncated {
                 "\n[Project output truncated to Studio's safety limit.]"
             } else { "" };
-            Ok(format!(
+            // Only the official compiler's complete test-report stdout
+            // is passed to the frontend. It is still parsed strictly there.
+            // Per-test failures return exit 1 with a complete JSON report.
+            let report_json = if matches!(action.as_str(), "list-tests" | "run-tests")
+                && supports_structured_project_tests(&version)
+                && !result.truncated
+                && !result.cancelled
+                && result.stdout.starts_with('{')
+            {
+                Some(result.stdout.clone())
+            } else {
+                None
+            };
+            let display = format!(
                 "Scarp {version} — project {action} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
                 root.display(), result.stdout,
                 if result.stderr.is_empty() { "" } else { "\nCompiler diagnostics:\n" },
                 result.stderr, cap_notice,
-            ))
+            );
+            Ok((display, report_json))
         })();
         release_job(&runtime, reserved.id);
         execution
@@ -801,6 +832,26 @@ mod tests {
         for action in ["run", "exec", "init", "delete", "test --all", "../run", ""] {
             assert!(project_action_args(action, root).is_err(), "{action}");
         }
+    }
+
+    #[test]
+    fn project_json_v2_arguments_are_gated_by_published_compiler_version() {
+        let root = Path::new("C:/Scarp Project");
+        let legacy = project_test_args("list-tests", root, "0.0.6-alpha.8").unwrap();
+        assert!(!legacy.contains(&OsString::from("--json=v2")));
+        for action in ["list-tests", "run-tests"] {
+            let args = project_test_args(action, root, "0.0.6-alpha.10").unwrap();
+            assert_eq!(args[0], "test");
+            assert_eq!(args[1], "--json=v2");
+            assert_eq!(args[args.len() - 2], "--");
+            assert_eq!(args.last().unwrap(), root.as_os_str());
+        }
+        let info = project_test_args("info", root, "0.0.6-alpha.10").unwrap();
+        assert!(!info.contains(&OsString::from("--json=v2")));
+        assert!(!supports_structured_project_tests("0.0.6-alpha.8"));
+        assert!(supports_structured_project_tests("0.0.6-alpha.9"));
+        assert!(supports_structured_project_tests("0.0.6-alpha.10"));
+        assert!(!supports_structured_project_tests("garbage"));
     }
 
     #[test]
