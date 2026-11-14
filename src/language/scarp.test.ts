@@ -57,6 +57,7 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     expect(provider.legacyKeywords).toEqual(['let', 'mut']);
     const identifier = provider.tokenizer.root.find(([, action]) =>
       typeof action === 'object' && action !== null && 'cases' in action &&
+      typeof action.cases === 'object' && action.cases !== null &&
       '@typeKeywords' in action.cases
     );
     expect(identifier?.[1]).toEqual({
