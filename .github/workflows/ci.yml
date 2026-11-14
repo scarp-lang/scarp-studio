@@ -114,8 +114,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Scarp list project tests failed" }
           & $binary.FullName test --require-tests -- studio-project-smoke
           if ($LASTEXITCODE -ne 0) { throw "Scarp run project tests failed" }
-          $listedJson = & $binary.FullName test --json=v2 --list -- studio-project-smoke
-          if ($LASTEXITCODE -ne 0) { throw "Scarp project JSON v2 test listing failed" }
+          # Nonzero native statuses are inspected explicitly below, including
+          # the deliberately failing suite. PowerShell must not terminate first.
+          $PSNativeCommandUseErrorActionPreference = $false
+          Write-Host "Verifying official Scarp JSON v2 project-test listing"
+          $listedJson = & $binary.FullName test --json=v2 --list -- studio-project-smoke 2>&1
+          $listedExit = $LASTEXITCODE
+          if ($listedExit -ne 0) {
+            Write-Host "Scarp test list exit: $listedExit; output: $($listedJson | Out-String)"
+            throw "Scarp project JSON v2 test listing failed"
+          }
           $listedReport = $listedJson | ConvertFrom-Json
           if ($listedReport.schema_version -ne 2 -or $listedReport.mode -ne "list" -or $listedReport.discovered -ne 1) {
             throw "Unexpected Scarp test discovery JSON schema"
