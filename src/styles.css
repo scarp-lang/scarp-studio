@@ -179,6 +179,11 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 }
 .compiler-diagnostic button:hover { background: var(--bg); }
 .compiler-output { font: 12px/1.5 Consolas, "Cascadia Code", monospace; margin: 0; padding: 8px 12px; color: var(--text); background: var(--bg); flex: 1; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.project-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 5px 12px 8px; border-top: 1px solid var(--border); }
+.project-actions span { color: var(--muted); font-size: 10px; }
+.project-actions button { border: 1px solid var(--border); background: var(--raised); color: var(--text); border-radius: 5px; padding: 4px 8px; font-size: 11px; }
+.project-actions button:not(:disabled):hover { border-color: var(--accent); }
+.project-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .compiler-stdin { padding: 0 12px 6px; display: flex; flex-direction: column; gap: 4px; }
 .compiler-stdin label { color: var(--text); font-size: 11px; font-weight: 600; }
 .compiler-stdin textarea {

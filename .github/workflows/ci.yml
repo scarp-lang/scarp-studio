@@ -89,6 +89,25 @@ jobs:
             throw "Scarp alpha.10 BigInt execution smoke failed"
           }
 
+      - name: Smoke official Scarp project commands
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Pinned Scarp compiler missing" }
+          & $binary.FullName init studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp init project failed" }
+          & $binary.FullName project info --json studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp project info failed" }
+          & $binary.FullName verify --diagnostic-format=json -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp project verify failed" }
+          New-Item -ItemType Directory -Force studio-project-smoke/tests | Out-Null
+          'assert(2 + 2 == 4);' | Set-Content -Path studio-project-smoke/tests/check.srp -Encoding utf8
+          & $binary.FullName test --list -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp list project tests failed" }
+          & $binary.FullName test --require-tests -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp run project tests failed" }
+
       - name: Test Studio native process service against pinned Scarp compiler
         shell: pwsh
         run: |
