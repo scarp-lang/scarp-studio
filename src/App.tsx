@@ -23,6 +23,7 @@ import { exitBlockReason } from './model/exitGuards';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
+import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -502,6 +503,35 @@ export default function App() {
     editor.focus();
   }
 
+  async function runProjectAction(action: ScarpProjectAction): Promise<void> {
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
+        saveInProgress.current) return;
+    if (!compilerPath || !folderPath) {
+      setError('Select the official compiler and a Scarp project folder first.');
+      return;
+    }
+    commandInProgress.current = true;
+    setCompilerBusy(true);
+    setError(null);
+    // Project operations may inspect other files. They never assign an editor
+    // diagnostic position to the current open tab.
+    setCompilerDiagnosticStderr(null);
+    setCompilerOutputSource(null);
+    setCompilerOutput('Scarp project ' + action + '…');
+    try {
+      const output = await scarpProjectAction(compilerPath, folderPath, action);
+      setCompilerOutput(output);
+      setNotice('Scarp project ' + action + ' finished');
+    } catch (caught) {
+      const message = toMessage(caught);
+      setCompilerOutput('Scarp project ' + action + ' could not complete:\\n' + message);
+      setError(message);
+    } finally {
+      commandInProgress.current = false;
+      setCompilerBusy(false);
+    }
+  }
+
   async function stopCompiler(): Promise<void> {
     if (!isTauri()) return;
     try {
@@ -919,6 +949,22 @@ export default function App() {
             <div className="compiler-meta">{compilerInfo || (compilerPath
               ? 'Compiler configured; version checked on the next Run/Verify.'
               : 'No compiler selected')}</div>
+            <div className="project-actions" aria-label="Selected Scarp project commands">
+              <span>PROJECT</span>
+              <button type="button" onClick={() => void runProjectAction('info')}
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
+                title="Inspect the chosen project's manifest and entrypoint">Info</button>
+              <button type="button" onClick={() => void runProjectAction('verify')}
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
+                title="Verify the chosen Scarp project without executing code">Verify Project</button>
+              <button type="button" onClick={() => void runProjectAction('list-tests')}
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
+                title="List discovered project tests without running them">List Tests</button>
+              <button type="button" onClick={() => void runProjectAction('run-tests')}
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
+                title="Explicitly execute the chosen project's test files">Run Tests</button>
+              <span>{folderPath ? fileName(folderPath) : 'Choose a Scarp project folder'}</span>
+            </div>
             <div className="compiler-stdin">
               <label htmlFor="scarp-stdin">Program input (Run only; preloaded UTF-8 lines)</label>
               <label className="compiler-input-mode">

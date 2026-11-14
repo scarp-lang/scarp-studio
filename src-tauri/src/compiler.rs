@@ -367,6 +367,81 @@ fn supports_prompt_input(version: &str) -> bool {
         .is_some_and(|alpha| alpha >= 10)
 }
 
+/// Project actions never write source and only accept a selected manifest root.
+/// The CLI validates manifest fields, paths and dependency traversal itself.
+fn selected_project_root(folder: &str) -> Result<PathBuf, String> {
+    let root = Path::new(folder);
+    if !root.is_absolute() {
+        return Err("Choose an absolute project folder in Studio first.".into());
+    }
+    let root = fs::canonicalize(root).map_err(|e| format!("Scarp folder not found: {e}"))?;
+    if !root.is_dir() {
+        return Err("The selected Scarp project path is not a directory.".into());
+    }
+    if !root.join("scarp.project").is_file() && !root.join("Scarp.project").is_file() {
+        return Err("No scarp.project manifest found. Choose the Scarp project root.".into());
+    }
+    Ok(root)
+}
+
+fn project_action_args(action: &str, folder: &Path) -> Result<Vec<OsString>, String> {
+    let verbs: &[&str] = match action {
+        "info" => &["project", "info", "--json"],
+        "verify" => &["verify", "--diagnostic-format=json"],
+        "list-tests" => &["test", "--list"],
+        "run-tests" => &["test", "--require-tests"],
+        _ => return Err("Only Scarp project info, verify, list-tests and run-tests are allowed.".into()),
+    };
+    let mut args: Vec<OsString> = verbs.iter().map(OsString::from).collect();
+    args.push(OsString::from("--"));
+    args.push(folder.as_os_str().to_owned());
+    Ok(args)
+}
+
+/// A project command is a separate, explicit user action. No file-open or
+/// background hook triggers it. Stop cancels the same native process slot.
+#[tauri::command]
+pub async fn scarp_project_action(
+    binary: String,
+    folder: String,
+    action: String,
+    state: tauri::State<'_, CompilerRuntime>,
+) -> Result<String, String> {
+    let runtime = state.inner().clone();
+    let reserved = reserve_job(&runtime)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let execution = (|| {
+            if reserved.cancelled.load(Ordering::SeqCst) {
+                return Err("Scarp project operation was cancelled before launch.".into());
+            }
+            let root = selected_project_root(&folder)?;
+            let args = project_action_args(&action, &root)?;
+            let (binary, version) = probe(&binary)?;
+            let result = process_with_input_reserved(
+                &binary, &args, Some(&root), EXEC_TIMEOUT, EXEC_OUTPUT_LIMIT,
+                Some(&runtime), None, Some(&reserved),
+            )?;
+            let exit = result.status.code()
+                .map_or("terminated by signal".to_owned(), |value| value.to_string());
+            let outcome = if result.cancelled { "cancelled" }
+                else if result.status.success() { "completed" } else { "failed" };
+            let cap_notice = if result.truncated {
+                "\n[Project output truncated to Studio's safety limit.]"
+            } else { "" };
+            Ok(format!(
+                "Scarp {version} — project {action} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
+                root.display(), result.stdout,
+                if result.stderr.is_empty() { "" } else { "\nCompiler diagnostics:\n" },
+                result.stderr, cap_notice,
+            ))
+        })();
+        release_job(&runtime, reserved.id);
+        execution
+    })
+    .await
+    .map_err(|e| format!("Scarp project worker failed: {e}"))?
+}
+
 fn compiler_supports(binary: &Path, verb: &str) -> Result<bool, String> {
     let args = [OsString::from("guide"), OsString::from(verb)];
     let result = process(binary, &args, None, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT, None)?;
@@ -654,6 +729,43 @@ mod tests {
         assert!(supports_prompt_input("0.0.6-alpha.11"));
         assert!(!supports_prompt_input("0.0.6-beta.1"));
         assert!(!supports_prompt_input("unknown"));
+    }
+
+    #[test]
+    fn project_actions_are_narrow_and_never_accept_commands_or_flags() {
+        let root = Path::new("C:/Scarp Project");
+        let info = project_action_args("info", root).unwrap();
+        assert_eq!(info[0], "project");
+        assert_eq!(info[1], "info");
+        assert!(info.contains(&OsString::from("--json")));
+        assert_eq!(info[info.len()-2], "--");
+        assert_eq!(info.last().unwrap(), root.as_os_str());
+        let verify = project_action_args("verify", root).unwrap();
+        assert_eq!(verify[0], "verify");
+        assert!(verify.contains(&OsString::from("--diagnostic-format=json")));
+        let list = project_action_args("list-tests", root).unwrap();
+        assert_eq!(list[0], "test");
+        assert!(list.contains(&OsString::from("--list")));
+        let run = project_action_args("run-tests", root).unwrap();
+        assert_eq!(run[0], "test");
+        assert!(run.contains(&OsString::from("--require-tests")));
+        for action in ["run", "exec", "init", "delete", "test --all", "../run", ""] {
+            assert!(project_action_args(action, root).is_err(), "{action}");
+        }
+    }
+
+    #[test]
+    fn project_folder_requires_absolute_existing_manifest_root() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        assert!(selected_project_root("relative-path").is_err());
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("studio-project-{}-{unique}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        assert!(selected_project_root(root.to_str().unwrap()).is_err());
+        fs::write(root.join("scarp.project"), "scarp-project: 1\n").unwrap();
+        assert_eq!(selected_project_root(root.to_str().unwrap()).unwrap(),
+            fs::canonicalize(&root).unwrap());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

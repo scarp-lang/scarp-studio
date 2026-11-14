@@ -11,6 +11,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             compiler::scarp_probe,
             compiler::scarp_execute,
+            compiler::scarp_project_action,
             compiler::scarp_cancel
         ])
         .run(tauri::generate_context!())
