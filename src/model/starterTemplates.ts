@@ -51,6 +51,24 @@ export const scarpStarterTemplates: readonly ScarpStarterTemplate[] = [
     description: 'Use read_line with the Run input panel',
     source: '// Enter a name in the Program Input panel before running.\nbind name: string = read_line();\nprint("Hello", name);\n',
   },
+  {
+    id: 'prompts',
+    title: 'Prompted Input (alpha.10+)',
+    description: 'Preload replies and enable Studio prompt mode',
+    source: '// Requires official Scarp v0.0.6-alpha.10+.\n// Enable prompt mode and enter a name in Program Input BEFORE Run.\nbind name = input("Name: ");\nprint("Hello", name);\n',
+  },
+  {
+    id: 'arrays',
+    title: 'Fixed Arrays (alpha.10+)',
+    description: 'Immutable typed arrays with checked indexing',
+    source: '// Requires official Scarp v0.0.6-alpha.10+.\nbind numbers: array<integer, 2> = [array: 10, 20];\nprint(numbers[1]);\n',
+  },
+  {
+    id: 'exactmath',
+    title: 'BigInt Math (alpha.10+)',
+    description: 'Exact GCD, division and number theory',
+    source: '// Requires official Scarp v0.0.6-alpha.10+.\nbind left = bigint("120");\nbind right = bigint("18");\nprint(bigint_gcd(left, right));\n',
+  },
 ];
 
 export function getScarpStarterTemplate(id: string): ScarpStarterTemplate | null {

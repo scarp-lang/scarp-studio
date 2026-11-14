@@ -74,6 +74,20 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $promptOutput -notmatch "Hello Studio") {
             throw "Scarp alpha.10 preloaded prompt smoke failed"
           }
+          'bind numbers: array<integer, 2> = [array: 10, 20]; print(numbers[1]);' | Set-Content -Path scarp-arrays.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-arrays.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.10 arrays verify smoke failed" }
+          $arrayOutput = & $binary.FullName exec --diagnostic-format=json -- scarp-arrays.srp
+          if ($LASTEXITCODE -ne 0 -or $arrayOutput -notmatch "20") {
+            throw "Scarp alpha.10 arrays execution smoke failed"
+          }
+          'bind a = bigint("120"); bind b = bigint("18"); print(bigint_gcd(a, b));' | Set-Content -Path scarp-bigmath.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-bigmath.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.10 BigInt verify smoke failed" }
+          $bigmathOutput = & $binary.FullName exec --diagnostic-format=json -- scarp-bigmath.srp
+          if ($LASTEXITCODE -ne 0 -or $bigmathOutput -notmatch "6") {
+            throw "Scarp alpha.10 BigInt execution smoke failed"
+          }
 
       - name: Test Studio native process service against pinned Scarp compiler
         shell: pwsh

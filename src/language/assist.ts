@@ -1,4 +1,4 @@
-/** Editor-only Scarp assistance, based on real compiler alpha.8 examples.
+/** Editor-only Scarp assistance, including published alpha.10 features.
  * These templates do not replace parser/compiler validation.
  */
 export interface ScarpCompletion {
@@ -106,6 +106,162 @@ const templates: readonly ScarpCompletion[] = [
     documentation: 'Scarp built-in type. Availability depends on the selected compiler version.',
     insertText: label,
   })),
+  {
+    label: "input", kind: "function",
+    detail: "Prompt a UTF-8 line",
+    documentation: "Requires alpha.10+ and Studio prompt mode. Replies are preloaded; not a live terminal.",
+    insertText: "input(\"${1:Prompt: }\")",
+  },
+  {
+    label: "ask", kind: "function",
+    detail: "Prompt a UTF-8 line (alias)",
+    documentation: "Since alpha.10: write a prompt, flush, then read one input line; requires interactive prompt mode.",
+    insertText: "ask(\"${1:Prompt: }\")",
+  },
+  {
+    label: "ask_or", kind: "function",
+    detail: "Prompt with EOF fallback",
+    documentation: "Alpha.10 interactive input; return the fallback when the input stream reaches EOF.",
+    insertText: "ask_or(\"${1:Prompt: }\", \"${2:Guest}\")",
+  },
+  {
+    label: "input_integer", kind: "function",
+    detail: "Prompt a signed integer",
+    documentation: "Alpha.10 interactive input; parse a checked signed 64-bit integer from one line.",
+    insertText: "input_integer(\"${1:Number: }\")",
+  },
+  {
+    label: "input_float", kind: "function",
+    detail: "Prompt a finite float",
+    documentation: "Alpha.10 interactive input; parse a finite binary64 number from one line.",
+    insertText: "input_float(\"${1:Number: }\")",
+  },
+  {
+    label: "input_bigint", kind: "function",
+    detail: "Prompt an exact integer",
+    documentation: "Alpha.10 interactive input; parse an exact signed BigInt within configured quotas.",
+    insertText: "input_bigint(\"${1:Number: }\")",
+  },
+  {
+    label: "try_read_line", kind: "function",
+    detail: "EOF-aware read",
+    documentation: "Since alpha.10: return tuple<boolean,string> distinguishing EOF from an empty line; does not require interactive mode.",
+    insertText: "try_read_line()",
+  },
+  {
+    label: "flush_stdout", kind: "function",
+    detail: "Flush stdout",
+    documentation: "Since alpha.10: flush standard output in interactive evaluation.",
+    insertText: "flush_stdout()",
+  },
+  {
+    label: "flush_stderr", kind: "function",
+    detail: "Flush stderr",
+    documentation: "Since alpha.10: flush standard error in interactive evaluation.",
+    insertText: "flush_stderr()",
+  },
+  {
+    label: "array", kind: "snippet",
+    detail: "Fixed-length array type",
+    documentation: "Since alpha.10: immutable array<T,N>, maximum length 4096; literal syntax is [array: values].",
+    insertText: "array<${1:integer}, ${2:2}>",
+  },
+  {
+    label: "bigint_pow", kind: "function",
+    detail: "Exact BigInt exponent",
+    documentation: "Since alpha.10: exponent is a nonnegative integer. Work and digit budgets apply.",
+    insertText: "bigint_pow(${1:value}, ${2:exponent})",
+  },
+  {
+    label: "bigint_gcd", kind: "function",
+    detail: "BigInt GCD",
+    documentation: "Since alpha.10: nonnegative greatest common divisor of two exact integers.",
+    insertText: "bigint_gcd(${1:a}, ${2:b})",
+  },
+  {
+    label: "bigint_lcm", kind: "function",
+    detail: "BigInt LCM",
+    documentation: "Since alpha.10: nonnegative least common multiple of two exact integers.",
+    insertText: "bigint_lcm(${1:a}, ${2:b})",
+  },
+  {
+    label: "bigint_sqrt", kind: "function",
+    detail: "Integer BigInt square root",
+    documentation: "Since alpha.10: floor of square root for a nonnegative exact integer.",
+    insertText: "bigint_sqrt(${1:value})",
+  },
+  {
+    label: "bigint_bit_length", kind: "function",
+    detail: "Magnitude bit width",
+    documentation: "Since alpha.10: number of bits needed for the magnitude, zero gives 0.",
+    insertText: "bigint_bit_length(${1:value})",
+  },
+  {
+    label: "bigint_to_text", kind: "function",
+    detail: "Exact decimal text",
+    documentation: "Since alpha.10: convert exact integer to canonical signed decimal text.",
+    insertText: "bigint_to_text(${1:value})",
+  },
+  {
+    label: "bigint_from_radix", kind: "function",
+    detail: "Parse BigInt radix",
+    documentation: "Since alpha.10: parse a signed integer string with base 2 through 36.",
+    insertText: "bigint_from_radix(\"${1:ff}\", ${2:16})",
+  },
+  {
+    label: "bigint_to_radix", kind: "function",
+    detail: "Format BigInt radix",
+    documentation: "Since alpha.10: format exact integer in base 2 through 36.",
+    insertText: "bigint_to_radix(${1:value}, ${2:16})",
+  },
+  {
+    label: "bigint_and", kind: "function",
+    detail: "Signed bitwise AND",
+    documentation: "Since alpha.10: infinite two's-complement bitwise AND.",
+    insertText: "bigint_and(${1:a}, ${2:b})",
+  },
+  {
+    label: "bigint_or", kind: "function",
+    detail: "Signed bitwise OR",
+    documentation: "Since alpha.10: infinite two's-complement bitwise OR.",
+    insertText: "bigint_or(${1:a}, ${2:b})",
+  },
+  {
+    label: "bigint_xor", kind: "function",
+    detail: "Signed bitwise XOR",
+    documentation: "Since alpha.10: infinite two's-complement bitwise XOR.",
+    insertText: "bigint_xor(${1:a}, ${2:b})",
+  },
+  {
+    label: "bigint_not", kind: "function",
+    detail: "Signed bitwise NOT",
+    documentation: "Since alpha.10: infinite two's-complement bitwise complement.",
+    insertText: "bigint_not(${1:value})",
+  },
+  {
+    label: "bigint_shl", kind: "function",
+    detail: "Exact left shift",
+    documentation: "Since alpha.10: shift count must be a nonnegative integer.",
+    insertText: "bigint_shl(${1:value}, ${2:bits})",
+  },
+  {
+    label: "bigint_shr", kind: "function",
+    detail: "Signed right shift",
+    documentation: "Since alpha.10: sign-extending shift using a nonnegative bit count.",
+    insertText: "bigint_shr(${1:value}, ${2:bits})",
+  },
+  {
+    label: "bigint_pow_mod", kind: "function",
+    detail: "BigInt modular exponent",
+    documentation: "Since alpha.10: nonnegative exponent and positive modulus; variable-time arithmetic.",
+    insertText: "bigint_pow_mod(${1:base}, ${2:exponent}, ${3:modulus})",
+  },
+  {
+    label: "bigint_divmod", kind: "function",
+    detail: "BigInt quotient and remainder",
+    documentation: "Since alpha.10: returns tuple<bigint,bigint>; divisor must be nonzero.",
+    insertText: "bigint_divmod(${1:a}, ${2:b})",
+  },
 ];
 
 export function scarpCompletions(prefix: string): ScarpCompletion[] {

@@ -4,9 +4,9 @@ import { getScarpStarterTemplate, scarpStarterTemplates } from './starterTemplat
 describe('Scarp-only starter templates', () => {
   it('offers independent real Scarp learning scenarios', () => {
     expect(scarpStarterTemplates.map(({ id }) => id)).toEqual([
-      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input',
+      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath',
     ]);
-    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(7);
+    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(10);
   });
 
   it('uses only .srp snippets that can be edited in an untitled buffer', () => {
@@ -30,6 +30,18 @@ describe('Scarp-only starter templates', () => {
     expect(source).toContain('alpha.9');
     expect(source).toContain('bind large: bigint');
     expect(source).toContain('bigint_from_integer(1)');
+  });
+
+  it('version-gates three alpha.10 starter programs with explicit execution modes', () => {
+    const prompt = getScarpStarterTemplate('prompts')?.source ?? '';
+    expect(prompt).toContain('alpha.10');
+    expect(prompt).toContain('BEFORE Run');
+    expect(prompt).toContain('input("Name: ")');
+    const arrays = getScarpStarterTemplate('arrays')?.source ?? '';
+    expect(arrays).toContain('array<integer, 2>');
+    expect(arrays).toContain('[array: 10, 20]');
+    const exact = getScarpStarterTemplate('exactmath')?.source ?? '';
+    expect(exact).toContain('bigint_gcd(left, right)');
   });
 
   it('looks up only registered templates without accepting arbitrary source', () => {
