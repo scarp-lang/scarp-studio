@@ -359,6 +359,14 @@ fn parse_version(output: &str) -> Option<String> {
     }
 }
 
+// Prompt mode is deliberately limited to versions with audited flag semantics.
+fn supports_prompt_input(version: &str) -> bool {
+    version
+        .strip_prefix("0.0.6-alpha.")
+        .and_then(|suffix| suffix.parse::<u16>().ok())
+        .is_some_and(|alpha| alpha >= 10)
+}
+
 fn compiler_supports(binary: &Path, verb: &str) -> Result<bool, String> {
     let args = [OsString::from("guide"), OsString::from(verb)];
     let result = process(binary, &args, None, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT, None)?;
@@ -487,6 +495,7 @@ pub async fn scarp_execute(
     mode: String,
     expected_content: String,
     stdin_text: String,
+    interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
 ) -> Result<String, String> {
     let runtime = state.inner().clone();
@@ -501,9 +510,15 @@ pub async fn scarp_execute(
             let source = source_file(&source)?;
             // Reject excessive/foreign input before probing or executing any binary.
             validate_stdin(&stdin_text)?;
-            let args = command_args_with_input(&mode, &source, !stdin_text.is_empty())?;
+            let mut args = command_args_with_input(&mode, &source, !stdin_text.is_empty())?;
             let (binary, version) =
                 with_verified_source_snapshot(&source, &expected_content, || probe(&binary))?;
+            if interactive.unwrap_or(false) {
+                if mode != "exec" || !supports_prompt_input(&version) {
+                    return Err("Prompt Run requires the official Scarp v0.0.6-alpha.10 CLI with --interactive support.".into());
+                }
+                args.insert(1, OsString::from("--interactive"));
+            }
             let result = process_with_input_reserved(
                 &binary,
                 &args,
@@ -617,6 +632,16 @@ mod tests {
     }
 
     #[test]
+    fn prompt_mode_is_version_gated() {
+        assert!(!supports_prompt_input("0.0.6-alpha.8"));
+        assert!(!supports_prompt_input("0.0.6-alpha.9"));
+        assert!(supports_prompt_input("0.0.6-alpha.10"));
+        assert!(supports_prompt_input("0.0.6-alpha.11"));
+        assert!(!supports_prompt_input("0.0.6-beta.1"));
+        assert!(!supports_prompt_input("unknown"));
+    }
+
+    #[test]
     fn saved_content_must_match_disk_before_launch() {
         use std::time::{SystemTime, UNIX_EPOCH};
         let unique = SystemTime::now()
@@ -697,7 +722,7 @@ mod tests {
         let selected = std::env::var("SCARP_TEST_BIN")
             .expect("CI must explicitly provide the verified official Scarp executable");
         let (binary, version) = probe(&selected).expect("official compiler probe");
-        assert_eq!(version, "0.0.6-alpha.8");
+        assert_eq!(version, "0.0.6-alpha.10");
 
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)

@@ -47,28 +47,33 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.8/scarp-0.0.6-alpha.8-x86_64-pc-windows-msvc.zip"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.10/scarp-0.0.6-alpha.10-x86_64-pc-windows-msvc.zip"
           Invoke-WebRequest -Uri $url -OutFile scarp-compiler.zip
           $actual = (Get-FileHash scarp-compiler.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne "7fa5c3e56971a5b5a3eeda83c95500e7c45e80e6ca3ceaba9b1087979ac1dce1") {
+          if ($actual -ne "02da845a634ff3f05e9592f41195c84e9d6f62089f35be44a3c9b41296550190") {
             throw "Official compiler archive hash mismatch"
           }
           Expand-Archive -Path scarp-compiler.zip -DestinationPath scarp-compiler
           $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
           if (-not $binary) { throw "Official Scarp binary missing from archive" }
           $reportedVersion = & $binary.FullName --version
-          if ($LASTEXITCODE -ne 0 -or $reportedVersion -ne "scarp 0.0.6-alpha.8") {
+          if ($LASTEXITCODE -ne 0 -or $reportedVersion -ne "scarp 0.0.6-alpha.10") {
             throw "Unexpected Scarp compiler version"
           }
           & $binary.FullName guide exec
           if ($LASTEXITCODE -ne 0) { throw "Scarp exec probe failed" }
           & $binary.FullName guide verify
           if ($LASTEXITCODE -ne 0) { throw "Scarp verify probe failed" }
-          'assert(2 + 2 == 4, "Studio alpha.8 smoke"); print("Studio CLI smoke");' | Set-Content -Path scarp-smoke.srp -Encoding utf8
+          'assert(2 + 2 == 4, "Studio alpha.10 smoke"); print("Studio CLI smoke");' | Set-Content -Path scarp-smoke.srp -Encoding utf8
           & $binary.FullName verify --diagnostic-format=json -- scarp-smoke.srp
           if ($LASTEXITCODE -ne 0) { throw "Scarp static verification failed" }
           $execution = & $binary.FullName exec --max-steps 200000 --max-prints 1000 --diagnostic-format=json -- scarp-smoke.srp
           if ($LASTEXITCODE -ne 0 -or $execution -notmatch "Studio CLI smoke") { throw "Scarp execution smoke failed" }
+          'bind name = input("Name? "); print("Hello", name);' | Set-Content -Path scarp-prompt.srp -Encoding utf8
+          $promptOutput = 'Studio' | & $binary.FullName exec --interactive --diagnostic-format=json -- scarp-prompt.srp
+          if ($LASTEXITCODE -ne 0 -or $promptOutput -notmatch "Hello Studio") {
+            throw "Scarp alpha.10 preloaded prompt smoke failed"
+          }
 
       - name: Test Studio native process service against pinned Scarp compiler
         shell: pwsh
