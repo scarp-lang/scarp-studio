@@ -113,6 +113,7 @@ export default function App() {
   const [compilerBusy, setCompilerBusy] = useState(false);
   // This input is session-local, not persisted or stored in source files.
   const [stdinText, setStdinText] = useState('');
+  const [promptInputMode, setPromptInputMode] = useState(false);
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -431,6 +432,7 @@ export default function App() {
       const result = await executeScarp(
         compilerPath, source, mode, expectedContent,
         mode === 'exec' ? stdinText : '',
+        mode === 'exec' && promptInputMode,
       );
       setCompilerOutput(result);
       setNotice('Scarp ' + mode + ' finished; see output');
@@ -854,7 +856,16 @@ export default function App() {
               ? 'Compiler configured; version checked on the next Run/Verify.'
               : 'No compiler selected')}</div>
             <div className="compiler-stdin">
-              <label htmlFor="scarp-stdin">Program input (Run only; one line per read_line call)</label>
+              <label htmlFor="scarp-stdin">Program input (Run only; preloaded UTF-8 lines)</label>
+              <label className="compiler-input-mode">
+                <input type="checkbox" checked={promptInputMode} disabled={compilerBusy}
+                  onChange={(event) => setPromptInputMode(event.target.checked)} />
+                Enable alpha.10 prompt functions (input/ask)
+              </label>
+              <div className="compiler-meta">
+                All replies must be entered before Run. This enables the official --interactive
+                flag for alpha.10; it is not a live terminal. Output appears after completion.
+              </div>
               <textarea
                 id="scarp-stdin"
                 value={stdinText}

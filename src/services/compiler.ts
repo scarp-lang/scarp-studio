@@ -9,9 +9,11 @@ export function probeScarp(binary: string): Promise<string> {
 
 export function executeScarp(
   binary: string, source: string, mode: ScarpMode, expectedContent: string,
-  stdinText: string,
+  stdinText: string, interactive = false,
 ): Promise<string> {
-  return invoke<string>('scarp_execute', { binary, source, mode, expectedContent, stdinText });
+  const args = { binary, source, mode, expectedContent, stdinText };
+  // Preserve the existing native invocation contract when prompt mode is off.
+  return invoke<string>('scarp_execute', interactive ? { ...args, interactive: true } : args);
 }
 
 export function stopScarp(): Promise<boolean> {
