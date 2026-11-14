@@ -24,6 +24,7 @@ import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
+import { parseScarpTestReport, type ScarpTestReport } from './model/projectTestReport';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -119,6 +120,7 @@ export default function App() {
     'Source files are never executed automatically.',
   );
   const [compilerBusy, setCompilerBusy] = useState(false);
+  const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
   const [compilerOutputSource, setCompilerOutputSource] = useState<{path: string; content: string} | null>(null);
   // This input is session-local, not persisted or stored in source files.
@@ -429,6 +431,7 @@ export default function App() {
       setCompilerInfo(info);
       setCompilerOutputSource(null);
       setCompilerDiagnosticStderr(null);
+      setProjectTestResult(null);
       setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
       setNotice('Scarp compiler configured');
     } catch (caught) {
@@ -464,6 +467,7 @@ export default function App() {
     setError(null);
     setCompilerOutputSource({ path: source, content: expectedContent });
     setCompilerDiagnosticStderr(null);
+    setProjectTestResult(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(
@@ -530,6 +534,7 @@ export default function App() {
     // diagnostic position to the current open tab.
     setCompilerDiagnosticStderr(null);
     setCompilerOutputSource(null);
+    setProjectTestResult(null);
     setCompilerOutput('Scarp project ' + action + '…');
     try {
       const output = await scarpProjectAction(
@@ -537,7 +542,11 @@ export default function App() {
         action === 'run' ? stdinText : '',
         action === 'run' && promptInputMode,
       );
-      setCompilerOutput(output);
+      setCompilerOutput(output.output);
+      const structured = parseScarpTestReport(output.testReportJson);
+      if (structured && (action === 'list-tests' || action === 'run-tests')) {
+        setProjectTestResult({ folder: folderPath, report: structured });
+      }
       setNotice('Scarp project ' + action + ' finished');
     } catch (caught) {
       const message = toMessage(caught);
@@ -1015,6 +1024,36 @@ export default function App() {
                 avoid entering passwords or secrets.
               </div>
             </div>
+            {projectTestResult && projectTestResult.folder === folderPath && (
+              <section className="project-test-report" aria-label="Scarp project test results">
+                <div className="project-test-heading">
+                  <strong>{projectTestResult.report.mode === 'list' ? 'DISCOVERED TESTS' : 'PROJECT TEST RESULTS'}</strong>
+                  <span>{projectTestResult.report.discovered} total ·
+                    {projectTestResult.report.passed} passed ·
+                    {projectTestResult.report.failed} failed</span>
+                  <button type="button" onClick={() => setProjectTestResult(null)}
+                    title="Hide the structured project test summary">Hide</button>
+                </div>
+                <ul className="project-test-list">
+                  {projectTestResult.report.tests.map((test) => (
+                    <li key={test.path} className={'project-test-' + test.status}>
+                      <strong>{test.status === 'passed' ? 'PASS' :
+                        test.status === 'failed' ? 'FAIL' : 'TEST'}</strong>
+                      <span>{test.path}</span>
+                      {test.message && (
+                        <div className="project-test-error">
+                          <strong>{test.code || test.phase || 'Scarp test failure'}</strong>
+                          {' — ' + test.message}
+                          {test.help && <div>{test.help}</div>}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                  {!projectTestResult.report.tests.length &&
+                    <li>No project tests were discovered.</li>}
+                </ul>
+              </section>
+            )}
             {diagnostic && (
               <div className="compiler-diagnostic" role="status">
                 <strong>{diagnostic.code || 'Scarp Verify error'}</strong>

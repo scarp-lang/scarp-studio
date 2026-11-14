@@ -6,10 +6,10 @@ export type ScarpProjectAction = 'info' | 'verify' | 'list-tests' | 'run-tests' 
 export function scarpProjectAction(
   binary: string, folder: string, action: ScarpProjectAction,
   stdinText = '', interactive = false,
-): Promise<string> {
+): Promise<{ output: string; testReportJson: string | null }> {
   const args = { binary, folder, action };
-  // Retain the existing native call contract for all non-executing actions
-  // and for the separate explicit Run Tests action.
-  return invoke<string>('scarp_project_action',
-    action === 'run' ? { ...args, stdinText, interactive } : args);
+  // Preserve the arguments for existing non-executing commands.
+  return invoke<[string, string | null]>('scarp_project_action',
+    action === 'run' ? { ...args, stdinText, interactive } : args,
+  ).then(([output, testReportJson]) => ({ output, testReportJson }));
 }
