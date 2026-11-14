@@ -54,9 +54,10 @@ export function parseScarpTestReport(json: string | null): ScarpTestReport | nul
     const item = record(rawCase);
     if (!item || !validTestPath(item.path) || seen.has(item.path)) return null;
     seen.add(item.path);
-    const status = item.status;
-    if (root.mode === 'list' ? status !== 'discovered'
-      : status !== 'passed' && status !== 'failed') return null;
+    const status: ScarpTestStatus | null = item.status === 'discovered' ||
+      item.status === 'passed' || item.status === 'failed' ? item.status : null;
+    if (!status || (root.mode === 'list' && status !== 'discovered') ||
+        (root.mode === 'run' && status === 'discovered')) return null;
     let phase: ScarpTestCase['phase'] = null;
     let code: string | null = null;
     let message: string | null = null;
