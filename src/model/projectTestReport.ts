@@ -69,7 +69,7 @@ export function parseScarpTestReport(json: string | null): ScarpTestReport | nul
           Array.from(diagnostic.message).length > 1600) return null;
       message = diagnostic.message;
       if (diagnostic.code !== null && diagnostic.code !== undefined) {
-        if (typeof diagnostic.code !== 'string' || !/^E\\d{4}$/.test(diagnostic.code)) return null;
+        if (typeof diagnostic.code !== 'string' || !/^E\d{4}$/.test(diagnostic.code)) return null;
         code = diagnostic.code;
       }
       if (diagnostic.help !== null && diagnostic.help !== undefined) {
