@@ -22,6 +22,7 @@ import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './mode
 import { exitBlockReason } from './model/exitGuards';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
+import { verifiedProblemMarker } from './model/problemMarkers';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -99,6 +100,7 @@ export default function App() {
   const [searchWholeWord, setSearchWholeWord] = useState(false);
   const searchInput = useRef<HTMLInputElement | null>(null);
   const mountedEditor = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+  const mountedMonaco = useRef<typeof import('monaco-editor') | null>(null);
   const mountedEditorDocumentId = useRef<string | null>(null);
   const pendingSearchLocation = useRef<OpenFileSearchHit | null>(null);
   const saveInProgress = useRef(false);
@@ -128,11 +130,13 @@ export default function App() {
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
-  const diagnostic = parseScarpDiagnostic(compilerDiagnosticStderr);
+  const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
   const diagnosticPosition = active?.path && compilerOutputSource &&
     sameFilePath(active.path, compilerOutputSource.path) &&
     active.content === compilerOutputSource.content
     ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
+  const problemMarker = useMemo(() => verifiedProblemMarker(diagnostic, compilerOutputSource, active),
+    [diagnostic, compilerOutputSource, active]);
   const functionOutline = useMemo(
     () => active ? scanScarpFunctions(active.content) : [],
     [active?.content],
@@ -147,6 +151,22 @@ export default function App() {
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
+
+  useEffect(() => {
+    const editor = mountedEditor.current;
+    const monaco = mountedMonaco.current;
+    const model = editor?.getModel();
+    if (!model || !monaco) return;
+    const markers = problemMarker && active?.content === model.getValue()
+      ? [{ ...problemMarker, severity: monaco.MarkerSeverity.Error, source: 'Scarp Verify' }]
+      : [];
+    monaco.editor.setModelMarkers(model, 'scarp-verify', markers);
+    // A tab switch, edit, save, or new Verify must not leave old diagnostics
+    // attached to a reused Monaco document or a disposed editor model.
+    return () => {
+      if (!model.isDisposed()) monaco.editor.setModelMarkers(model, 'scarp-verify', []);
+    };
+  }, [activeId, active?.content, problemMarker]);
 
   function jumpToFunction(symbol: ScarpFunctionSymbol): void {
     const editor = editorHandle.current;
@@ -572,6 +592,13 @@ export default function App() {
         setSearchOpen(false);
         return;
       }
+      if (paletteMode === null && event.key === 'F8' &&
+          !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+          diagnosticPosition) {
+        event.preventDefault();
+        revealDiagnostic();
+        return;
+      }
       if (paletteMode === null && event.key === 'F5' && !event.altKey) {
         event.preventDefault();
         if (event.shiftKey) void stopCompiler();
@@ -836,7 +863,8 @@ export default function App() {
                   }
                   dispatch({ type: 'edit', id: active.id, content: nextContent });
                 }}
-                onMount={(editor) => {
+                onMount={(editor, monaco) => {
+                  mountedMonaco.current = monaco;
                   editorHandle.current = editor;
                   mountedEditor.current = editor;
                   mountedEditorDocumentId.current = active.id;
@@ -925,8 +953,8 @@ export default function App() {
                 <span>{diagnostic.message}</span>
                 {diagnosticPosition && (
                   <button type="button" onClick={revealDiagnostic}
-                    title="Navigate to this Verify error in the unchanged Scarp source">
-                    Go to line {diagnostic.line}, column {diagnostic.column}
+                    title="Navigate to this Verify error in the unchanged Scarp source (F8)">
+                    Go to line {diagnostic.line}, column {diagnostic.column} (F8)
                   </button>
                 )}
                 {diagnostic.help && <span className="compiler-diagnostic-help">{diagnostic.help}</span>}
