@@ -1,45 +1,57 @@
 # Scarp Studio
 
-Scarp Studio is an Apache-2.0 desktop IDE **exclusively for the Scarp programming language** (.srp files).
+**Scarp Studio** is an Apache-2.0 desktop IDE for the **Scarp programming language only** (`.srp`). It is built with Tauri 2, Rust, React/TypeScript and Monaco Editor, with Windows 11 as the initial target.
 
-**Status:** [`v0.0.1-alpha.2`](https://github.com/scarp-lang/scarp-studio/releases/tag/v0.0.1-alpha.2) was published on 2026-11-12 as an **experimental, unsigned Windows x64 pre-release**. This is an editor-only maintenance update, not a stable IDE. Interactive Windows 11 GUI acceptance is still pending; use disposable test files and keep backups.
+## Published version vs. development work
 
-**Not in the released alpha:** Run, Verify, Stop and structured error navigation. These are under review in [draft PR #5](https://github.com/scarp-lang/scarp-studio/pull/5) and [draft PR #6](https://github.com/scarp-lang/scarp-studio/pull/6). Neither PR is merged or published.
+- **Published:** [`v0.0.1-alpha.2`](https://github.com/scarp-lang/scarp-studio/releases/tag/v0.0.1-alpha.2), released 2026-11-12. This is an **experimental, unsigned Windows x64 editor-only pre-release**; it does *not* ship native Scarp Run/Verify, structured diagnostics or full project tools. Interactive Windows 11 acceptance is still incomplete. Use disposable sources and back up your files.
+- **Unreleased development:** the compiler-integrated IDE and new navigation are being built in **stacked draft PRs**, currently [#39](https://github.com/scarp-lang/scarp-studio/pull/39) on top of [#38](https://github.com/scarp-lang/scarp-studio/pull/38). These are review and test candidates, not released features or approved merge targets. They do not change the published installer.
+- **Next candidate:** the source package identifies the development target as `0.0.2-alpha.1`, but a version string in source is **not** a published release or approval to publish one.
 
-## Implemented in this branch
+## Features in the current development branch (not in alpha.2)
 
-- Tauri 2 native desktop host, Rust services boundary, React/TypeScript frontend and Monaco editor.
-- Scarp syntax coloring (conservative subset of the scarp-vscode grammar), open/edit/save and Save As for .srp.
-- Multi-tab editing with dirty indicators, native unsaved-change prompts, keyboard shortcuts, light/dark theme.
-- Alpha.2 guards repeated window-close requests against concurrent unsaved-change confirmation dialogs.
-- Folder picker with top-level .srp listing (recursive explorer planned).
-- User-selected filesystem scopes only. No shell access and **no fake compiler execution**.
+- Scarp-only Monaco editing, conservative syntax highlighting, hover, completion snippets, `funcra` outline, starter programs, multiple tabs and dirty-state preservation.
+- Ctrl+P **Quick Open** for existing tabs plus *already-listed* project sources (root, `src/`, `tests/`, `examples/`); Ctrl+Shift+P commands, Ctrl+G line navigation, Ctrl+Shift+F search across **open buffers only**, Ctrl+B Explorer, F8 for an applicable verified-source diagnostic.
+- User-selected Scarp project Explorer with bounded listing (200 files, up to 4096 inspected entries per directory); no arbitrary-recursive or network project scanning.
+- User-selected **official Scarp compiler executable** for explicit source Run, static Verify and Stop; bounded process/output limits, version capability checks, and preloaded optional stdin/prompt input. No shell invocation, automatic execution, or arbitrary compiler discovery.
+- Explicit project Info, Verify Project, Run Project, List Tests and Run Tests workflows when supported by the selected official compiler. Structured test reports are parsed only for the audited schema/capabilities and raw output is retained.
+- Saved-source validation, external-change protection, bounded source-file sizes, stale diagnostic guards and safe native close prompts.
 
-## Development (Windows 11)
+## Develop and test (Windows 11)
 
-Install Node.js 22+, Rust stable with MSVC build tools, the Tauri 2 Windows requirements (WebView2), and run:
+Install Node.js 22+, Rust stable with the MSVC toolchain, Visual Studio C++ Build Tools and the [Tauri 2 Windows prerequisites](https://v2.tauri.app/start/prerequisites/). Then run:
 
-    npm ci
-    npm run typecheck
-    npm test
-    npm run tauri dev
+```powershell
+npm ci
+npm run typecheck
+npm test
+npm run tauri dev
+```
 
-Optional: create an unbundled Windows executable with:
+For local Rust validation and a development executable:
 
-    npm run tauri build -- --no-bundle
+```powershell
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo check --locked --manifest-path src-tauri/Cargo.toml
+cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+npm run tauri build -- --no-bundle
+```
 
-CI builds an **experimental NSIS installer candidate**. Both `package-lock.json` and `src-tauri/Cargo.lock` are committed; CI uses `npm ci` and `cargo check --locked` to check reproducibility. A passing build is not a substitute for hands-on Windows file-save testing.
+Pull-request CI additionally tests a SHA-256-pinned official Scarp alpha.10 compiler, builds a Windows executable and an unsigned NSIS installer **candidate**, and uploads checksums. Passing CI is not equivalent to a verified Windows desktop GUI session.
 
-## Known limitations
+## Review and safety gates
 
-- The **published** `v0.0.1-alpha.2` is editor-only: compiler Run/Verify/Stop, source diagnostics, completion and debugging are **not available**. A version-aware, bounded native compiler service is implemented only on the unmerged draft PR #5, with diagnostic navigation on the stacked draft PR #6. The official Scarp compiler lives at https://github.com/scarp-lang/scarp.
-- Folder browsing currently lists only immediate .srp children; selected-folder filesystem scope behavior needs Windows verification.
-- Only user-selected files are accessible, and dialog scopes are session-local. Reopen a file or folder after restarting.
-- Automated Windows builds and package checksum checks passed for the published experimental release, but **hands-on launch/open/save/discard validation and unsigned-installer security review remain open** in [issue #2](https://github.com/scarp-lang/scarp-studio/issues/2). Later release candidates require their own gates; successful CI is not proof of GUI correctness.
-- The next compiler-integrated release is **not yet published**. Manual Windows 11 testing and review are required for PRs #5 and #6; see [issue #3](https://github.com/scarp-lang/scarp-studio/issues/3).
+- [ ] Exact-head Windows CI must pass for the intended candidate.
+- [ ] Complete hands-on Windows 11 launch, folder picking, nested source access, open/save/discard, Run/Verify/Stop, project-test workflows and prompt-input scenarios.
+- [ ] Confirm Tauri filesystem permissions work for dynamically selected nested folders, including denied and symlink/junction cases.
+- [ ] Verify dirty-tab safety, project switching and cancellation during in-flight source reads.
+- [ ] Review all stacked feature dependencies before merging or releasing. Never publish a new tag or installer solely because a draft PR is green.
 
-## Support Scarp Studio
+Track [M1 manual acceptance](https://github.com/scarp-lang/scarp-studio/issues/2), [M2 compiler integration](https://github.com/scarp-lang/scarp-studio/issues/3) and [M3 workspace experience](https://github.com/scarp-lang/scarp-studio/issues/4).
 
-This is an experimental open-source IDE. Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) helps support development and testing; sponsorship does not provide early access, private repository access, or guarantees about releases.
+## Support
 
-**Repository:** https://github.com/scarp-lang/scarp-studio
+Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports development and testing without guaranteeing access to unreleased builds.
+
+**Source:** https://github.com/scarp-lang/scarp-studio  
+**Official compiler:** https://github.com/scarp-lang/scarp
