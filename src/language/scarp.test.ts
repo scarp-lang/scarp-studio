@@ -82,6 +82,18 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     expect(contextualType?.test('array = 2')).toBe(false);
   });
 
+  it('recognizes alpha.11 exact decimal type and built-ins without inventing keywords', () => {
+    const provider = captureProvider();
+    expect(provider.typeKeywords).toContain('decimal');
+    for (const name of [
+      'decimal', 'decimal_from_integer', 'decimal_to_integer', 'decimal_to_text',
+      'decimal_round', 'decimal_format', 'decimal_div_rounded', 'input_decimal',
+    ]) {
+      expect(provider.builtinFunctions).toContain(name);
+      expect(provider.keywords).not.toContain(name);
+    }
+  });
+
   it('does not show unsupported hexadecimal, binary or underscored literals as numbers', () => {
     const root = captureProvider().tokenizer.root;
     const valid = root.find(([, token]) => token === 'number')?.[0];
