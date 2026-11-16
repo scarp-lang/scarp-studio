@@ -5,12 +5,13 @@
 ## Published version vs. development work
 
 - **Published:** [`v0.0.1-alpha.2`](https://github.com/scarp-lang/scarp-studio/releases/tag/v0.0.1-alpha.2), released 2026-11-12. This is an **experimental, unsigned Windows x64 editor-only pre-release**; it does *not* ship native Scarp Run/Verify, structured diagnostics or full project tools. Interactive Windows 11 acceptance is still incomplete. Use disposable sources and back up your files.
-- **Unreleased development:** the compiler-integrated IDE and new navigation are being built in **stacked draft PRs**, currently [#39](https://github.com/scarp-lang/scarp-studio/pull/39) on top of [#38](https://github.com/scarp-lang/scarp-studio/pull/38). These are review and test candidates, not released features or approved merge targets. They do not change the published installer.
+- **Unreleased development:** the full compiler-integrated IDE is under review in [integration PR #43](https://github.com/scarp-lang/scarp-studio/pull/43), which reconciles the older stacked feature drafts with the latest protected `main` editor-safety changes. It remains a **draft Windows testing candidate**, not a published build or an approved stable IDE. PR #43 does not change the installer attached to the published alpha.2 release.
 - **Next candidate:** the source package identifies the development target as `0.0.2-alpha.1`, but a version string in source is **not** a published release or approval to publish one.
 
 ## Features in the current development branch (not in alpha.2)
 
 - Scarp-only Monaco editing, conservative syntax highlighting, hover, completion snippets, `funcra` outline, starter programs, multiple tabs and dirty-state preservation.
+- **Current-main editor safety retained:** locally validated/persisted font size, tab size and word wrap; live Save As collision guards; serialized native confirmation dialogs; 4 MiB UTF-8 source limits and selected-folder file membership restrictions.
 - **Alpha.11 editor support:** exact `decimal` type highlighting, checked base-10 conversion/rounding/formatting help, `input_decimal` assistance and two opt-in decimal starter examples. These require a separately installed official Scarp compiler v0.0.6-alpha.11+ to run.
 - Ctrl+P **Quick Open** for existing tabs plus *already-listed* project sources (root, `src/`, `tests/`, `examples/`); Ctrl+Shift+P commands, Ctrl+G line navigation, Ctrl+Shift+F search across **open buffers only**, Ctrl+B Explorer, F8 for an applicable verified-source diagnostic.
 - User-selected Scarp project Explorer with bounded listing (200 files, up to 4096 inspected entries per directory); no arbitrary-recursive or network project scanning.
@@ -46,7 +47,7 @@ Pull-request CI tests separately SHA-256-pinned official Scarp alpha.10 and alph
 - [ ] Complete hands-on Windows 11 launch, folder picking, nested source access, open/save/discard, Run/Verify/Stop, project-test workflows and prompt-input scenarios.
 - [ ] Confirm Tauri filesystem permissions work for dynamically selected nested folders, including denied and symlink/junction cases.
 - [ ] Verify dirty-tab safety, project switching and cancellation during in-flight source reads.
-- [ ] Review all stacked feature dependencies before merging or releasing. Never publish a new tag or installer solely because a draft PR is green.
+- [ ] Review the integrated [PR #43](https://github.com/scarp-lang/scarp-studio/pull/43), compare its retained current-main safeguards, and record Windows GUI acceptance before any merge/release. Never publish a tag or installer solely because a draft PR is green.
 
 Track [M1 manual acceptance](https://github.com/scarp-lang/scarp-studio/issues/2), [M2 compiler integration](https://github.com/scarp-lang/scarp-studio/issues/3) and [M3 workspace experience](https://github.com/scarp-lang/scarp-studio/issues/4).
 
