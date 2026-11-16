@@ -53,6 +53,9 @@ export default function App() {
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
+  const [folderListingLimited, setFolderListingLimited] = useState(false);
+  // Snapshot identity prevents delayed reads from reopening a previous folder.
+  const selectedFolderRef = useRef<{ path: string; files: FolderEntry[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
   const [busy, setBusy] = useState(false);
@@ -142,9 +145,12 @@ export default function App() {
     try {
       const result = await chooseSourceFolder();
       if (!result) return;
+      selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderPath(result.path);
       setFolderEntries(result.files);
-      setNotice(result.files.length + ' top-level .srp files found');
+      setFolderListingLimited(result.truncated);
+      setNotice(result.files.length + ' top-level .srp files shown' +
+        (result.truncated ? ' (listing limited)' : ''));
     } catch (caught) {
       setError('Could not open folder: ' + toMessage(caught));
     } finally {
@@ -154,8 +160,17 @@ export default function App() {
 
   async function openFolderFile(path: string): Promise<void> {
     setError(null);
+    const selection = selectedFolderRef.current;
+    if (!selection) {
+      setError('Choose a Scarp folder before opening its source files.');
+      return;
+    }
     try {
-      const content = await readFolderSource(path);
+      const content = await readFolderSource(path, selection.files);
+      if (selectedFolderRef.current !== selection) {
+        setError('The selected folder changed during the read. Choose the file again.');
+        return;
+      }
       activateOpenedFile(path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
@@ -319,6 +334,12 @@ export default function App() {
             <section className="sidebar-section">
               <div className="folder-label" title={folderPath}>▾ {fileName(folderPath)}</div>
               <div className="sidebar-note">Top-level Scarp files</div>
+              {folderListingLimited && (
+                <p className="sidebar-note" role="status">
+                  Listing limited to 200 .srp files and 4096 inspected entries.
+                  Some sources may not appear.
+                </p>
+              )}
               {folderEntries.length ? folderEntries.map((entry) => (
                 <button
                   className="file-row"
