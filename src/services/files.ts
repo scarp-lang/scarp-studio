@@ -31,8 +31,8 @@ export async function writeSourceFile(
   }
   if (!path) return null;
   if (!isScarpPath(path)) throw new Error('Scarp source files must end in .srp.');
-  // A Save As chooser can stay open while another source is opened in a tab.
-  // Query the *current* open paths only once the actual destination is known.
+  // Save As is asynchronous: another file may have opened while the native
+  // chooser was on screen. Resolve occupied paths only after it closes.
   const occupiedPaths = typeof otherOpenPaths === 'function'
     ? otherOpenPaths()
     : otherOpenPaths;
