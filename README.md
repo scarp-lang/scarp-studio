@@ -11,6 +11,7 @@
 ## Features in the current development branch (not in alpha.2)
 
 - Scarp-only Monaco editing, conservative syntax highlighting, hover, completion snippets, `funcra` outline, starter programs, multiple tabs and dirty-state preservation.
+- **Alpha.11 editor support:** exact `decimal` type highlighting, checked base-10 conversion/rounding/formatting help, `input_decimal` assistance and two opt-in decimal starter examples. These require a separately installed official Scarp compiler v0.0.6-alpha.11+ to run.
 - Ctrl+P **Quick Open** for existing tabs plus *already-listed* project sources (root, `src/`, `tests/`, `examples/`); Ctrl+Shift+P commands, Ctrl+G line navigation, Ctrl+Shift+F search across **open buffers only**, Ctrl+B Explorer, F8 for an applicable verified-source diagnostic.
 - User-selected Scarp project Explorer with bounded listing (200 files, up to 4096 inspected entries per directory); no arbitrary-recursive or network project scanning.
 - User-selected **official Scarp compiler executable** for explicit source Run, static Verify and Stop; bounded process/output limits, version capability checks, and preloaded optional stdin/prompt input. No shell invocation, automatic execution, or arbitrary compiler discovery.
@@ -37,7 +38,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 npm run tauri build -- --no-bundle
 ```
 
-Pull-request CI additionally tests a SHA-256-pinned official Scarp alpha.10 compiler, builds a Windows executable and an unsigned NSIS installer **candidate**, and uploads checksums. Passing CI is not equivalent to a verified Windows desktop GUI session.
+Pull-request CI tests separately SHA-256-pinned official Scarp alpha.10 and alpha.11 compiler archives, builds a Windows executable and an unsigned NSIS installer **candidate**, and uploads checksums. Passing CI is not equivalent to a verified Windows desktop GUI session.
 
 ## Review and safety gates
 
