@@ -32,7 +32,10 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         [/"([^"\\]|\\.)*$/, 'string.invalid'],
         [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
         [/\b(?:true|false)\b/, 'constant'],
-        // Hex/binary prefixes and numeric separators are not valid Scarp literals.
+        // The published compiler accepts hexadecimal and binary integers.
+        // Match only complete tokens so malformed forms never become valid prefixes.
+        [/\b(?:0[xX][0-9a-fA-F]+|0[bB][01]+)(?![A-Za-z0-9_])/, 'number'],
+        // Separators, missing digits and invalid radix digits are unsupported.
         [/\b(?:0[xX][A-Za-z0-9_]*|0[bB][A-Za-z0-9_]*|[0-9]+_[A-Za-z0-9_]*)\b/, 'number.invalid'],
         [/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b/, 'number'],
         [/[a-zA-Z_][\w]*/, {
