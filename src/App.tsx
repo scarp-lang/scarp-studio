@@ -10,6 +10,7 @@ import {
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
+import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import {
   clampLineLocation, cycleTabId, filterNavigationEntries, parseLineLocation,
   type NavigationEntry,
@@ -43,7 +44,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'save-as', label: 'Save Current File As', detail: 'Ctrl+Shift+S' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
-  { id: 'quick-open', label: 'Quick Open Tabs', detail: 'Ctrl+P' },
+  { id: 'quick-open', label: 'Quick Open Tabs and Project Sources', detail: 'Ctrl+P' },
   { id: 'go-to-line', label: 'Go to Line and Column', detail: 'Ctrl+G' },
   { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
   { id: 'previous-tab', label: 'Previous Open Tab', detail: 'Ctrl+Shift+Tab' },
@@ -90,6 +91,8 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
+  // Preserve exact folder-listing identity across asynchronous source reads.
+  const selectedFolderRef = useRef<{ path: string; files: FolderEntry[] } | null>(null);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
   const [unavailableProjectFolders, setUnavailableProjectFolders] = useState<string[]>([]);
   const [explorerVisible, setExplorerVisible] = useState(true);
@@ -183,11 +186,7 @@ export default function App() {
   }
 
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
-    ? documents.map((item) => ({
-      id: item.id,
-      label: item.name,
-      detail: (item.path ?? 'Unsaved Scarp source') + (isDirty(item) ? ' • modified' : ''),
-    }))
+    ? buildQuickOpenEntries(documents, folderEntries)
     : studioCommands;
   const paletteResults = paletteMode === 'line'
     ? []
@@ -234,7 +233,21 @@ export default function App() {
     const mode = paletteMode;
     hidePalette();
     if (mode === 'files') {
-      dispatch({ type: 'activate', id: entry.id });
+      const target = entry as QuickOpenEntry;
+      if (target.kind === 'tab') {
+        if (liveEditor.current.documents.some((document) => document.id === target.documentId)) {
+          dispatch({ type: 'activate', id: target.documentId });
+        } else {
+          setError('That Scarp tab is no longer open.');
+        }
+      } else if (target.kind === 'project') {
+        const selected = selectedFolderRef.current;
+        if (selected?.files.some((file) => sameFilePath(file.path, target.sourcePath))) {
+          void openFolderFile(target.sourcePath);
+        } else {
+          setError('The selected project changed. Reopen Quick Open and choose the file again.');
+        }
+      }
       return;
     }
     if (mode !== 'commands') return;
@@ -361,6 +374,7 @@ export default function App() {
     try {
       const result = await chooseSourceFolder();
       if (!result) return;
+      selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderPath(result.path);
       setFolderEntries(result.files);
       setFolderListingLimited(result.truncated);
@@ -377,8 +391,17 @@ export default function App() {
 
   async function openFolderFile(path: string): Promise<void> {
     setError(null);
+    const selection = selectedFolderRef.current;
+    if (!selection) {
+      setError('Choose a Scarp project folder before opening a project source.');
+      return;
+    }
     try {
-      const content = await readFolderSource(path, folderEntries);
+      const content = await readFolderSource(path, selection.files);
+      if (selectedFolderRef.current !== selection) {
+        setError('The Scarp folder changed during the read. Select the file again.');
+        return;
+      }
       activateOpenedFile(path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
@@ -1086,13 +1109,13 @@ export default function App() {
           onMouseDown={(event) => { if (event.target === event.currentTarget) hidePalette(); }}
         >
           <section className="nav-dialog" role="dialog" aria-modal="true"
-            aria-label={paletteMode === 'files' ? 'Quick Open Scarp tabs' : paletteMode === 'commands' ? 'Scarp Studio commands' : 'Go to line'}>
+            aria-label={paletteMode === 'files' ? 'Quick Open Scarp tabs and project sources' : paletteMode === 'commands' ? 'Scarp Studio commands' : 'Go to line'}>
             <div className="nav-query-row">
               <span aria-hidden="true">{paletteMode === 'files' ? '▤' : paletteMode === 'commands' ? '⌘' : ':'}</span>
               <input
                 ref={paletteInput}
-                aria-label={paletteMode === 'files' ? 'Search open Scarp tabs' : paletteMode === 'commands' ? 'Search editor commands' : 'Line and optional column'}
-                placeholder={paletteMode === 'files' ? 'Find an open .srp file…' : paletteMode === 'commands' ? 'Type a Studio command…' : 'Line or line:column (e.g. 12:4)'}
+                aria-label={paletteMode === 'files' ? 'Search open Scarp tabs and listed project files' : paletteMode === 'commands' ? 'Search editor commands' : 'Line and optional column'}
+                placeholder={paletteMode === 'files' ? 'Find an open or project .srp file…' : paletteMode === 'commands' ? 'Type a Studio command…' : 'Line or line:column (e.g. 12:4)'}
                 value={paletteQuery}
                 onChange={(event) => { setPaletteQuery(event.target.value); setPaletteIndex(0); }}
                 onKeyDown={(event) => {
