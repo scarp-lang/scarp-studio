@@ -4,7 +4,7 @@ import {
   type ScarpCompletion,
 } from './assist';
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.10.
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.11.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco): void {
@@ -27,7 +27,7 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       'needs', 'ensures', 'assert',
       'print', 'println', 'write', 'eprint', 'ewrite',
     ],
-    typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint'],
+    typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint', 'decimal'],
     // Calls are not keywords: names such as ask and array can occur as bindings.
     builtinFunctions: [
       'input', 'ask', 'ask_or', 'input_integer', 'input_float', 'input_bigint',
@@ -36,6 +36,8 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       'bigint_to_text', 'bigint_from_radix', 'bigint_to_radix', 'bigint_and',
       'bigint_or', 'bigint_xor', 'bigint_not', 'bigint_shl', 'bigint_shr',
       'bigint_pow_mod', 'bigint_divmod',
+      'decimal', 'decimal_from_integer', 'decimal_to_integer', 'decimal_to_text',
+      'decimal_round', 'decimal_format', 'decimal_div_rounded', 'input_decimal',
     ],
     // Old declaration spellings are reserved but rejected by the current compiler.
     legacyKeywords: ['let', 'mut'],
