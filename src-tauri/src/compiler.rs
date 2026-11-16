@@ -975,7 +975,9 @@ mod tests {
         let selected = std::env::var("SCARP_TEST_BIN")
             .expect("CI must explicitly provide the verified official Scarp executable");
         let (binary, version) = probe(&selected).expect("official compiler probe");
-        assert_eq!(version, "0.0.6-alpha.10");
+        let expected_version = std::env::var("SCARP_TEST_EXPECTED_VERSION")
+            .expect("CI must explicitly provide the pinned Scarp compiler version");
+        assert_eq!(version, expected_version);
 
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
