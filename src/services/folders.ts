@@ -1,6 +1,7 @@
 import { join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readDir, readTextFile } from '@tauri-apps/plugin-fs';
+import { readDir } from '@tauri-apps/plugin-fs';
+import { readScarpSource } from './sourceRead';
 import { isScarpPath } from '../model/documents';
 
 export interface FolderFile {
@@ -27,5 +28,5 @@ export async function chooseSourceFolder(): Promise<{
 
 export async function readFolderSource(path: string): Promise<string> {
   if (!isScarpPath(path)) throw new Error('Only .srp files can be opened.');
-  return readTextFile(path);
+  return readScarpSource(path);
 }
