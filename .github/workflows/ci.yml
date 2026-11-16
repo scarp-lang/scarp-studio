@@ -199,12 +199,16 @@ jobs:
           & $binary.FullName verify --diagnostic-format=json -- scarp-decimal.srp
           if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.11 Decimal verification failed" }
           $decimal = & $binary.FullName exec --diagnostic-format=json -- scarp-decimal.srp
-          if ($LASTEXITCODE -ne 0 -or $decimal -notmatch '235\.99' -or $decimal -notmatch '0\.3' -or $decimal -notmatch '0\.33') {
+          $decimalExit = $LASTEXITCODE
+          $decimalText = $decimal -join "`n"
+          if ($decimalExit -ne 0 -or $decimalText -notmatch '235\.99' -or $decimalText -notmatch '0\.3' -or $decimalText -notmatch '0\.33') {
             throw "Scarp alpha.11 exact decimal smoke failed"
           }
           'bind amount: decimal = input_decimal("Amount: "); print(decimal_format(amount, 2, "half_even"));' | Set-Content -Path scarp-decimal-input.srp -Encoding utf8
           $prompt = '19.95' | & $binary.FullName exec --interactive --diagnostic-format=json -- scarp-decimal-input.srp
-          if ($LASTEXITCODE -ne 0 -or $prompt -notmatch '19\.95') {
+          $promptExit = $LASTEXITCODE
+          $promptText = $prompt -join "`n"
+          if ($promptExit -ne 0 -or $promptText -notmatch '19\.95') {
             throw "Scarp alpha.11 typed decimal prompt smoke failed"
           }
           # Verify that Studio's native runner also accepts alpha.11 capabilities.
