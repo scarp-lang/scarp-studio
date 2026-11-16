@@ -4,9 +4,9 @@ import { getScarpStarterTemplate, scarpStarterTemplates } from './starterTemplat
 describe('Scarp-only starter templates', () => {
   it('offers independent real Scarp learning scenarios', () => {
     expect(scarpStarterTemplates.map(({ id }) => id)).toEqual([
-      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath',
+      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput',
     ]);
-    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(10);
+    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(12);
   });
 
   it('uses only .srp snippets that can be edited in an untitled buffer', () => {
@@ -42,6 +42,18 @@ describe('Scarp-only starter templates', () => {
     expect(arrays).toContain('[array: 10, 20]');
     const exact = getScarpStarterTemplate('exactmath')?.source ?? '';
     expect(exact).toContain('bigint_gcd(left, right)');
+  });
+
+  it('provides alpha.11 exact-decimal and preloaded prompt examples', () => {
+    const arithmetic = getScarpStarterTemplate('decimals')?.source ?? '';
+    expect(arithmetic).toContain('alpha.11');
+    expect(arithmetic).toContain('bind price: decimal');
+    expect(arithmetic).toContain('decimal_format(');
+    expect(arithmetic).toContain('half_even');
+    const prompted = getScarpStarterTemplate('decimalinput')?.source ?? '';
+    expect(prompted).toContain('input_decimal("Amount: ")');
+    expect(prompted).toContain('BEFORE Run');
+    expect(prompted).toContain('alpha.11');
   });
 
   it('looks up only registered templates without accepting arbitrary source', () => {
