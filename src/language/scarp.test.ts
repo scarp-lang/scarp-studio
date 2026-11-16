@@ -94,17 +94,17 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     }
   });
 
-  it('does not show unsupported hexadecimal, binary or underscored literals as numbers', () => {
+  it('recognizes published hexadecimal and binary integer literals', () => {
     const root = captureProvider().tokenizer.root;
-    const valid = root.find(([, token]) => token === 'number')?.[0];
+    const valid = root.filter(([, token]) => token === 'number').map(([rule]) => rule);
     const invalid = root.find(([, token]) => token === 'number.invalid')?.[0];
-    expect(valid).toBeDefined();
+    expect(valid.length).toBeGreaterThan(0);
     expect(invalid).toBeDefined();
-    for (const value of ['0', '42', '3.25', '1e3', '1.2E-4']) {
-      expect(matchesWhole(valid!, value), value).toBe(true);
+    for (const value of ['0', '42', '3.25', '1e3', '1.2E-4', '0xFF', '0X2a', '0b101', '0B010']) {
+      expect(valid.some((rule) => matchesWhole(rule, value)), value).toBe(true);
     }
-    for (const value of ['0xFF', '0b101', '12_345']) {
-      expect(matchesWhole(valid!, value), value).toBe(false);
+    for (const value of ['0x', '0b', '0xGG', '0b102', '0xFF_', '12_345']) {
+      expect(valid.some((rule) => matchesWhole(rule, value)), value).toBe(false);
       expect(matchesWhole(invalid!, value), value).toBe(true);
     }
   });
