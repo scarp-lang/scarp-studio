@@ -30,6 +30,7 @@ import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnost
 import { verifiedProblemMarker } from './model/problemMarkers';
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReport, type ScarpTestReport } from './model/projectTestReport';
+import { dirtyProjectSourceNames } from './model/projectSourceState';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -561,13 +562,20 @@ export default function App() {
       setError('Select the official compiler and a Scarp project folder first.');
       return;
     }
-    if (action === 'run') {
+    if (action === 'run' || action === 'verify' || action === 'run-tests') {
       try {
-        validateProgramInput(stdinText);
-        // Project Run reads saved files from disk, including imported modules.
-        // A dirty open editor tab could otherwise give misleading results.
-        if (liveEditor.current.documents.some(isDirty)) {
-          throw new Error('Save all modified Scarp tabs before Run Project; it executes files saved on disk.');
+        if (action === 'run') validateProgramInput(stdinText);
+        // Disk-backed project actions cannot reflect unsaved source edits.
+        // Only tabs belonging to this project matter; unrelated and untitled
+        // documents should not prevent working with the selected project.
+        const dirtySources = dirtyProjectSourceNames(liveEditor.current.documents, folderPath);
+        if (dirtySources.length) {
+          const names = dirtySources.slice(0, 3).join(', ');
+          const remaining = dirtySources.length > 3 ? ' and ' + (dirtySources.length - 3) + ' more' : '';
+          throw new Error(
+            'Save modified project source files before ' + action + ': ' +
+            names + remaining + '. Project commands read files saved on disk.',
+          );
         }
       } catch (caught) {
         setError(toMessage(caught));
