@@ -1,4 +1,4 @@
-/** Editor-only Scarp assistance, including published alpha.10 features.
+/** Editor-only Scarp assistance, including published alpha.11 features.
  * These templates do not replace parser/compiler validation.
  */
 export interface ScarpCompletion {
@@ -101,7 +101,7 @@ const templates: readonly ScarpCompletion[] = [
       documentation: 'Scarp language keyword. Available syntax depends on the selected compiler version.',
       insertText: label,
     })),
-  ...(['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint'] as const).map((label) => ({
+  ...(['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint', 'decimal'] as const).map((label) => ({
     label, kind: 'type' as const, detail: 'Scarp type',
     documentation: 'Scarp built-in type. Availability depends on the selected compiler version.',
     insertText: label,
@@ -262,6 +262,46 @@ const templates: readonly ScarpCompletion[] = [
     documentation: "Since alpha.10: returns tuple<bigint,bigint>; divisor must be nonzero.",
     insertText: "bigint_divmod(${1:a}, ${2:b})",
   },
+  {
+    label: 'decimal', kind: 'function', detail: 'Exact base-10 decimal constructor (alpha.11+)',
+    documentation: 'Since alpha.11: parse exact signed ASCII decimal text. At most 28 coefficient digits and 18 fractional places; no exponent, separator, or implicit float conversion.',
+    insertText: 'decimal("${1:199.99}")',
+  },
+  {
+    label: 'decimal_from_integer', kind: 'function', detail: 'Exact integer to decimal (alpha.11+)',
+    documentation: 'Since alpha.11: explicitly convert a signed integer to a decimal.',
+    insertText: 'decimal_from_integer(${1:value})',
+  },
+  {
+    label: 'decimal_to_integer', kind: 'function', detail: 'Checked decimal to integer (alpha.11+)',
+    documentation: 'Since alpha.11: a decimal converts to a signed integer only if it is a whole value and in range.',
+    insertText: 'decimal_to_integer(${1:value})',
+  },
+  {
+    label: 'decimal_to_text', kind: 'function', detail: 'Canonical decimal text (alpha.11+)',
+    documentation: 'Since alpha.11: return the exact canonical base-10 string without extra trailing fractional zeros.',
+    insertText: 'decimal_to_text(${1:value})',
+  },
+  {
+    label: 'decimal_round', kind: 'function', detail: 'Explicit decimal rounding (alpha.11+)',
+    documentation: 'Since alpha.11: round an exact decimal to at most 0–18 places. Modes: half_even, half_up, toward_zero, away_from_zero.',
+    insertText: 'decimal_round(${1:value}, ${2:2}, "${3:half_even}")',
+  },
+  {
+    label: 'decimal_format', kind: 'function', detail: 'Fixed-places decimal text (alpha.11+)',
+    documentation: 'Since alpha.11: return a string with exactly the selected decimal places (0–18), using an explicit rounding mode.',
+    insertText: 'decimal_format(${1:value}, ${2:2}, "${3:half_even}")',
+  },
+  {
+    label: 'decimal_div_rounded', kind: 'function', detail: 'Division with explicit rounding (alpha.11+)',
+    documentation: 'Since alpha.11: divide exact decimals to a requested scale using an explicit rounding mode; ordinary division rejects inexact results.',
+    insertText: 'decimal_div_rounded(${1:a}, ${2:b}, ${3:2}, "${4:half_even}")',
+  },
+  {
+    label: 'input_decimal', kind: 'function', detail: 'Prompt for exact decimal input (alpha.11+)',
+    documentation: 'Since alpha.11: requires interactive prompt mode. Studio preloads replies in its Program Input panel; it is not a live terminal.',
+    insertText: 'input_decimal("${1:Amount: }")',
+  },
 ];
 
 export function scarpCompletions(prefix: string): ScarpCompletion[] {
@@ -270,7 +310,10 @@ export function scarpCompletions(prefix: string): ScarpCompletion[] {
 }
 
 export function scarpTokenHelp(token: string): ScarpCompletion | undefined {
-  return templates.find((entry) => entry.label === token);
+  // A constructor and a type can share a label (decimal, bigint). Prefer
+  // call-oriented help without turning the constructor into a keyword.
+  return templates.find((entry) => entry.label === token && entry.kind === 'function') ??
+    templates.find((entry) => entry.label === token);
 }
 
 /** Do not insert suggestions into a single-line string or // comment. */

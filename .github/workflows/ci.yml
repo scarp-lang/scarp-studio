@@ -173,8 +173,50 @@ jobs:
           $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
           if (-not $binary) { throw "Pinned Scarp compiler missing from integration test" }
           $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.10"
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Native Scarp process integration failed" }
+      # Retain the alpha.10 compatibility gate above, and independently
+      # validate the published alpha.11 Decimal features against the real CLI.
+      - name: Verify pinned Scarp alpha.11 exact-decimal compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.11/scarp-0.0.6-alpha.11-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha11.zip
+          $actual = (Get-FileHash scarp-alpha11.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "7e86ae069f197c273c1c89424e0931198a7e3e29a74f1e9d7d9c092d49582a56") {
+            throw "Official alpha.11 compiler archive hash mismatch"
+          }
+          Expand-Archive -Path scarp-alpha11.zip -DestinationPath scarp-alpha11
+          $binary = Get-ChildItem scarp-alpha11 -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Official Scarp alpha.11 executable is missing" }
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.11") {
+            throw "Unexpected Scarp alpha.11 compiler version"
+          }
+          'bind price: decimal = decimal("199.99"); bind tax = decimal("0.18"); print(decimal_format(price + price * tax, 2, "half_even")); print(decimal("0.1") + decimal("0.2")); print(decimal_div_rounded(decimal("1"), decimal("3"), 2, "half_even"));' | Set-Content -Path scarp-decimal.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-decimal.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.11 Decimal verification failed" }
+          $decimal = & $binary.FullName exec --diagnostic-format=json -- scarp-decimal.srp
+          $decimalExit = $LASTEXITCODE
+          $decimalText = $decimal -join "`n"
+          if ($decimalExit -ne 0 -or $decimalText -notmatch '235\.99' -or $decimalText -notmatch '0\.3' -or $decimalText -notmatch '0\.33') {
+            throw "Scarp alpha.11 exact decimal smoke failed"
+          }
+          'bind amount: decimal = input_decimal("Amount: "); print(decimal_format(amount, 2, "half_even"));' | Set-Content -Path scarp-decimal-input.srp -Encoding utf8
+          $prompt = '19.95' | & $binary.FullName exec --interactive --diagnostic-format=json -- scarp-decimal-input.srp
+          $promptExit = $LASTEXITCODE
+          $promptText = $prompt -join "`n"
+          if ($promptExit -ne 0 -or $promptText -notmatch '19\.95') {
+            throw "Scarp alpha.11 typed decimal prompt smoke failed"
+          }
+          # Verify that Studio's native runner also accepts alpha.11 capabilities.
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.11"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.11" }
+
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate

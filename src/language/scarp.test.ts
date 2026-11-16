@@ -82,17 +82,29 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     expect(contextualType?.test('array = 2')).toBe(false);
   });
 
-  it('does not show unsupported hexadecimal, binary or underscored literals as numbers', () => {
-    const root = captureProvider().tokenizer.root;
-    const valid = root.find(([, token]) => token === 'number')?.[0];
-    const invalid = root.find(([, token]) => token === 'number.invalid')?.[0];
-    expect(valid).toBeDefined();
-    expect(invalid).toBeDefined();
-    for (const value of ['0', '42', '3.25', '1e3', '1.2E-4']) {
-      expect(matchesWhole(valid!, value), value).toBe(true);
+  it('recognizes alpha.11 exact decimal type and built-ins without inventing keywords', () => {
+    const provider = captureProvider();
+    expect(provider.typeKeywords).toContain('decimal');
+    for (const name of [
+      'decimal', 'decimal_from_integer', 'decimal_to_integer', 'decimal_to_text',
+      'decimal_round', 'decimal_format', 'decimal_div_rounded', 'input_decimal',
+    ]) {
+      expect(provider.builtinFunctions).toContain(name);
+      expect(provider.keywords).not.toContain(name);
     }
-    for (const value of ['0xFF', '0b101', '12_345']) {
-      expect(matchesWhole(valid!, value), value).toBe(false);
+  });
+
+  it('recognizes published hexadecimal and binary integer literals', () => {
+    const root = captureProvider().tokenizer.root;
+    const valid = root.filter(([, token]) => token === 'number').map(([rule]) => rule);
+    const invalid = root.find(([, token]) => token === 'number.invalid')?.[0];
+    expect(valid.length).toBeGreaterThan(0);
+    expect(invalid).toBeDefined();
+    for (const value of ['0', '42', '3.25', '1e3', '1.2E-4', '0xFF', '0X2a', '0b101', '0B010']) {
+      expect(valid.some((rule) => matchesWhole(rule, value)), value).toBe(true);
+    }
+    for (const value of ['0x', '0b', '0xGG', '0b102', '0xFF_', '12_345']) {
+      expect(valid.some((rule) => matchesWhole(rule, value)), value).toBe(false);
       expect(matchesWhole(invalid!, value), value).toBe(true);
     }
   });

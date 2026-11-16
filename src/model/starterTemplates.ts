@@ -69,6 +69,18 @@ export const scarpStarterTemplates: readonly ScarpStarterTemplate[] = [
     description: 'Exact GCD, division and number theory',
     source: '// Requires official Scarp v0.0.6-alpha.10+.\nbind left = bigint("120");\nbind right = bigint("18");\nprint(bigint_gcd(left, right));\n',
   },
+  {
+    id: 'decimals',
+    title: 'Exact Decimals (alpha.11+)',
+    description: 'Exact base-10 arithmetic and explicit rounding',
+    source: '// Requires official Scarp v0.0.6-alpha.11+. No implicit float conversion.\nbind price: decimal = decimal("199.99");\nbind tax = decimal("0.18");\nprint(decimal_format(price + price * tax, 2, "half_even"));\nprint(decimal("0.1") + decimal("0.2"));\n',
+  },
+  {
+    id: 'decimalinput',
+    title: 'Prompted Decimal (alpha.11+)',
+    description: 'Preload an exact decimal input and enable prompt mode',
+    source: '// Requires official Scarp v0.0.6-alpha.11+.\n// Enable Studio prompt mode and preload 19.95 in Program Input BEFORE Run.\nbind amount: decimal = input_decimal("Amount: ");\nprint(decimal_format(amount, 2, "half_even"));\n',
+  },
 ];
 
 export function getScarpStarterTemplate(id: string): ScarpStarterTemplate | null {

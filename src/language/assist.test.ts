@@ -55,6 +55,23 @@ describe('Scarp alpha.10 editor suggestions', () => {
   });
 });
 
+describe('Scarp alpha.11 exact decimal assistance', () => {
+  it('lists the published exact-decimal operations and version gates them', () => {
+    for (const label of [
+      'decimal', 'decimal_from_integer', 'decimal_to_integer', 'decimal_to_text',
+      'decimal_round', 'decimal_format', 'decimal_div_rounded', 'input_decimal',
+    ]) {
+      const suggestion = scarpCompletions(label).find((item) => item.label === label && item.kind === 'function');
+      expect(suggestion, label).toBeDefined();
+      expect(suggestion?.documentation).toContain('alpha.11');
+    }
+    expect(scarpTokenHelp('decimal')?.insertText).toContain('decimal("');
+    expect(scarpTokenHelp('decimal_round')?.insertText).toContain('half_even');
+    expect(scarpTokenHelp('decimal_div_rounded')?.documentation).toContain('inexact');
+    expect(scarpTokenHelp('input_decimal')?.documentation).toContain('preloads');
+  });
+});
+
 describe('lexical completion safety', () => {
   it('suppresses suggestions inside comments and quoted strings', () => {
     const line = 'print("https://test"); // trailing comment';
