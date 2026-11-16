@@ -13,6 +13,7 @@ import {
   DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
   parseEditorPreferences, type EditorPreferences,
 } from './model/editorPreferences';
+import { NativeDialogGate } from './model/dialogGate';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -58,8 +59,8 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
-  // Prevent overlapping native discard prompts on repeated close attempts.
-  const exitConfirmationInProgress = useRef(false);
+  // Only one native discard confirmation may be active at once.
+  const nativeDialogGate = useRef(new NativeDialogGate());
 
   const active = documents.find((document) => document.id === activeId) || null;
 
@@ -82,15 +83,14 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(async (event) => {
       const pending = liveEditor.current.documents.filter(isDirty);
-      if (!pending.length && !saveInProgress.current &&
-          !exitConfirmationInProgress.current) return;
+      const gate = nativeDialogGate.current;
+      if (!pending.length && !saveInProgress.current && !gate.isActive) return;
       event.preventDefault();
       if (saveInProgress.current) {
         setError('A file is being saved. Finish saving before exiting.');
         return;
       }
-      if (exitConfirmationInProgress.current) return;
-      exitConfirmationInProgress.current = true;
+      if (!gate.begin('window-exit')) return;
       try {
         if (await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
@@ -106,7 +106,7 @@ export default function App() {
       } catch (caught) {
         setError(toMessage(caught));
       } finally {
-        exitConfirmationInProgress.current = false;
+        gate.finish('window-exit');
       }
     }).then((cleanup) => {
       if (removed) cleanup();
@@ -195,27 +195,34 @@ export default function App() {
       setError('Finish the current save before closing a tab.');
       return;
     }
-    const document = liveEditor.current.documents.find((item) => item.id === id);
-    if (!document) return;
-    if (isDirty(document)) {
-      try {
-        const discard = await ask('Discard unsaved changes to ' + document.name + '?', {
-          title: 'Close file',
-          kind: 'warning',
-        });
-        if (!discard) return;
-      } catch (caught) {
-        setError('Could not confirm close: ' + toMessage(caught));
+    // Duplicate Ctrl+W actions and window-exit prompts share one native slot.
+    const gate = nativeDialogGate.current;
+    if (!gate.begin('tab-close')) return;
+    try {
+      const document = liveEditor.current.documents.find((item) => item.id === id);
+      if (!document) return;
+      if (isDirty(document)) {
+        try {
+          const discard = await ask('Discard unsaved changes to ' + document.name + '?', {
+            title: 'Close file',
+            kind: 'warning',
+          });
+          if (!discard) return;
+        } catch (caught) {
+          setError('Could not confirm close: ' + toMessage(caught));
+          return;
+        }
+      }
+      const current = liveEditor.current.documents.find((item) => item.id === id);
+      if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
+        setError('The file changed while confirming close. Review the changes and try again.');
         return;
       }
+      dispatch({ type: 'close', id, snapshot: document });
+      setNotice('Closed ' + document.name);
+    } finally {
+      gate.finish('tab-close');
     }
-    const current = liveEditor.current.documents.find((item) => item.id === id);
-    if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
-      setError('The file changed while confirming close. Review the changes and try again.');
-      return;
-    }
-    dispatch({ type: 'close', id, snapshot: document });
-    setNotice('Closed ' + document.name);
   }
 
   useEffect(() => {
