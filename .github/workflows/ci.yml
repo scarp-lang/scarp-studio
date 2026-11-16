@@ -173,6 +173,7 @@ jobs:
           $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
           if (-not $binary) { throw "Pinned Scarp compiler missing from integration test" }
           $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.10"
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Native Scarp process integration failed" }
       # Retain the alpha.10 compatibility gate above, and independently
@@ -208,6 +209,7 @@ jobs:
           }
           # Verify that Studio's native runner also accepts alpha.11 capabilities.
           $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.11"
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.11" }
 
