@@ -9,12 +9,35 @@ export interface EditorState {
   nextUntitled: number;
 }
 
+/** User-reviewed replacements commit atomically only against unchanged tabs. */
+export interface BufferReplacement {
+  id: string;
+  snapshot: StudioDocument;
+  content: string;
+}
+
+export function canApplyReplacementSnapshots(
+  state: EditorState,
+  changes: readonly BufferReplacement[],
+): boolean {
+  if (!changes.length) return false;
+  const ids = new Set<string>();
+  return changes.every((change) => {
+    if (ids.has(change.id) || change.id !== change.snapshot.id ||
+        change.content === change.snapshot.content) return false;
+    ids.add(change.id);
+    const current = state.documents.find((document) => document.id === change.id);
+    return current !== undefined && isUnchangedSnapshot(current, change.snapshot);
+  });
+}
+
 export type EditorAction =
   | { type: 'new' }
   | { type: 'open'; path: string; content: string }
   | { type: 'edit'; id: string; content: string }
   | { type: 'saved'; id: string; path: string; savedContent: string }
   | { type: 'reload'; id: string; snapshot: StudioDocument; content: string }
+  | { type: 'replace-open-files'; changes: readonly BufferReplacement[] }
   | { type: 'activate'; id: string }
   | { type: 'close'; id: string; snapshot: StudioDocument };
 
@@ -75,6 +98,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
             ? { ...doc, content: action.content, savedContent: action.content }
             : doc,
         ),
+      };
+    }
+    case 'replace-open-files': {
+      if (!canApplyReplacementSnapshots(state, action.changes)) return state;
+      const byId = new Map(action.changes.map((change) => [change.id, change.content]));
+      return {
+        ...state,
+        documents: state.documents.map((document) => byId.has(document.id)
+          ? { ...document, content: byId.get(document.id)! }
+          : document),
       };
     }
     case 'activate':
