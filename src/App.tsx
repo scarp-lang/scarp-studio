@@ -8,7 +8,7 @@ import {
   fileName, isDirty, sameFilePath,
 } from './model/documents';
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
-import { pickSourceFile, writeSourceFile } from './services/files';
+import { pickSourceFile, saveAllModifiedSources, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import {
@@ -46,6 +46,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'open', label: 'Open Scarp File', detail: 'Ctrl+O' },
   { id: 'folder', label: 'Choose Scarp Folder', detail: 'Explorer' },
   { id: 'save', label: 'Save Current File', detail: 'Ctrl+S' },
+  { id: 'save-all', label: 'Save All Modified Scarp Files', detail: 'Ctrl+Alt+S' },
   { id: 'save-as', label: 'Save Current File As', detail: 'Ctrl+Shift+S' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
@@ -275,6 +276,7 @@ export default function App() {
       case 'open': void openFile(); break;
       case 'folder': void openFolder(); break;
       case 'save': void saveFile(); break;
+      case 'save-all': void saveAllFiles(); break;
       case 'save-as': void saveFile(true); break;
       case 'close':
         if (liveEditor.current.activeId) void closeFile(liveEditor.current.activeId);
@@ -451,6 +453,40 @@ export default function App() {
       setNotice('Saved ' + fileName(path));
     } catch (caught) {
       setError('Could not save source: ' + toMessage(caught));
+    } finally {
+      saveInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function saveAllFiles(): Promise<void> {
+    if (saveInProgress.current || nativeDialogGate.current.isActive) return;
+    // Capture only tab identities: each source is looked up again after earlier
+    // native Save As dialogs, so later edits are saved at their current snapshot.
+    const ids = liveEditor.current.documents.filter(isDirty).map((document) => document.id);
+    if (!ids.length) {
+      setNotice('All Scarp sources are already saved');
+      return;
+    }
+    saveInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await saveAllModifiedSources(
+        ids,
+        (id) => liveEditor.current.documents.find((document) => document.id === id),
+        (id) => liveEditor.current.documents
+          .filter((document) => document.id !== id && document.path !== null)
+          .map((document) => document.path as string),
+        (document, path) => dispatch({
+          type: 'saved', id: document.id, path, savedContent: document.content,
+        }),
+      );
+      setNotice(result.cancelled
+        ? 'Save All cancelled; ' + result.saved + ' source(s) saved'
+        : 'Saved ' + result.saved + ' Scarp source(s)');
+    } catch (caught) {
+      setError(toMessage(caught));
     } finally {
       saveInProgress.current = false;
       setBusy(false);
@@ -717,6 +753,11 @@ export default function App() {
         return;
       }
       const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (paletteMode === null) void saveAllFiles();
+        return;
+      }
       if (!modifier || event.altKey) return;
       const key = event.key.toLowerCase();
       if (key === 'p') {
@@ -783,6 +824,8 @@ export default function App() {
             title="Search all currently open Scarp buffers (Ctrl+Shift+F)"
           >Find in Open Files</button>
           <button onClick={() => void saveFile()} disabled={!active || busy} title="Save (Ctrl+S)">Save</button>
+          <button onClick={() => void saveAllFiles()} disabled={busy || !documents.some(isDirty)}
+            title="Save All modified Scarp files (Ctrl+Alt+S)">Save All</button>
           <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
         </nav>
         <button
