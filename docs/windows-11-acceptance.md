@@ -73,6 +73,8 @@ This is a **manual verification worksheet** for the draft integrated IDE candida
 | D01 | Verify a deliberately invalid saved `.srp` source, inspect error, navigate via F8 | Error location points to the unchanged verified source only | NOT RUN |
 | D02 | Edit or switch tabs after Verify before clicking an old error location | Stale diagnostic navigation is disabled | NOT RUN |
 | D03 | Confirm source read and input size limits; record visible user errors | Oversized sources and prompt data fail closed | NOT RUN |
+| D06 | Load a 4 MiB valid source, a 4 MiB + 1 byte source, then a source grown while opening; inspect file handles and UI responsiveness | Boundary accepted, oversized/growing sources refused with safe error; handle closed and no excessive allocation | NOT RUN |
+| D07 | Reopen a UTF-8 Scarp source containing Hindi, emoji, BOM and CRLF; attempt an invalid UTF-8 file | Exact valid text roundtrips; malformed text is refused without corrupting an existing tab | NOT RUN |
 | D04 | Inspect unsigned NSIS candidate, installation/uninstallation, warnings, and Windows executable launch | Record observed behavior; do not treat a successful installer build as GUI acceptance | NOT RUN |
 | D05 | Confirm SHA-256 checksums for both candidate artifacts; review logs, dependencies, compiler provenance | Build metadata and compiler signatures/checksums are documented | NOT RUN |
 

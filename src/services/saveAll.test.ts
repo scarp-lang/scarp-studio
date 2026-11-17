@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { save } from '@tauri-apps/plugin-dialog';
-import { readTextFile, stat, writeTextFile } from '@tauri-apps/plugin-fs';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { readScarpSource } from './sourceRead';
 import { createUntitled, type StudioDocument } from '../model/documents';
 import { saveAllModifiedSources } from './files';
 
@@ -8,11 +9,8 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(),
   save: vi.fn(),
 }));
-vi.mock('@tauri-apps/plugin-fs', () => ({
-  readTextFile: vi.fn(),
-  stat: vi.fn(),
-  writeTextFile: vi.fn(),
-}));
+vi.mock('@tauri-apps/plugin-fs', () => ({ writeTextFile: vi.fn() }));
+vi.mock('./sourceRead', () => ({ readScarpSource: vi.fn() }));
 
 function unsaved(id: number, content: string): StudioDocument {
   return { ...createUntitled(id), content };
@@ -21,9 +19,7 @@ function unsaved(id: number, content: string): StudioDocument {
 describe('sequential Save All safety', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(stat).mockResolvedValue({
-      size: 12, isFile: true,
-    } as Awaited<ReturnType<typeof stat>>);
+    vi.mocked(readScarpSource).mockResolvedValue('original');
   });
 
   it('does not prompt for clean, closed, or duplicate tab identities', async () => {
@@ -125,7 +121,7 @@ describe('sequential Save All safety', () => {
       path: 'C:/work/entry.srp',
       savedContent: 'original on disk',
     };
-    vi.mocked(readTextFile).mockResolvedValue('external changes');
+    vi.mocked(readScarpSource).mockResolvedValue('external changes');
     await expect(saveAllModifiedSources(
       [source.id], () => source, () => [], vi.fn(),
     )).rejects.toThrow('changed on disk');
