@@ -27,6 +27,21 @@ describe('safe native source selection after a file picker', () => {
       .toEqual({ kind: 'stale' });
   });
 
+  it('rejects a delayed Open after the same active source gains newer edits', () => {
+    const opened = openedDocument([], '/project/current.srp', 'before');
+    const snapshot = opened.documents[0];
+    const edited = updateContent(opened.documents, opened.id, 'new unsaved typing');
+    expect(decidePickedSourceOpen(
+      '/project/new.srp', edited, opened.id, opened.id, snapshot,
+    )).toEqual({ kind: 'stale' });
+    expect(decidePickedSourceOpen(
+      '/project/current.srp', edited, opened.id, opened.id, snapshot,
+    )).toEqual({ kind: 'stale' });
+    expect(decidePickedSourceOpen(
+      '/project/new.srp', opened.documents, opened.id, opened.id, snapshot,
+    )).toEqual({ kind: 'read', path: '/project/new.srp' });
+  });
+
   it('does not change the active tab when the original file was selected again', () => {
     const opened = openedDocument([], '/project/file.srp', 'disk');
     const different = [opened.documents[0], createUntitled(2)];

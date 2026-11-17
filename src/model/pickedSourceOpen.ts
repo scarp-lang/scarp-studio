@@ -1,4 +1,5 @@
 import { isScarpPath, sameFilePath, type StudioDocument } from './documents';
+import { isUnchangedSnapshot } from './editorState';
 
 export type PickedSourceDecision =
   | { kind: 'stale' }
@@ -17,9 +18,18 @@ export function decidePickedSourceOpen(
   documents: readonly StudioDocument[],
   activeAtPickerStart: string | null,
   currentActive: string | null,
+  activeAtPickerStartSnapshot?: StudioDocument | null,
 ): PickedSourceDecision {
   if (!isScarpPath(path)) return { kind: 'invalid' };
   if (activeAtPickerStart !== currentActive) return { kind: 'stale' };
+  // The active tab can keep focus while its contents change during an
+  // asynchronous native picker or file read. Never steal that focus.
+  if (activeAtPickerStartSnapshot) {
+    const current = documents.find((document) => document.id === activeAtPickerStart);
+    if (!current || !isUnchangedSnapshot(current, activeAtPickerStartSnapshot)) {
+      return { kind: 'stale' };
+    }
+  }
   const existing = documents.find((document) =>
     document.path !== null && sameFilePath(document.path, path));
   return existing

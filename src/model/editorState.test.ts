@@ -1,7 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { canApplyReplacementSnapshots, editorReducer, initialEditorState, sameDirtyDocuments, sameOpenDocumentSnapshots } from './editorState';
+import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, sameDirtyDocuments, sameOpenDocumentSnapshots } from './editorState';
 
 describe('atomic editor session transitions', () => {
+  it('selects Save and Close targets from the newest synchronous state', () => {
+    const first = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/first.srp', content: 'first',
+    });
+    const staleRenderedId = first.activeId;
+    const switched = editorReducer(first, { type: 'new' });
+    const current = currentActiveDocument(switched);
+    expect(current?.id).toBe('untitled-2');
+    expect(staleRenderedId).toBe('file-/project/first.srp');
+    expect(current?.id).not.toBe(staleRenderedId);
+    expect(currentActiveDocument(editorReducer(switched, {
+      type: 'close', id: switched.activeId!, snapshot: current!,
+    }))?.id).toBe(staleRenderedId);
+    expect(currentActiveDocument({ ...switched, activeId: 'closed' })).toBeNull();
+  });
+
   it('preserves all tabs when two opens complete asynchronously', () => {
     const a = editorReducer(initialEditorState, {
       type: 'open', path: 'C:/project/one.srp', content: 'first',

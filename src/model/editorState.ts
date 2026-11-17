@@ -71,6 +71,13 @@ export function sameOpenDocumentSnapshots(
     snapshot.every((expected, index) => isUnchangedSnapshot(current[index], expected));
 }
 
+/** Resolve Save and Close targets from synchronous live editor state, not
+ * a potentially stale React render's activeId closure.
+ */
+export function currentActiveDocument(state: EditorState): StudioDocument | null {
+  return state.documents.find((document) => document.id === state.activeId) ?? null;
+}
+
 /** Pure transitions keep asynchronous file-open events from replacing newer tabs. */
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {

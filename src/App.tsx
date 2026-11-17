@@ -7,7 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   fileName, isDirty, sameFilePath,
 } from './model/documents';
-import { canApplyReplacementSnapshots, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots, type EditorAction } from './model/editorState';
+import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots, type EditorAction } from './model/editorState';
 import { pickSourcePath, saveAllModifiedSources, writeSourceFile } from './services/files';
 import { decidePickedSourceOpen } from './model/pickedSourceOpen';
 import { readScarpSource } from './services/sourceRead';
@@ -408,6 +408,7 @@ export default function App() {
     if (filePickerInProgress.current || saveInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
     const activeAtStart = liveEditor.current.activeId;
+    const activeSnapshot = currentActiveDocument(liveEditor.current);
     filePickerInProgress.current = true;
     setBusy(true);
     setError(null);
@@ -418,6 +419,7 @@ export default function App() {
       if (path === null) return;
       const decide = () => decidePickedSourceOpen(
         path, liveEditor.current.documents, activeAtStart, liveEditor.current.activeId,
+        activeSnapshot,
       );
       const initial = decide();
       if (initial.kind === 'stale') {
@@ -566,7 +568,7 @@ export default function App() {
   }
 
   async function saveFile(forceSaveAs = false): Promise<void> {
-    const document = liveEditor.current.documents.find((item) => item.id === activeId);
+    const document = currentActiveDocument(liveEditor.current);
     if (!document || saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
     // Project actions execute disk-backed sources. Do not rewrite their files
@@ -1064,9 +1066,10 @@ export default function App() {
         event.preventDefault();
         setSearchOpen(true);
         searchInput.current?.focus();
-      } else if (key === 'w' && activeId) {
+      } else if (key === 'w') {
         event.preventDefault();
-        void closeFile(activeId);
+        const currentId = liveEditor.current.activeId;
+        if (currentId) void closeFile(currentId);
       }
     };
     window.addEventListener('keydown', handleKey, true);
