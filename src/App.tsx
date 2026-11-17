@@ -472,21 +472,49 @@ export default function App() {
   }
 
   async function openFolderFile(path: string): Promise<void> {
-    setError(null);
     const selection = selectedFolderRef.current;
     if (!selection) {
       setError('Choose a Scarp project folder before opening a project source.');
       return;
     }
+    // A project source read must share the same operation lock as native
+    // pickers and Refresh. Otherwise a concurrent Save As, folder switch or
+    // close request could race a delayed filesystem response.
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    const listed = selection.files.find((item) => sameFilePath(item.path, path));
+    if (!listed) {
+      setError('That source is no longer in the selected Scarp project listing.');
+      return;
+    }
+    // Re-activating an already open source never requires another disk read.
+    // In particular, do not let a changed or missing external file prevent
+    // users from returning to their unsaved editor buffer.
+    const existing = liveEditor.current.documents.find(
+      (document) => document.path !== null && sameFilePath(document.path, listed.path),
+    );
+    if (existing) {
+      dispatch({ type: 'activate', id: existing.id });
+      setError(null);
+      return;
+    }
+    const activeAtStart = liveEditor.current.activeId;
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
     try {
-      const content = await readFolderSource(path, selection.files);
-      if (selectedFolderRef.current !== selection) {
-        setError('The Scarp folder changed during the read. Select the file again.');
+      const content = await readFolderSource(listed.path, selection.files);
+      if (selectedFolderRef.current !== selection ||
+          liveEditor.current.activeId !== activeAtStart) {
+        setError('The selected folder or active tab changed during the read. Select the file again.');
         return;
       }
-      activateOpenedFile(path, content);
+      activateOpenedFile(listed.path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
     }
   }
 
