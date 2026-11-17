@@ -51,7 +51,7 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
 
   it('keeps unsupported proposals and ordinary intrinsic calls out of keywords', () => {
     const provider = captureProvider();
-    for (const name of ['for', 'match', 'ask', 'class', 'read_line']) {
+    for (const name of ['for', 'ask', 'class', 'read_line']) {
       expect(provider.keywords, name).not.toContain(name);
     }
     expect(provider.legacyKeywords).toEqual(['let', 'mut']);
@@ -92,6 +92,26 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
       expect(provider.builtinFunctions).toContain(name);
       expect(provider.keywords).not.toContain(name);
     }
+  });
+
+  it('highlights published alpha.12 records, variants, tagged matches and collections', () => {
+    const provider = captureProvider();
+    for (const keyword of ['record', 'variant', 'match', 'on', 'case', 'new']) {
+      expect(provider.keywords).toContain(keyword);
+    }
+    for (const type of ['list', 'map', 'option', 'result']) {
+      expect(provider.typeKeywords).toContain(type);
+    }
+    for (const name of ['list_len', 'list_push', 'list_remove', 'map_len',
+      'map_keys', 'map_values', 'map_contains', 'map_get_or', 'map_set', 'map_remove']) {
+      expect(provider.builtinFunctions).toContain(name);
+      expect(provider.keywords).not.toContain(name);
+    }
+    const contextualType = provider.tokenizer.root.find(([, token]) => token === 'type')?.[0];
+    for (const generic of ['list<integer>', 'map<string, integer>', 'option<boolean>', 'result<integer,string>']) {
+      expect(contextualType?.test(generic), generic).toBe(true);
+    }
+    expect(contextualType?.test('list = 2')).toBe(false);
   });
 
   it('recognizes published hexadecimal and binary integer literals', () => {
