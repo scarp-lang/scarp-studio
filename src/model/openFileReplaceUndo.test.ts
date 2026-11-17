@@ -31,10 +31,28 @@ describe('atomic one-step undo of confirmed open-buffer Replace All', () => {
     const restored = editorReducer(after, {
       type: 'replace-open-files', changes: undo.changes, allSnapshots: undo.after,
     });
-    expect(restored.documents).toEqual(before.documents);
+    expect(restored.documents.map((document) => [document.content, document.savedContent, document.path]))
+      .toEqual(before.documents.map((document) => [document.content, document.savedContent, document.path]));
+    expect(restored.documents[1].revision).toBe(after.documents[1].revision + 1);
     expect(restored.documents[1].savedContent).toBe('print("a")');
     expect(restored.documents[2].savedContent).toBe('bind a = 1');
     expect(restored.activeId).toBe(after.activeId);
+  });
+
+  it('refuses Undo after editing A→B→A returns to identical post-replacement text', () => {
+    const { after, undo } = replaceAndRemember();
+    const snapshot = after.documents[1];
+    const modified = editorReducer(after, {
+      type: 'edit', id: snapshot.id, content: 'new work',
+    });
+    const reverted = editorReducer(modified, {
+      type: 'edit', id: snapshot.id, content: snapshot.content,
+    });
+    expect(reverted.documents[1].content).toBe(snapshot.content);
+    expect(canUndoOpenFileReplace(undo, reverted)).toBe(false);
+    expect(editorReducer(reverted, {
+      type: 'replace-open-files', changes: undo.changes, allSnapshots: undo.after,
+    })).toBe(reverted);
   });
 
   it('refuses to erase an edit made after Replace All in a changed tab', () => {

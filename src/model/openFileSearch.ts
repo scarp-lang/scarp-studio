@@ -20,6 +20,8 @@ export interface OpenFileSearchHit {
   documentName: string;
   /** Exact buffer snapshot: clicking after any edit cannot jump to stale text. */
   sourceContent: string;
+  /** A matching string after intervening edits is still a stale search hit. */
+  sourceRevision: number;
   matchText: string;
   offset: number;
   line: number;
@@ -76,6 +78,7 @@ export function isCurrentSearchHit(
 ): boolean {
   return document?.id === hit.documentId &&
     document.content === hit.sourceContent &&
+    document.revision === hit.sourceRevision &&
     document.content.slice(hit.offset, hit.offset + hit.matchText.length) === hit.matchText;
 }
 
@@ -132,6 +135,7 @@ export function searchOpenFiles(
         documentId: document.id,
         documentName: document.name,
         sourceContent: content,
+        sourceRevision: document.revision,
         matchText: match[0],
         offset: match.index,
         line,

@@ -36,6 +36,7 @@ This is a **manual verification worksheet** for the stacked draft Studio integra
 | E16 | Open a saved .srp tab, make unsaved changes, modify its still-existing on-disk source externally, then select the same file through native Open | Existing dirty tab is reactivated without rereading changed disk content; no edits discarded | NOT RUN |
 | E17 | Start native Open, change the active tab **or edit its contents** before the picker or source read completes | Stale result does not activate another tab or overwrite any buffer; no overlapping file operations | NOT RUN |
 | E18 | Immediately after switching tabs, press Ctrl+S or Ctrl+W | Save and Close target the currently active tab rather than the tab active before React rendered | NOT RUN |
+| E19 | While a native Reload or discard prompt is open, edit the disposable source and restore its exact original text before confirming | Stale confirmation rejected due to newer edit revision even though source text matches | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 
@@ -59,6 +60,7 @@ This is a **manual verification worksheet** for the stacked draft Studio integra
 | P15 | Replace text across two open dirty .srp tabs, then click Undo Last Replace All without changing other tabs | Original in-memory contents and dirty flags restored together; no disk source changes | NOT RUN |
 | P16 | Replace text, edit an unrelated open tab or Save one changed tab, then try Undo Last Replace All | Undo becomes unavailable; user edits and saved content are not reverted | NOT RUN |
 | P17 | Replace text, switch active tabs without editing, then Undo Last Replace All | Undo remains available and preserves current tab focus | NOT RUN |
+| P19 | After Replace All, edit then restore identical post-replacement text and try Undo Last Replace All | Monotonic revision invalidates stale Undo; no newer edit is silently erased | NOT RUN |
 
 ## Official compiler alpha.12 (interpreter)
 

@@ -56,7 +56,8 @@ export function isUnchangedSnapshot(
     current.path === snapshot.path &&
     current.name === snapshot.name &&
     current.content === snapshot.content &&
-    current.savedContent === snapshot.savedContent;
+    current.savedContent === snapshot.savedContent &&
+    current.revision === snapshot.revision;
 }
 
 /** Validate *every* open buffer, not just those with search hits.
@@ -94,9 +95,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const opened = openedDocument(state.documents, action.path, action.content);
       return { ...state, documents: opened.documents, activeId: opened.id };
     }
-    case 'edit':
-      if (!state.documents.some((document) => document.id === action.id)) return state;
-      return { ...state, documents: updateContent(state.documents, action.id, action.content) };
+    case 'edit': {
+      const updated = updateContent(state.documents, action.id, action.content);
+      return updated === state.documents ? state : { ...state, documents: updated };
+    }
     case 'saved':
       if (!state.documents.some((document) => document.id === action.id)) return state;
       return {
@@ -114,7 +116,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...state,
         documents: state.documents.map((doc) =>
           doc.id === action.id
-            ? { ...doc, content: action.content, savedContent: action.content }
+            ? { ...doc, content: action.content, savedContent: action.content,
+                revision: doc.revision + 1 }
             : doc,
         ),
       };
@@ -126,7 +129,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return {
         ...state,
         documents: state.documents.map((document) => byId.has(document.id)
-          ? { ...document, content: byId.get(document.id)! }
+          ? { ...document, content: byId.get(document.id)!,
+              revision: document.revision + 1 }
           : document),
       };
     }

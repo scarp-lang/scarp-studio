@@ -2,6 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { createUntitled, isDirty, isScarpPath, markSaved, openedDocument, sameFilePath, updateContent } from './documents';
 
 describe('Scarp-only file state', () => {
+  it('increments only genuine edits even if a user returns to the original text', () => {
+    const original = createUntitled(3);
+    expect(original.revision).toBe(0);
+    expect(updateContent([original], original.id, original.content)[0]).toBe(original);
+    const edited = updateContent([original], original.id, 'new source')[0];
+    const reverted = updateContent([edited], original.id, original.content)[0];
+    expect(edited.revision).toBe(1);
+    expect(reverted.revision).toBe(2);
+    expect(reverted.content).toBe(original.content);
+    const saved = markSaved([reverted], original.id, '/project/a.srp', reverted.content)[0];
+    expect(saved.revision).toBe(3);
+    expect(openedDocument([], '/project/a.srp', 'disk').documents[0].revision).toBe(0);
+  });
+
   it('accepts .srp paths case-insensitively and rejects other files', () => {
     expect(isScarpPath('C:\\projects\\main.srp')).toBe(true);
     expect(isScarpPath('/tmp/MAIN.SRP')).toBe(true);

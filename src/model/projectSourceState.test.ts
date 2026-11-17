@@ -3,7 +3,7 @@ import { dirtyProjectSourceNames } from './projectSourceState';
 import type { StudioDocument } from './documents';
 
 function tab(name: string, path: string | null, dirty = true): StudioDocument {
-  return { id: name, name, path, savedContent: 'saved', content: dirty ? 'edited' : 'saved' };
+  return { id: name, name, path, savedContent: 'saved', content: dirty ? 'edited' : 'saved', revision: 0 };
 }
 
 describe('disk-backed project source awareness', () => {
