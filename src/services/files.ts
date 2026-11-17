@@ -7,11 +7,15 @@ import { isDirty, isScarpPath, sameFilePath } from '../model/documents';
 
 const scarpFilter = [{ name: 'Scarp source', extensions: ['srp'] }];
 
-export async function pickSourceFile(): Promise<{ path: string; content: string } | null> {
+/** The native picker only selects a path. Never read its bytes before
+ * checking whether an existing editor tab already owns that path: the file
+ * might have been changed, moved or deleted while the tab has unsaved work.
+ */
+export async function pickSourcePath(): Promise<string | null> {
   const path = await open({ title: 'Open Scarp source', multiple: false, filters: scarpFilter });
   if (typeof path !== 'string') return null;
   if (!isScarpPath(path)) throw new Error('Only .srp files can be opened.');
-  return { path, content: await readScarpSource(path) };
+  return path;
 }
 
 /** Returns null on user cancellation, or the written path on success. */

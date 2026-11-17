@@ -7,8 +7,9 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   fileName, isDirty, sameFilePath,
 } from './model/documents';
-import { canApplyReplacementSnapshots, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots, type EditorAction } from './model/editorState';
-import { pickSourceFile, saveAllModifiedSources, writeSourceFile } from './services/files';
+import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots, type EditorAction } from './model/editorState';
+import { pickSourcePath, saveAllModifiedSources, writeSourceFile } from './services/files';
+import { decidePickedSourceOpen } from './model/pickedSourceOpen';
 import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
@@ -406,15 +407,55 @@ export default function App() {
   async function openFile(): Promise<void> {
     if (filePickerInProgress.current || saveInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    const activeAtStart = liveEditor.current.activeId;
+    const activeSnapshot = currentActiveDocument(liveEditor.current);
     filePickerInProgress.current = true;
+    setBusy(true);
     setError(null);
     try {
-      const selected = await pickSourceFile();
-      if (selected) activateOpenedFile(selected.path, selected.content);
+      // The native picker returns a path, not file bytes. Resolve existing
+      // live tabs *first*: reading disk may fail after an external rename.
+      const path = await pickSourcePath();
+      if (path === null) return;
+      const decide = () => decidePickedSourceOpen(
+        path, liveEditor.current.documents, activeAtStart, liveEditor.current.activeId,
+        activeSnapshot,
+      );
+      const initial = decide();
+      if (initial.kind === 'stale') {
+        setError('The active tab changed while choosing a source. Open the file again.');
+        return;
+      }
+      if (initial.kind === 'invalid') {
+        setError('Only .srp files can be opened.');
+        return;
+      }
+      if (initial.kind === 'activate') {
+        dispatch({ type: 'activate', id: initial.documentId });
+        setNotice('Returned to open ' + fileName(path) + ' tab without reading disk');
+        return;
+      }
+      const content = await readScarpSource(initial.path);
+      const latest = decide();
+      if (latest.kind === 'stale') {
+        setError('The active tab changed while the source was loading. Open it again.');
+        return;
+      }
+      if (latest.kind === 'activate') {
+        dispatch({ type: 'activate', id: latest.documentId });
+        setNotice('Returned to already-open Scarp source');
+        return;
+      }
+      if (latest.kind !== 'read') {
+        setError('The source selection became invalid. Open the file again.');
+        return;
+      }
+      activateOpenedFile(path, content);
     } catch (caught) {
       setError('Could not open source: ' + toMessage(caught));
     } finally {
       filePickerInProgress.current = false;
+      setBusy(false);
     }
   }
 
@@ -527,7 +568,7 @@ export default function App() {
   }
 
   async function saveFile(forceSaveAs = false): Promise<void> {
-    const document = liveEditor.current.documents.find((item) => item.id === activeId);
+    const document = currentActiveDocument(liveEditor.current);
     if (!document || saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
     // Project actions execute disk-backed sources. Do not rewrite their files
@@ -1025,9 +1066,10 @@ export default function App() {
         event.preventDefault();
         setSearchOpen(true);
         searchInput.current?.focus();
-      } else if (key === 'w' && activeId) {
+      } else if (key === 'w') {
         event.preventDefault();
-        void closeFile(activeId);
+        const currentId = liveEditor.current.activeId;
+        if (currentId) void closeFile(currentId);
       }
     };
     window.addEventListener('keydown', handleKey, true);
