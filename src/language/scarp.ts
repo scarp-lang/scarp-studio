@@ -4,7 +4,7 @@ import {
   type ScarpCompletion,
 } from './assist';
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.11.
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.12.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco): void {
@@ -24,10 +24,10 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
     keywords: [
       'funcra', 'bind', 'var', 'pub', 'pure', 'import', 'if', 'elif', 'else',
       'while', 'repeat', 'as', 'return', 'break', 'continue', 'and', 'or', 'not',
-      'needs', 'ensures', 'assert',
+      'needs', 'ensures', 'assert', 'record', 'variant', 'match', 'on', 'case', 'new',
       'print', 'println', 'write', 'eprint', 'ewrite',
     ],
-    typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint', 'decimal'],
+    typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint', 'decimal', 'list', 'map', 'option', 'result'],
     // Calls are not keywords: names such as ask and array can occur as bindings.
     builtinFunctions: [
       'input', 'ask', 'ask_or', 'input_integer', 'input_float', 'input_bigint',
@@ -38,6 +38,8 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       'bigint_pow_mod', 'bigint_divmod',
       'decimal', 'decimal_from_integer', 'decimal_to_integer', 'decimal_to_text',
       'decimal_round', 'decimal_format', 'decimal_div_rounded', 'input_decimal',
+      'list_len', 'list_push', 'list_set', 'list_remove',
+      'map_len', 'map_keys', 'map_values', 'map_contains', 'map_get_or', 'map_set', 'map_remove',
     ],
     // Old declaration spellings are reserved but rejected by the current compiler.
     legacyKeywords: ['let', 'mut'],
@@ -53,7 +55,7 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         // Separators, missing digits and invalid radix digits are unsupported.
         [/\b(?:0[xX][A-Za-z0-9_]*|0[bB][A-Za-z0-9_]*|[0-9]+_[A-Za-z0-9_]*)\b/, 'number.invalid'],
         [/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b/, 'number'],
-        [/\barray(?=\s*<)/, 'type'],
+        [/\b(?:array|list|map|option|result)(?=\s*<)/, 'type'],
         [/[a-zA-Z_][\w]*(?=\s*\()/, {
           cases: { '@keywords': 'keyword', '@builtinFunctions': 'predefined',
             '@legacyKeywords': 'invalid', '@default': 'identifier' },
