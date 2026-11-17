@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readDir, readTextFile, stat } from '@tauri-apps/plugin-fs';
+import { readDir } from '@tauri-apps/plugin-fs';
+import { readScarpSource } from './sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './folders';
 
 vi.mock('@tauri-apps/api/path', () => ({
@@ -10,16 +11,13 @@ vi.mock('@tauri-apps/api/path', () => ({
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(),
 }));
-vi.mock('@tauri-apps/plugin-fs', () => ({
-  readDir: vi.fn(),
-  readTextFile: vi.fn(),
-  stat: vi.fn(),
-}));
+vi.mock('@tauri-apps/plugin-fs', () => ({ readDir: vi.fn() }));
+vi.mock('./sourceRead', () => ({ readScarpSource: vi.fn() }));
 
 describe('selected-folder Scarp source reads', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(stat).mockResolvedValue({ isFile: true, size: 64 } as Awaited<ReturnType<typeof stat>>);
+    vi.mocked(readScarpSource).mockResolvedValue('');
   });
 
   it('does not request directory entries if the chooser was cancelled', async () => {
@@ -142,34 +140,34 @@ describe('selected-folder Scarp source reads', () => {
   });
 
   it('opens a nested source only when it was explicitly listed', async () => {
-    vi.mocked(readTextFile).mockResolvedValue('print("nested");');
+    vi.mocked(readScarpSource).mockResolvedValue('print("nested");');
     const selected = [{ name: 'src/main.srp', path: 'C:/project/src/main.srp' }];
     await expect(readFolderSource('C:/project/src/main.srp', selected))
       .resolves.toBe('print("nested");');
     await expect(readFolderSource('C:/project/src/hidden.srp', selected))
       .rejects.toThrow('current folder listing');
-    expect(readTextFile).toHaveBeenCalledTimes(1);
+    expect(readScarpSource).toHaveBeenCalledTimes(1);
   });
 
   it('refuses paths not present in the current selected listing', async () => {
     await expect(readFolderSource('C:/another/outside.srp', [
       { name: 'file.srp', path: 'C:/project/file.srp' },
     ])).rejects.toThrow('current folder listing');
-    expect(readTextFile).not.toHaveBeenCalled();
+    expect(readScarpSource).not.toHaveBeenCalled();
   });
 
   it('allows Windows path aliases for an explicitly listed file', async () => {
-    vi.mocked(readTextFile).mockResolvedValue('print("hello");');
+    vi.mocked(readScarpSource).mockResolvedValue('print("hello");');
     const listing = [{ name: 'Main.srp', path: 'C:/Project/Main.srp' }];
     const result = await readFolderSource('c:\\project\\main.SRP', listing);
     expect(result).toBe('print("hello");');
-    expect(readTextFile).toHaveBeenCalledWith('C:/Project/Main.srp');
+    expect(readScarpSource).toHaveBeenCalledWith('C:/Project/Main.srp');
   });
 
   it('rejects non-Scarp paths even if a caller injects them into the list', async () => {
     await expect(readFolderSource('C:/project/main.rs', [
       { name: 'main.rs', path: 'C:/project/main.rs' },
     ])).rejects.toThrow('.srp');
-    expect(readTextFile).not.toHaveBeenCalled();
+    expect(readScarpSource).not.toHaveBeenCalled();
   });
 });

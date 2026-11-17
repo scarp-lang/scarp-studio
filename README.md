@@ -21,7 +21,7 @@
 - User-selected Scarp project Explorer with bounded listing (200 files, up to 4096 inspected entries per directory); no arbitrary-recursive or network project scanning. **Refresh Explorer** manually re-scans only the selected folder without a new native chooser, preserves open buffers and retains the old listing if a scan fails. Project source opens share the native file-operation gate; existing tabs activate without re-reading disk, while stale reads cannot steal focus.
 - User-selected **official Scarp compiler executable** for explicit source Run, static Verify and Stop; bounded process/output limits, version capability checks, and preloaded optional stdin/prompt input. No shell invocation, automatic execution, or arbitrary compiler discovery.
 - Explicit project Info, Verify Project, Run Project, List Tests and Run Tests workflows when supported by the selected official compiler. Structured test reports are parsed only for the audited schema/capabilities and raw output is retained.
-- Saved-source validation, external-change protection, bounded source-file sizes, stale diagnostic guards and safe native close prompts.
+- Saved-source validation, external-change protection, **4 MiB chunk-bounded UTF-8 reads through scoped Tauri file handles**, stale diagnostic guards and safe native close prompts. Handles are always closed, and file growth after metadata checks cannot cause unbounded frontend/native reads.
 
 ## Develop and test (Windows 11)
 
