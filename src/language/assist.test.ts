@@ -13,7 +13,7 @@ describe('Scarp completion catalog', () => {
   });
 
   it('excludes unsupported generic language constructs', () => {
-    for (const unsupported of ['class', 'match', 'def', 'let', 'mut', 'async', 'await', 'for']) {
+    for (const unsupported of ['class', 'def', 'let', 'mut', 'async', 'await', 'for']) {
       expect(scarpCompletions(unsupported)).toEqual([]);
     }
   });
@@ -69,6 +69,33 @@ describe('Scarp alpha.11 exact decimal assistance', () => {
     expect(scarpTokenHelp('decimal_round')?.insertText).toContain('half_even');
     expect(scarpTokenHelp('decimal_div_rounded')?.documentation).toContain('inexact');
     expect(scarpTokenHelp('input_decimal')?.documentation).toContain('preloads');
+  });
+});
+
+describe('published Scarp alpha.12 aggregate and match assistance', () => {
+  it('offers concrete typed list/map/option/result help with version warnings', () => {
+    for (const label of ['list', 'map', 'option', 'result']) {
+      const type = scarpCompletions(label).find((item) => item.label === label && item.kind === 'type');
+      expect(type, label).toBeDefined();
+      expect(type?.documentation).toContain('alpha.12');
+    }
+    for (const label of ['list_len', 'list_push', 'list_set', 'list_remove',
+      'map_len', 'map_keys', 'map_values', 'map_contains', 'map_get_or', 'map_set', 'map_remove']) {
+      const entry = scarpCompletions(label).find((item) => item.label === label && item.kind === 'function');
+      expect(entry, label).toBeDefined();
+      expect(entry?.documentation).toContain('alpha.12');
+      expect(entry?.documentation).toContain('interpreter');
+    }
+    expect(scarpTokenHelp('map_get_or')?.documentation).toContain('fallback');
+  });
+
+  it('provides versioned record, variant and match snippets', () => {
+    expect(scarpTokenHelp('record')?.insertText).not.toContain('new');
+    expect(scarpTokenHelp('record')?.insertText).toContain('record ${1:Task}');
+    expect(scarpTokenHelp('variant')?.insertText).toContain('variant ${1:Choice}');
+    const match = scarpCompletions('match').find((item) => item.label === 'match on');
+    expect(match?.insertText).toContain('case ${2:None}');
+    expect(match?.documentation).toContain('alpha.12');
   });
 });
 

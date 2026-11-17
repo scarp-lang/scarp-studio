@@ -8,9 +8,11 @@ import {
   fileName, isDirty, sameFilePath,
 } from './model/documents';
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
-import { pickSourceFile, writeSourceFile } from './services/files';
-import { chooseSourceFolder, readFolderSource } from './services/folders';
+import { pickSourceFile, saveAllModifiedSources, writeSourceFile } from './services/files';
+import { readScarpSource } from './services/sourceRead';
+import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
+import { resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
   DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
   parseEditorPreferences, type EditorPreferences,
@@ -45,8 +47,11 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'new', label: 'New Scarp File', detail: 'Ctrl+N' },
   { id: 'open', label: 'Open Scarp File', detail: 'Ctrl+O' },
   { id: 'folder', label: 'Choose Scarp Folder', detail: 'Explorer' },
+  { id: 'refresh-folder', label: 'Refresh Scarp Project Explorer', detail: 'Re-scan selected folder' },
   { id: 'save', label: 'Save Current File', detail: 'Ctrl+S' },
+  { id: 'save-all', label: 'Save All Modified Scarp Files', detail: 'Ctrl+Alt+S' },
   { id: 'save-as', label: 'Save Current File As', detail: 'Ctrl+Shift+S' },
+  { id: 'reload', label: 'Reload Current Scarp File from Disk', detail: 'Confirms before discarding unsaved edits' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
   { id: 'quick-open', label: 'Quick Open Tabs and Project Sources', detail: 'Ctrl+P' },
@@ -125,6 +130,9 @@ export default function App() {
   const mountedEditorDocumentId = useRef<string | null>(null);
   const pendingSearchLocation = useRef<OpenFileSearchHit | null>(null);
   const saveInProgress = useRef(false);
+  // Shared guard for native Open File / Choose Folder dialogs. Save As has
+  // its own saveInProgress gate; confirmations use NativeDialogGate.
+  const filePickerInProgress = useRef(false);
   // Prevent overlapping native discard prompts on repeated close attempts.
   const nativeDialogGate = useRef(new NativeDialogGate());
   const commandInProgress = useRef(false);
@@ -274,8 +282,11 @@ export default function App() {
       case 'new': newFile(); break;
       case 'open': void openFile(); break;
       case 'folder': void openFolder(); break;
+      case 'refresh-folder': void refreshFolder(); break;
       case 'save': void saveFile(); break;
+      case 'save-all': void saveAllFiles(); break;
       case 'save-as': void saveFile(true); break;
+      case 'reload': void reloadFile(); break;
       case 'close':
         if (liveEditor.current.activeId) void closeFile(liveEditor.current.activeId);
         break;
@@ -314,6 +325,7 @@ export default function App() {
       const pending = liveEditor.current.documents.filter(isDirty);
       const blocked = exitBlockReason(
         saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+        filePickerInProgress.current,
       );
       if (!pending.length && !blocked && !nativeDialogGate.current.isActive) return;
       event.preventDefault();
@@ -329,6 +341,7 @@ export default function App() {
         })) {
           const newBlocker = exitBlockReason(
             saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+            filePickerInProgress.current,
           );
           if (newBlocker ||
               !sameDirtyDocuments(pending, liveEditor.current.documents)) {
@@ -381,16 +394,25 @@ export default function App() {
   }
 
   async function openFile(): Promise<void> {
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    filePickerInProgress.current = true;
     setError(null);
     try {
       const selected = await pickSourceFile();
       if (selected) activateOpenedFile(selected.path, selected.content);
     } catch (caught) {
       setError('Could not open source: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
     }
   }
 
   async function openFolder(): Promise<void> {
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || commandInProgress.current ||
+        nativeDialogGate.current.isActive) return;
+    filePickerInProgress.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -407,32 +429,103 @@ export default function App() {
     } catch (caught) {
       setError('Could not open folder: ' + toMessage(caught));
     } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function refreshFolder(): Promise<void> {
+    const previous = selectedFolderRef.current;
+    if (!previous) {
+      setError('Choose a Scarp project folder before refreshing the Explorer.');
+      return;
+    }
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || commandInProgress.current ||
+        nativeDialogGate.current.isActive) return;
+    // Share the picker lock: no Save As / compiler selection / native close
+    // may overtake a refresh while filesystem permissions are being checked.
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await scanSourceFolder(previous.path);
+      // Never publish results from an obsolete selection after an async read.
+      if (selectedFolderRef.current !== previous) {
+        setError('The selected folder changed during refresh. Choose Refresh again.');
+        return;
+      }
+      selectedFolderRef.current = { path: result.path, files: result.files };
+      setFolderEntries(result.files);
+      setFolderListingLimited(result.truncated);
+      setUnavailableProjectFolders(result.unavailableFolders);
+      setNotice('Refreshed ' + result.files.length + ' Scarp project sources' +
+        (result.truncated ? ' (listing limited)' : '') +
+        (result.unavailableFolders.length ? ' (some folders were inaccessible)' : ''));
+    } catch (caught) {
+      // Keep previously listed files and open dirty buffers intact if scan
+      // fails; only a successful scan may replace Explorer membership.
+      setError('Could not refresh Scarp folder: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
       setBusy(false);
     }
   }
 
   async function openFolderFile(path: string): Promise<void> {
-    setError(null);
     const selection = selectedFolderRef.current;
     if (!selection) {
       setError('Choose a Scarp project folder before opening a project source.');
       return;
     }
+    // A project source read must share the same operation lock as native
+    // pickers and Refresh. Otherwise a concurrent Save As, folder switch or
+    // close request could race a delayed filesystem response.
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    // Resolve against the current listing first. If the path is already
+    // open, focus the live tab rather than reading a potentially stale disk
+    // copy that could be missing or modified by another editor.
+    const decision = resolveListedProjectOpen(path, selection.files, liveEditor.current.documents);
+    if (decision.kind === 'not-listed') {
+      setError('That source is no longer in the selected Scarp project listing.');
+      return;
+    }
+    if (decision.kind === 'activate') {
+      dispatch({ type: 'activate', id: decision.documentId });
+      setError(null);
+      return;
+    }
+    const activeAtStart = liveEditor.current.activeId;
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
     try {
-      const content = await readFolderSource(path, selection.files);
-      if (selectedFolderRef.current !== selection) {
-        setError('The Scarp folder changed during the read. Select the file again.');
+      const content = await readFolderSource(decision.path, selection.files);
+      if (selectedFolderRef.current !== selection ||
+          liveEditor.current.activeId !== activeAtStart) {
+        setError('The selected folder or active tab changed during the read. Select the file again.');
         return;
       }
-      activateOpenedFile(path, content);
+      activateOpenedFile(decision.path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
     }
   }
 
   async function saveFile(forceSaveAs = false): Promise<void> {
     const document = liveEditor.current.documents.find((item) => item.id === activeId);
-    if (!document || saveInProgress.current) return;
+    if (!document || saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    // Project actions execute disk-backed sources. Do not rewrite their files
+    // midway through a compiler Run, Verify or Test.
+    if (commandInProgress.current) {
+      setError('Finish or stop the Scarp operation before saving source files.');
+      return;
+    }
     saveInProgress.current = true;
     setError(null);
     setBusy(true);
@@ -457,8 +550,104 @@ export default function App() {
     }
   }
 
+  async function saveAllFiles(): Promise<void> {
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    if (commandInProgress.current) {
+      setError('Finish or stop the Scarp operation before saving source files.');
+      return;
+    }
+    // Capture only tab identities: each source is looked up again after earlier
+    // native Save As dialogs, so later edits are saved at their current snapshot.
+    const ids = liveEditor.current.documents.filter(isDirty).map((document) => document.id);
+    if (!ids.length) {
+      setNotice('All Scarp sources are already saved');
+      return;
+    }
+    saveInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await saveAllModifiedSources(
+        ids,
+        (id) => liveEditor.current.documents.find((document) => document.id === id),
+        (id) => liveEditor.current.documents
+          .filter((document) => document.id !== id && document.path !== null)
+          .map((document) => document.path as string),
+        (document, path) => dispatch({
+          type: 'saved', id: document.id, path, savedContent: document.content,
+        }),
+      );
+      setNotice(result.cancelled
+        ? 'Save All cancelled; ' + result.saved + ' source(s) saved'
+        : 'Saved ' + result.saved + ' Scarp source(s)');
+    } catch (caught) {
+      setError(toMessage(caught));
+    } finally {
+      saveInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function reloadFile(): Promise<void> {
+    if (!isTauri()) {
+      setError('Reload from Disk is available only in the desktop app.');
+      return;
+    }
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || commandInProgress.current) {
+      setError('Finish the current file or compiler operation before reloading.');
+      return;
+    }
+    const snapshot = liveEditor.current.documents.find(
+      (doc) => doc.id === liveEditor.current.activeId,
+    );
+    if (!snapshot?.path) {
+      setError('Save the Scarp source before reloading it from disk.');
+      return;
+    }
+    const gate = nativeDialogGate.current;
+    if (!gate.begin('reload-source')) return;
+    setError(null);
+    setBusy(true);
+    try {
+      if (isDirty(snapshot)) {
+        const confirmed = await ask(
+          'Discard unsaved edits to ' + snapshot.name + ' and reload its current contents from disk?',
+          { title: 'Reload Scarp source?', kind: 'warning' },
+        );
+        if (!confirmed) return;
+      }
+      const stillCurrent = () => {
+        const current = liveEditor.current.documents.find((doc) => doc.id === snapshot.id);
+        return current !== undefined && liveEditor.current.activeId === snapshot.id &&
+          isUnchangedSnapshot(current, snapshot) &&
+          !saveInProgress.current && !filePickerInProgress.current &&
+          !selectionInProgress.current && !commandInProgress.current;
+      };
+      if (!stillCurrent()) {
+        setError('Source or tab changed while preparing reload. Review edits and try again.');
+        return;
+      }
+      const content = await readScarpSource(snapshot.path);
+      if (!stillCurrent()) {
+        setError('Source or tab changed while reading disk. Reload was cancelled.');
+        return;
+      }
+      dispatch({ type: 'reload', id: snapshot.id, snapshot, content });
+      setNotice('Reloaded ' + snapshot.name + ' from disk');
+    } catch (caught) {
+      setError('Could not reload Scarp source: ' + toMessage(caught));
+    } finally {
+      setBusy(false);
+      gate.finish('reload-source');
+    }
+  }
+
   async function selectCompiler(): Promise<void> {
-    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || saveInProgress.current ||
+        nativeDialogGate.current.isActive) return;
     selectionInProgress.current = true;
     setCompilerSelecting(true);
     setError(null);
@@ -491,7 +680,8 @@ export default function App() {
   }
 
   async function runCompiler(mode: ScarpMode): Promise<void> {
-    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || nativeDialogGate.current.isActive) return;
     if (saveInProgress.current) {
       setError('Finish saving before running the compiler.');
       return;
@@ -557,7 +747,8 @@ export default function App() {
 
   async function runProjectAction(action: ScarpProjectAction): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
-        saveInProgress.current) return;
+        saveInProgress.current || filePickerInProgress.current ||
+        nativeDialogGate.current.isActive) return;
     if (!compilerPath || !folderPath) {
       setError('Select the official compiler and a Scarp project folder first.');
       return;
@@ -656,8 +847,9 @@ export default function App() {
   }
 
   async function closeFile(id: string): Promise<void> {
-    if (saveInProgress.current) {
-      setError('Finish the current save before closing a tab.');
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current) {
+      setError('Finish the current file operation before closing a tab.');
       return;
     }
     // Ctrl+W and close buttons can be pressed repeatedly while ask() is pending.
@@ -717,6 +909,11 @@ export default function App() {
         return;
       }
       const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (paletteMode === null) void saveAllFiles();
+        return;
+      }
       if (!modifier || event.altKey) return;
       const key = event.key.toLowerCase();
       if (key === 'p') {
@@ -782,8 +979,12 @@ export default function App() {
             aria-controls="open-file-search"
             title="Search all currently open Scarp buffers (Ctrl+Shift+F)"
           >Find in Open Files</button>
-          <button onClick={() => void saveFile()} disabled={!active || busy} title="Save (Ctrl+S)">Save</button>
-          <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
+          <button onClick={() => void saveFile()} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save (Ctrl+S)">Save</button>
+          <button onClick={() => void saveAllFiles()} disabled={busy || compilerBusy || compilerSelecting || !documents.some(isDirty)}
+            title="Save All modified Scarp files (Ctrl+Alt+S)">Save All</button>
+          <button onClick={() => void saveFile(true)} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save As (Ctrl+Shift+S)">Save As</button>
+          <button onClick={() => void reloadFile()} disabled={!active?.path || busy || compilerBusy || compilerSelecting}
+            title="Reload the saved Scarp source from disk, confirming before discarding edits">Reload</button>
         </nav>
         <button
           className="settings-toggle"
@@ -847,6 +1048,10 @@ export default function App() {
           {folderPath ? (
             <section className="sidebar-section">
               <div className="folder-label" title={folderPath}>▾ {fileName(folderPath)}</div>
+              <button type="button" className="folder-refresh" disabled={busy || compilerBusy || compilerSelecting}
+                onClick={() => void refreshFolder()} title="Re-scan selected Scarp project sources without opening a folder dialog">
+                Refresh Explorer
+              </button>
               <div className="sidebar-note">Scarp sources: root, src/, tests/, examples/</div>
               {folderListingLimited && (
                 <p className="sidebar-note" role="status">

@@ -12,9 +12,12 @@
 
 - Scarp-only Monaco editing, conservative syntax highlighting, hover, completion snippets, `funcra` outline, starter programs, multiple tabs and dirty-state preservation.
 - **Current-main editor safety retained:** locally validated/persisted font size, tab size and word wrap; live Save As collision guards; serialized native confirmation dialogs; 4 MiB UTF-8 source limits and selected-folder file membership restrictions.
+- **Save All (integrated draft):** Ctrl+Alt+S, toolbar and command palette save modified Scarp tabs in sequence, preserving newer edits and stopping on cancellation, external modifications or path collisions. It never auto-runs code.
+- **Reload from Disk (integrated draft):** toolbar and Commands palette explicitly refresh a saved .srp tab after external edits. A dirty tab requires discard confirmation; tab switches and concurrent edits cancel stale reloads. This feature never auto-executes code.
 - **Alpha.11 editor support:** exact `decimal` type highlighting, checked base-10 conversion/rounding/formatting help, `input_decimal` assistance and two opt-in decimal starter examples. These require a separately installed official Scarp compiler v0.0.6-alpha.11+ to run.
+- **Alpha.12 editor support (unreleased draft):** syntax highlighting and completion/hover assistance for typed records, variants, exhaustive `match on`, concrete `option<T>` / `result<T,E>`, immutable `list<T>` and deterministic `map<K,V>` operations; four additional opt-in starters. These require a separately selected official [Scarp v0.0.6-alpha.12](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.12) interpreter and are not supported by older compiler executables or experimental native aggregate backends.
 - Ctrl+P **Quick Open** for existing tabs plus *already-listed* project sources (root, `src/`, `tests/`, `examples/`); Ctrl+Shift+P commands, Ctrl+G line navigation, Ctrl+Shift+F search across **open buffers only**, Ctrl+B Explorer, F8 for an applicable verified-source diagnostic.
-- User-selected Scarp project Explorer with bounded listing (200 files, up to 4096 inspected entries per directory); no arbitrary-recursive or network project scanning.
+- User-selected Scarp project Explorer with bounded listing (200 files, up to 4096 inspected entries per directory); no arbitrary-recursive or network project scanning. **Refresh Explorer** manually re-scans only the selected folder without a new native chooser, preserves open buffers and retains the old listing if a scan fails. Project source opens share the native file-operation gate; existing tabs activate without re-reading disk, while stale reads cannot steal focus.
 - User-selected **official Scarp compiler executable** for explicit source Run, static Verify and Stop; bounded process/output limits, version capability checks, and preloaded optional stdin/prompt input. No shell invocation, automatic execution, or arbitrary compiler discovery.
 - Explicit project Info, Verify Project, Run Project, List Tests and Run Tests workflows when supported by the selected official compiler. Structured test reports are parsed only for the audited schema/capabilities and raw output is retained.
 - Saved-source validation, external-change protection, bounded source-file sizes, stale diagnostic guards and safe native close prompts.
@@ -39,7 +42,9 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 npm run tauri build -- --no-bundle
 ```
 
-Pull-request CI tests separately SHA-256-pinned official Scarp alpha.10 and alpha.11 compiler archives, builds a Windows executable and an unsigned NSIS installer **candidate**, and uploads checksums. Passing CI is not equivalent to a verified Windows desktop GUI session.
+Pull-request CI tests separately SHA-256-pinned official Scarp alpha.10, alpha.11 and (in this draft) alpha.12 compiler archives, builds a Windows executable and an unsigned NSIS installer **candidate**, and uploads checksums. Passing CI is not equivalent to a verified Windows desktop GUI session.
+
+For repeatable Windows GUI verification, see the [Windows 11 acceptance matrix](docs/windows-11-acceptance.md). It records actual GUI outcomes separately from automated CI; no release is authorized by that document.
 
 ## Review and safety gates
 

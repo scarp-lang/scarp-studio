@@ -66,6 +66,13 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .studio-main { display: flex; flex: 1; min-height: 0; }
 .sidebar { width: 245px; flex: 0 0 245px; overflow-y: auto; background: var(--surface); border-right: 1px solid var(--border); padding: 12px 8px; }
 .sidebar-heading { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .14em; padding: 10px 9px; }
+.folder-refresh {
+  display: block; margin: 2px 9px 9px; padding: 5px 8px;
+  color: var(--text); background: transparent; border: 1px solid var(--border);
+  border-radius: 5px; font: inherit; font-size: 11px; cursor: pointer;
+}
+.folder-refresh:hover:not(:disabled) { background: var(--raised); }
+.folder-refresh:disabled { opacity: .5; cursor: default; }
 .sidebar-section { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 6px; }
 .folder-label { color: var(--text); padding: 9px; font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-note { color: var(--muted); padding: 5px 9px; font-size: 11px; line-height: 1.6; }

@@ -18,14 +18,24 @@ export interface FolderFile {
  */
 const SCARP_PROJECT_SUBFOLDERS = ['src', 'tests', 'examples'] as const;
 
-export async function chooseSourceFolder(): Promise<{
+export interface ScarpFolderScan {
   path: string;
   files: FolderFile[];
   truncated: boolean;
   unavailableFolders: string[];
-} | null> {
+}
+
+export async function chooseSourceFolder(): Promise<ScarpFolderScan | null> {
   const path = await open({ directory: true, multiple: false, title: 'Choose Scarp folder' });
   if (typeof path !== 'string') return null;
+  return scanSourceFolder(path);
+}
+
+/** Re-scan only a folder previously selected by the user. No automatic
+ * watchers, unbounded recursion or source-file content reads.
+ * The caller owns the current selected-folder identity and Tauri scope.
+ */
+export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
   const entries = await readDir(path);
   const root = collectTopLevelScarpNames(entries);
   const files: FolderFile[] = await Promise.all(root.names.map(async (name) => ({

@@ -1,8 +1,8 @@
-/** Single native confirmation slot shared by tab-close and window-exit.
+/** Single native confirmation slot shared by tab-close, window-exit and reload.
  * Prevents stacked operating-system dialogs and ignores duplicate requests.
  * `finish` is intentionally owner-checked so one caller cannot unlock another.
  */
-export type NativeDialogKind = 'tab-close' | 'window-exit';
+export type NativeDialogKind = 'tab-close' | 'window-exit' | 'reload-source';
 
 export class NativeDialogGate {
   private owner: NativeDialogKind | null = null;

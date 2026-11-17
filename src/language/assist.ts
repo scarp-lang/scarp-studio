@@ -1,4 +1,4 @@
-/** Editor-only Scarp assistance, including published alpha.11 features.
+/** Editor-only Scarp assistance, including published alpha.12 features.
  * These templates do not replace parser/compiler validation.
  */
 export interface ScarpCompletion {
@@ -96,14 +96,17 @@ const templates: readonly ScarpCompletion[] = [
     insertText: 'assert(${1:condition});',
   },
   ...(['return', 'break', 'continue', 'elif', 'else', 'true', 'false',
-    'and', 'or', 'not', 'pub', 'pure', 'needs', 'ensures'] as const).map((label) => ({
+    'and', 'or', 'not', 'pub', 'pure', 'needs', 'ensures',
+    'match', 'on', 'case', 'new'] as const).map((label) => ({
       label, kind: 'keyword' as const, detail: 'Scarp keyword',
       documentation: 'Scarp language keyword. Available syntax depends on the selected compiler version.',
       insertText: label,
     })),
-  ...(['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint', 'decimal'] as const).map((label) => ({
+  ...(['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint', 'decimal', 'list', 'map', 'option', 'result'] as const).map((label) => ({
     label, kind: 'type' as const, detail: 'Scarp type',
-    documentation: 'Scarp built-in type. Availability depends on the selected compiler version.',
+    documentation: ['list', 'map', 'option', 'result'].includes(label)
+      ? 'Since alpha.12: concrete typed aggregate or tagged type; interpreter support only. Availability depends on the selected compiler version.'
+      : 'Scarp built-in type. Availability depends on the selected compiler version.',
     insertText: label,
   })),
   {
@@ -302,6 +305,41 @@ const templates: readonly ScarpCompletion[] = [
     documentation: 'Since alpha.11: requires interactive prompt mode. Studio preloads replies in its Program Input panel; it is not a live terminal.',
     insertText: 'input_decimal("${1:Amount: }")',
   },
+  // Published alpha.12 interpreter features. No native aggregate codegen
+  // or general user-defined generics are promised by editor suggestions.
+  {
+    label: 'record', kind: 'snippet', detail: 'Immutable typed record (alpha.12+)',
+    documentation: 'Since alpha.12: declare a nominal record with typed fields, then construct it using new Name { field: value }. Scalar native backends do not yet execute aggregate operations.',
+    insertText: 'record ${1:Task} {\n    ${2:title}: string,\n    ${3:done}: boolean\n}',
+  },
+  {
+    label: 'variant', kind: 'snippet', detail: 'Tagged sum type (alpha.12+)',
+    documentation: 'Since alpha.12: declare a variant with nullary or typed payload cases. Use new Choice::Case(value) and exhaustive match on statements.',
+    insertText: 'variant ${1:Choice} { ${2:Missing}, ${3:Found}(integer) }',
+  },
+  {
+    label: 'match on', kind: 'snippet', detail: 'Exhaustive tagged match (alpha.12+)',
+    documentation: 'Since alpha.12: match a tagged variant or concrete Option/Result and handle each case. Nonexhaustive or duplicate arms are compiler errors.',
+    insertText: 'match on ${1:value} {\n    case ${2:None} { ${3:print("none");} }\n    case ${4:Some}(item) { ${5:print(item);} }\n}',
+  },
+  ...([
+    ['list_len', 'list_len(${1:items})', 'Read an immutable typed list length.'],
+    ['list_push', 'list_push(${1:items}, ${2:value})', 'Append and return a new list snapshot.'],
+    ['list_set', 'list_set(${1:items}, ${2:index}, ${3:value})', 'Return a list snapshot with one checked index updated.'],
+    ['list_remove', 'list_remove(${1:items}, ${2:index})', 'Return a list snapshot with an indexed value removed.'],
+    ['map_len', 'map_len(${1:entries})', 'Read a deterministic typed map size.'],
+    ['map_keys', 'map_keys(${1:entries})', 'Produce a canonically sorted list of map keys.'],
+    ['map_values', 'map_values(${1:entries})', 'Produce values in canonical key order.'],
+    ['map_contains', 'map_contains(${1:entries}, ${2:key})', 'Check whether the typed map contains a key.'],
+    ['map_get_or', 'map_get_or(${1:entries}, ${2:key}, ${3:fallback})', 'Return a map value or an eagerly evaluated typed fallback.'],
+    ['map_set', 'map_set(${1:entries}, ${2:key}, ${3:value})', 'Return an immutable map snapshot with the key set.'],
+    ['map_remove', 'map_remove(${1:entries}, ${2:key})', 'Return an immutable map snapshot with the key removed.'],
+  ] as const).map(([label, insertText, description]) => ({
+    label, kind: 'function' as const, detail: 'Scarp typed collection (alpha.12+)',
+    documentation: 'Since alpha.12 (interpreter): ' + description +
+      ' The compiler enforces bounded allocation and type checks; native aggregate backends are not yet supported.',
+    insertText,
+  })),
 ];
 
 export function scarpCompletions(prefix: string): ScarpCompletion[] {
@@ -313,6 +351,7 @@ export function scarpTokenHelp(token: string): ScarpCompletion | undefined {
   // A constructor and a type can share a label (decimal, bigint). Prefer
   // call-oriented help without turning the constructor into a keyword.
   return templates.find((entry) => entry.label === token && entry.kind === 'function') ??
+    templates.find((entry) => entry.label === token && entry.kind === 'snippet') ??
     templates.find((entry) => entry.label === token);
 }
 
