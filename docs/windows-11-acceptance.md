@@ -53,6 +53,9 @@ This is a **manual verification worksheet** for the stacked draft Studio integra
 | P12 | Repeat and confirm replacement; inspect original sources on disk before Save All | Only expected open buffer text changes; files remain unchanged on disk until saved | NOT RUN |
 | P13 | Edit any tab (including a tab with no matches), or create another tab, while native Replace confirmation is open, then approve | All-or-nothing open-buffer snapshot check rejects the entire replacement; no other buffers are modified | NOT RUN |
 | P14 | Try replacing a query returning more than 200 matches or a 257-character replacement | Preview refuses partial or oversized operation; no files modified | NOT RUN |
+| P15 | Replace text across two open dirty .srp tabs, then click Undo Last Replace All without changing other tabs | Original in-memory contents and dirty flags restored together; no disk source changes | NOT RUN |
+| P16 | Replace text, edit an unrelated open tab or Save one changed tab, then try Undo Last Replace All | Undo becomes unavailable; user edits and saved content are not reverted | NOT RUN |
+| P17 | Replace text, switch active tabs without editing, then Undo Last Replace All | Undo remains available and preserves current tab focus | NOT RUN |
 
 ## Official compiler alpha.12 (interpreter)
 

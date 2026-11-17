@@ -39,6 +39,7 @@ import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
 } from './model/openFileSearch';
 import { planOpenFileReplacement, type OpenFileReplacePlan } from './model/openFileReplace';
+import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplaceUndo } from './model/openFileReplaceUndo';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -57,6 +58,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
   { id: 'replace-open-files', label: 'Find and Replace in Open Scarp Files', detail: 'Preview and confirm; editor buffers only' },
+  { id: 'undo-replace-open-files', label: 'Undo Last Replace All in Open Scarp Files', detail: 'Only if every buffer is unchanged' },
   { id: 'quick-open', label: 'Quick Open Tabs and Project Sources', detail: 'Ctrl+P' },
   { id: 'go-to-line', label: 'Go to Line and Column', detail: 'Ctrl+G' },
   { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
@@ -127,6 +129,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
+  const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
   const searchInput = useRef<HTMLInputElement | null>(null);
@@ -177,6 +180,8 @@ export default function App() {
     [active?.content],
   );
 
+  const canUndoReplacement = replaceUndo !== null && canUndoOpenFileReplace(replaceUndo, editorState);
+
   const openFileMatches = useMemo(() => searchOpenFiles(
     documents, searchQuery, {
       caseSensitive: searchCaseSensitive, wholeWord: searchWholeWord,
@@ -191,6 +196,13 @@ export default function App() {
   useEffect(() => {
     setReplacePreview(null);
   }, [documents, searchQuery, replaceText, searchCaseSensitive, searchWholeWord]);
+
+  // Do not retain a stale undo plan (and its old source strings) after a tab
+  // is modified, saved, opened or closed. Switching focus alone is harmless.
+  useEffect(() => {
+    setReplaceUndo((previous) => previous && !canUndoOpenFileReplace(previous, liveEditor.current)
+      ? null : previous);
+  }, [documents]);
 
   useEffect(() => {
     const editor = mountedEditor.current;
@@ -302,6 +314,7 @@ export default function App() {
         break;
       case 'find-open-files': setSearchOpen(true); break;
       case 'replace-open-files': setSearchOpen(true); break;
+      case 'undo-replace-open-files': undoLastOpenFileReplace(); break;
       case 'quick-open': showPalette('files'); break;
       case 'go-to-line': showPalette('line'); break;
       case 'next-tab': cycleTab(1); break;
@@ -937,6 +950,7 @@ export default function App() {
         return;
       }
       dispatch({ type: 'replace-open-files', changes: plan.changes, allSnapshots: plan.sourceSnapshots });
+      setReplaceUndo(createOpenFileReplaceUndo(plan.sourceSnapshots, liveEditor.current.documents));
       setReplacePreview(null);
       setNotice('Replaced ' + plan.totalReplacements + ' occurrence(s) in ' +
         plan.changes.length + ' editor buffer(s). Save modified tabs to write to disk.');
@@ -946,6 +960,31 @@ export default function App() {
       setBusy(false);
       gate.finish('replace-open-files');
     }
+  }
+
+  function undoLastOpenFileReplace(): void {
+    const undo = replaceUndo;
+    if (!undo || !canUndoOpenFileReplace(undo, liveEditor.current)) {
+      setReplaceUndo(null);
+      setError('Undo is unavailable because an open Scarp source changed. No edits were discarded.');
+      return;
+    }
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || commandInProgress.current ||
+        nativeDialogGate.current.isActive) {
+      setError('Finish the current file or compiler operation before undoing Replace All.');
+      return;
+    }
+    dispatch({
+      type: 'replace-open-files',
+      changes: undo.changes,
+      allSnapshots: undo.after,
+    });
+    setReplaceUndo(null);
+    setReplacePreview(null);
+    setError(null);
+    setNotice('Undid last Replace All in ' + undo.changes.length +
+      ' open buffer(s); no files on disk were changed.');
   }
 
   function goToSearchMatch(match: OpenFileSearchHit): void {
@@ -1316,6 +1355,16 @@ export default function App() {
                 {openFileMatches.truncated &&
                   ` · Search budget reached; results may be incomplete. ${openFileMatches.skippedDocuments} buffers skipped.`}
               </div>
+              {canUndoReplacement && (
+                <div className="replace-preview-actions" aria-label="Undo last confirmed replacement">
+                  <button type="button" onClick={undoLastOpenFileReplace}
+                    disabled={busy || compilerBusy || compilerSelecting}
+                    title="Revert the last batch in memory, only if no open source changed since replacement">
+                    Undo Last Replace All
+                  </button>
+                  <span className="search-status">Undo is available until any open buffer changes or is saved.</span>
+                </div>
+              )}
               {replacePreview && (
                 <section className="replace-preview" aria-label="Preview open-buffer replacements">
                   <strong>{replacePreview.totalReplacements} change(s) in {replacePreview.changes.length} open file(s)</strong>
