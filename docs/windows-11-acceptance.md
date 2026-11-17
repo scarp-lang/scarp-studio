@@ -46,6 +46,10 @@ This is a **manual verification worksheet** for the draft integrated IDE candida
 | P08 | Open a listed .srp tab, make unsaved edits, then delete/rename its source externally; click its Explorer row | Existing dirty tab receives focus without re-reading disk or losing edits | NOT RUN |
 | P09 | Start opening a large but permitted listed .srp file, then click another tab or request app exit | Stale read never steals focus, tab changes remain intact, window exit waits for read | NOT RUN |
 | P10 | While a listed project source is opening, attempt Save As, Choose Folder or Refresh Explorer | Operations do not overlap and no partially read source is opened | NOT RUN |
+| P11 | Find two occurrences in two different open saved .srp files, preview a literal replacement and cancel confirmation | Neither buffers nor disk files change | NOT RUN |
+| P12 | Repeat and confirm replacement; inspect original sources on disk before Save All | Only expected open buffer text changes; files remain unchanged on disk until saved | NOT RUN |
+| P13 | Edit any tab (including a tab with no matches), or create another tab, while native Replace confirmation is open, then approve | All-or-nothing open-buffer snapshot check rejects the entire replacement; no other buffers are modified | NOT RUN |
+| P14 | Try replacing a query returning more than 200 matches or a 257-character replacement | Preview refuses partial or oversized operation; no files modified | NOT RUN |
 
 ## Official compiler alpha.12 (interpreter)
 

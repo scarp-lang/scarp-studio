@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { editorReducer, initialEditorState, sameDirtyDocuments } from './editorState';
+import { canApplyReplacementSnapshots, editorReducer, initialEditorState, sameDirtyDocuments, sameOpenDocumentSnapshots } from './editorState';
 
 describe('atomic editor session transitions', () => {
   it('preserves all tabs when two opens complete asynchronously', () => {
@@ -160,6 +160,71 @@ describe('atomic editor session transitions', () => {
     expect(editorReducer(opened, {
       type: 'reload', id: snapshot.id, snapshot, content: 'unchanged',
     })).toBe(opened);
+  });
+
+  it('atomically replaces several open buffers without writing saved snapshots', () => {
+    const first = editorReducer(initialEditorState, { type: 'open', path: '/project/a.srp', content: 'foo' });
+    const both = editorReducer(first, { type: 'open', path: '/project/b.srp', content: 'foo and foo' });
+    const a = both.documents[1];
+    const b = both.documents[2];
+    const changes = [
+      { id: a.id, snapshot: a, content: 'bar' },
+      { id: b.id, snapshot: b, content: 'bar and bar' },
+    ];
+    expect(canApplyReplacementSnapshots(both, changes)).toBe(true);
+    const result = editorReducer(both, { type: 'replace-open-files', changes, allSnapshots: both.documents });
+    expect(result.documents.map((document) => document.content)).toEqual(['', 'bar', 'bar and bar']);
+    expect(result.documents[1].savedContent).toBe('foo');
+    expect(result.documents[2].savedContent).toBe('foo and foo');
+    expect(result.documents[0]).toBe(both.documents[0]);
+  });
+
+  it('rejects the entire replacement when even one tab changed during confirmation', () => {
+    const first = editorReducer(initialEditorState, { type: 'open', path: '/a.srp', content: 'a' });
+    const both = editorReducer(first, { type: 'open', path: '/b.srp', content: 'a' });
+    const snapshots = both.documents.slice(1);
+    const changes = snapshots.map((snapshot) => ({
+      id: snapshot.id, snapshot, content: 'b',
+    }));
+    const newer = editorReducer(both, { type: 'edit', id: snapshots[1].id, content: 'newer' });
+    expect(canApplyReplacementSnapshots(newer, changes)).toBe(false);
+    expect(editorReducer(newer, { type: 'replace-open-files', changes, allSnapshots: both.documents })).toBe(newer);
+  });
+
+  it('rejects duplicate, removed, identical and stale saved snapshots', () => {
+    const opened = editorReducer(initialEditorState, { type: 'open', path: '/file.srp', content: 'one' });
+    const snapshot = opened.documents[1];
+    const replacement = { id: snapshot.id, snapshot, content: 'two' };
+    expect(canApplyReplacementSnapshots(opened, [])).toBe(false);
+    expect(canApplyReplacementSnapshots(opened, [replacement, replacement])).toBe(false);
+    expect(canApplyReplacementSnapshots(opened, [{ ...replacement, content: 'one' }])).toBe(false);
+    const closed = editorReducer(opened, { type: 'close', id: snapshot.id, snapshot });
+    expect(editorReducer(closed, { type: 'replace-open-files', changes: [replacement], allSnapshots: opened.documents })).toBe(closed);
+    const saved = editorReducer(opened, {
+      type: 'saved', id: snapshot.id, path: snapshot.path!, savedContent: 'new saved content',
+    });
+    expect(editorReducer(saved, { type: 'replace-open-files', changes: [replacement], allSnapshots: opened.documents })).toBe(saved);
+  });
+
+  it('rejects the entire preview if new or originally unmatched tabs changed', () => {
+    const first = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/search.srp', content: 'needle',
+    });
+    const snapshot = first.documents[1];
+    const changes = [{ id: snapshot.id, snapshot, content: 'replacement' }];
+    const added = editorReducer(first, { type: 'new' });
+    expect(sameOpenDocumentSnapshots(first.documents, added.documents)).toBe(false);
+    expect(editorReducer(added, {
+      type: 'replace-open-files', changes, allSnapshots: first.documents,
+    })).toBe(added);
+    const editedOther = editorReducer(first, {
+      type: 'edit', id: 'untitled-1', content: 'new match in unrelated tab',
+    });
+    expect(sameOpenDocumentSnapshots(first.documents, editedOther.documents)).toBe(false);
+    expect(editorReducer(editedOther, {
+      type: 'replace-open-files', changes, allSnapshots: first.documents,
+    })).toBe(editedOther);
+    expect(sameOpenDocumentSnapshots(first.documents, first.documents)).toBe(true);
   });
 
   it('ignores stale edits and save results for a removed tab', () => {

@@ -82,7 +82,7 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workspace { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .open-file-search {
-  flex: 0 0 auto; max-height: min(36vh, 290px); min-height: 0;
+  flex: 0 0 auto; max-height: min(48vh, 470px); min-height: 0;
   display: flex; flex-direction: column; background: var(--surface);
   border-bottom: 1px solid var(--border); padding: 9px 12px; gap: 6px;
 }
@@ -93,7 +93,8 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .open-file-search-toolbar > label:first-child {
   color: var(--muted); font-weight: 700; white-space: nowrap;
 }
-.open-file-search-toolbar input[type="search"] {
+.open-file-search-toolbar input[type="search"],
+.open-file-search-toolbar input[type="text"] {
   flex: 1 1 200px; min-width: 130px; max-width: 460px;
   border: 1px solid var(--border); border-radius: 5px; padding: 7px 8px;
   background: var(--bg); color: var(--text); font: inherit;
@@ -112,6 +113,23 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
 .search-status { color: var(--muted); font-size: 11px; }
+.replace-preview {
+  padding: 8px; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--raised); font-size: 12px;
+  display: flex; flex-direction: column; gap: 6px; min-height: 0;
+}
+.replace-preview p { margin: 0; font-size: 11px; color: var(--muted); }
+.replace-preview-list { overflow-y: auto; max-height: 150px; display: grid; gap: 5px; }
+.replace-preview-item { background: var(--surface); border-radius: 4px; padding: 6px; }
+.replace-preview-diff { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: Consolas, monospace; }
+.replace-preview-diff del { color: var(--muted); }
+.replace-preview-diff ins { color: var(--text); text-decoration: none; }
+.replace-preview-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.replace-preview-actions button {
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--surface); color: var(--text); padding: 6px 9px;
+}
+.replace-preview-actions button:disabled { opacity: .5; cursor: default; }
 .search-results { overflow-y: auto; min-height: 0; }
 .search-result-row {
   border: 0; background: transparent; color: var(--text);
