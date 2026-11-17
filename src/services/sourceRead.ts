@@ -1,4 +1,5 @@
 import { open } from '@tauri-apps/plugin-fs';
+import { isScarpPath } from '../model/documents';
 import { assertScarpSourceBytes, MAX_SCARP_SOURCE_BYTES } from '../model/sourceLimits';
 
 const READ_CHUNK_BYTES = 16 * 1024;
@@ -12,6 +13,7 @@ const READ_CHUNK_BYTES = 16 * 1024;
  * modification detection before Save) goes through this reader.
  */
 export async function readScarpSource(path: string): Promise<string> {
+  if (!isScarpPath(path)) throw new Error('Only .srp sources may be read in Scarp Studio.');
   const file = await open(path, { read: true });
   try {
     const info = await file.stat();

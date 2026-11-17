@@ -35,6 +35,15 @@ describe('bounded Scarp source reading through one scoped handle', () => {
     vi.resetAllMocks();
   });
 
+  it('refuses non-Scarp extensions without opening any native file handle', async () => {
+    await expect(readScarpSource('C:/project/notes.txt')).rejects.toThrow('.srp');
+    expect(open).not.toHaveBeenCalled();
+    const handle = mockFile(encoder.encode('print(1);'));
+    await expect(readScarpSource('C:/project/script.SRP')).resolves.toBe('print(1);');
+    expect(open).toHaveBeenCalledWith('C:/project/script.SRP', { read: true });
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
   it('opens only in read mode, reads, and always closes the handle', async () => {
     const handle = mockFile(encoder.encode('print("hello");'));
     await expect(readScarpSource('C:/project/main.srp')).resolves.toBe('print("hello");');

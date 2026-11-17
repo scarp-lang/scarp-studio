@@ -32,7 +32,9 @@ describe('safe .srp file writes', () => {
     };
     vi.mocked(readScarpSource).mockRejectedValue(new Error('Scarp source exceeds the 4 MiB editor file limit.'));
     await expect(writeSourceFile(document, false, [])).rejects.toThrow('4 MiB');
-    expect(readScarpSource).not.toHaveBeenCalled();
+    // Source size validation is now inside the bounded handle reader.
+    // The caller must invoke that reader and must not invoke the writer.
+    expect(readScarpSource).toHaveBeenCalledWith(document.path);
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
