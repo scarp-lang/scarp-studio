@@ -97,14 +97,16 @@ const templates: readonly ScarpCompletion[] = [
   },
   ...(['return', 'break', 'continue', 'elif', 'else', 'true', 'false',
     'and', 'or', 'not', 'pub', 'pure', 'needs', 'ensures',
-    'record', 'variant', 'match', 'on', 'case', 'new'] as const).map((label) => ({
+    'match', 'on', 'case', 'new'] as const).map((label) => ({
       label, kind: 'keyword' as const, detail: 'Scarp keyword',
       documentation: 'Scarp language keyword. Available syntax depends on the selected compiler version.',
       insertText: label,
     })),
   ...(['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint', 'decimal', 'list', 'map', 'option', 'result'] as const).map((label) => ({
     label, kind: 'type' as const, detail: 'Scarp type',
-    documentation: 'Scarp built-in type. Availability depends on the selected compiler version.',
+    documentation: ['list', 'map', 'option', 'result'].includes(label)
+      ? 'Since alpha.12: concrete typed aggregate or tagged type; interpreter support only. Availability depends on the selected compiler version.'
+      : 'Scarp built-in type. Availability depends on the selected compiler version.',
     insertText: label,
   })),
   {
