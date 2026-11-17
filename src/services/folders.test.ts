@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { join } from '@tauri-apps/api/path';
 import { open } from '@tauri-apps/plugin-dialog';
 import { readDir, readTextFile, stat } from '@tauri-apps/plugin-fs';
-import { chooseSourceFolder, readFolderSource } from './folders';
+import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './folders';
 
 vi.mock('@tauri-apps/api/path', () => ({
   join: vi.fn(async (parent: string, name: string) => parent + '/' + name),
@@ -91,6 +91,29 @@ describe('selected-folder Scarp source reads', () => {
     const listing = await chooseSourceFolder();
     expect(listing?.files).toEqual([{ name: 'root.srp', path: 'C:/project/root.srp' }]);
     expect(listing?.unavailableFolders).toEqual(['src']);
+  });
+
+  it('refreshes directory listing on demand without another native folder picker', async () => {
+    vi.mocked(readDir)
+      .mockResolvedValueOnce([
+        { name: 'original.srp', isFile: true, isDirectory: false, isSymlink: false },
+      ])
+      .mockResolvedValueOnce([
+        { name: 'added.srp', isFile: true, isDirectory: false, isSymlink: false },
+        { name: 'renamed.srp', isFile: true, isDirectory: false, isSymlink: false },
+      ]);
+    const original = await scanSourceFolder('C:/project');
+    const latest = await scanSourceFolder('C:/project');
+    expect(original.files.map((file) => file.name)).toEqual(['original.srp']);
+    expect(latest.files.map((file) => file.name)).toEqual(['added.srp', 'renamed.srp']);
+    expect(latest.truncated).toBe(false);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('reports root read failures on refresh without inventing an empty listing', async () => {
+    vi.mocked(readDir).mockRejectedValue(new Error('Access denied'));
+    await expect(scanSourceFolder('C:/project')).rejects.toThrow('Access denied');
+    expect(open).not.toHaveBeenCalled();
   });
 
   it('never traverses symlinked project subdirectories', async () => {

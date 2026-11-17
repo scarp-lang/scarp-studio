@@ -1,4 +1,4 @@
-/** Single native confirmation slot shared by tab-close and window-exit.
+/** Single native confirmation slot shared by tab-close, window-exit and reload.
  * Prevents stacked operating-system dialogs and ignores duplicate requests.
  * `finish` is intentionally owner-checked so one caller cannot unlock another.
  */

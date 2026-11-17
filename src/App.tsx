@@ -10,7 +10,7 @@ import {
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, saveAllModifiedSources, writeSourceFile } from './services/files';
 import { readScarpSource } from './services/sourceRead';
-import { chooseSourceFolder, readFolderSource } from './services/folders';
+import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import {
   DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
@@ -46,6 +46,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'new', label: 'New Scarp File', detail: 'Ctrl+N' },
   { id: 'open', label: 'Open Scarp File', detail: 'Ctrl+O' },
   { id: 'folder', label: 'Choose Scarp Folder', detail: 'Explorer' },
+  { id: 'refresh-folder', label: 'Refresh Scarp Project Explorer', detail: 'Re-scan selected folder' },
   { id: 'save', label: 'Save Current File', detail: 'Ctrl+S' },
   { id: 'save-all', label: 'Save All Modified Scarp Files', detail: 'Ctrl+Alt+S' },
   { id: 'save-as', label: 'Save Current File As', detail: 'Ctrl+Shift+S' },
@@ -280,6 +281,7 @@ export default function App() {
       case 'new': newFile(); break;
       case 'open': void openFile(); break;
       case 'folder': void openFolder(); break;
+      case 'refresh-folder': void refreshFolder(); break;
       case 'save': void saveFile(); break;
       case 'save-all': void saveAllFiles(); break;
       case 'save-as': void saveFile(true); break;
@@ -425,6 +427,44 @@ export default function App() {
         (result.unavailableFolders.length ? ' (some project folders were inaccessible)' : ''));
     } catch (caught) {
       setError('Could not open folder: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function refreshFolder(): Promise<void> {
+    const previous = selectedFolderRef.current;
+    if (!previous) {
+      setError('Choose a Scarp project folder before refreshing the Explorer.');
+      return;
+    }
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || commandInProgress.current ||
+        nativeDialogGate.current.isActive) return;
+    // Share the picker lock: no Save As / compiler selection / native close
+    // may overtake a refresh while filesystem permissions are being checked.
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await scanSourceFolder(previous.path);
+      // Never publish results from an obsolete selection after an async read.
+      if (selectedFolderRef.current !== previous) {
+        setError('The selected folder changed during refresh. Choose Refresh again.');
+        return;
+      }
+      selectedFolderRef.current = { path: result.path, files: result.files };
+      setFolderEntries(result.files);
+      setFolderListingLimited(result.truncated);
+      setUnavailableProjectFolders(result.unavailableFolders);
+      setNotice('Refreshed ' + result.files.length + ' Scarp project sources' +
+        (result.truncated ? ' (listing limited)' : '') +
+        (result.unavailableFolders.length ? ' (some folders were inaccessible)' : ''));
+    } catch (caught) {
+      // Keep previously listed files and open dirty buffers intact if scan
+      // fails; only a successful scan may replace Explorer membership.
+      setError('Could not refresh Scarp folder: ' + toMessage(caught));
     } finally {
       filePickerInProgress.current = false;
       setBusy(false);
@@ -982,6 +1022,10 @@ export default function App() {
           {folderPath ? (
             <section className="sidebar-section">
               <div className="folder-label" title={folderPath}>▾ {fileName(folderPath)}</div>
+              <button type="button" className="folder-refresh" disabled={busy || compilerBusy || compilerSelecting}
+                onClick={() => void refreshFolder()} title="Re-scan selected Scarp project sources without opening a folder dialog">
+                Refresh Explorer
+              </button>
               <div className="sidebar-note">Scarp sources: root, src/, tests/, examples/</div>
               {folderListingLimited && (
                 <p className="sidebar-note" role="status">
