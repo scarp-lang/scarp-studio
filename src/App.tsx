@@ -7,7 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   fileName, isDirty, sameFilePath,
 } from './model/documents';
-import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
+import { canApplyReplacementSnapshots, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, saveAllModifiedSources, writeSourceFile } from './services/files';
 import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
@@ -37,6 +37,7 @@ import { dirtyProjectSourceNames } from './model/projectSourceState';
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
 } from './model/openFileSearch';
+import { planOpenFileReplacement, type OpenFileReplacePlan } from './model/openFileReplace';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -54,6 +55,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'reload', label: 'Reload Current Scarp File from Disk', detail: 'Confirms before discarding unsaved edits' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
+  { id: 'replace-open-files', label: 'Find and Replace in Open Scarp Files', detail: 'Preview and confirm; editor buffers only' },
   { id: 'quick-open', label: 'Quick Open Tabs and Project Sources', detail: 'Ctrl+P' },
   { id: 'go-to-line', label: 'Go to Line and Column', detail: 'Ctrl+G' },
   { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
@@ -122,6 +124,8 @@ export default function App() {
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
   const searchInput = useRef<HTMLInputElement | null>(null);
@@ -181,6 +185,11 @@ export default function App() {
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
+
+  // Exact-source previews cannot survive edits, tab changes or search changes.
+  useEffect(() => {
+    setReplacePreview(null);
+  }, [documents, searchQuery, replaceText, searchCaseSensitive, searchWholeWord]);
 
   useEffect(() => {
     const editor = mountedEditor.current;
@@ -291,6 +300,7 @@ export default function App() {
         if (liveEditor.current.activeId) void closeFile(liveEditor.current.activeId);
         break;
       case 'find-open-files': setSearchOpen(true); break;
+      case 'replace-open-files': setSearchOpen(true); break;
       case 'quick-open': showPalette('files'); break;
       case 'go-to-line': showPalette('line'); break;
       case 'next-tab': cycleTab(1); break;
@@ -828,6 +838,74 @@ export default function App() {
     editorInstance.focus();
   }
 
+  function previewOpenFileReplacement(): void {
+    setError(null);
+    try {
+      const plan = planOpenFileReplacement(
+        liveEditor.current.documents, searchQuery, replaceText,
+        { caseSensitive: searchCaseSensitive, wholeWord: searchWholeWord },
+      );
+      setReplacePreview(plan);
+      setNotice('Previewing ' + plan.totalReplacements + ' replacement(s) in ' +
+        plan.changes.length + ' open Scarp source(s). No files changed.');
+    } catch (caught) {
+      setReplacePreview(null);
+      setError('Could not preview replacements: ' + toMessage(caught));
+    }
+  }
+
+  async function confirmOpenFileReplacement(): Promise<void> {
+    const plan = replacePreview;
+    if (!plan) return;
+    if (!isTauri()) {
+      setError('Confirming replacements requires the Scarp Studio desktop app.');
+      return;
+    }
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || commandInProgress.current) {
+      setError('Finish the active file or compiler operation before replacing text.');
+      return;
+    }
+    const previewIsCurrent = () => plan.query === searchQuery &&
+      plan.replacement === replaceText &&
+      plan.options.caseSensitive === searchCaseSensitive &&
+      plan.options.wholeWord === searchWholeWord &&
+      canApplyReplacementSnapshots(liveEditor.current, plan.changes);
+    if (!previewIsCurrent()) {
+      setReplacePreview(null);
+      setError('Source text or search options changed. Preview replacements again.');
+      return;
+    }
+    const gate = nativeDialogGate.current;
+    if (!gate.begin('replace-open-files')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const approved = await ask(
+        'Replace ' + plan.totalReplacements + ' occurrence(s) in ' + plan.changes.length +
+          ' open Scarp source(s)? This changes editor buffers only; save each file separately.',
+        { title: 'Confirm open-buffer replacements', kind: 'warning' },
+      );
+      if (!approved) return;
+      // The final preflight is all-or-nothing after native confirmation:
+      // no replacement may partly apply if the user edited another tab.
+      if (!previewIsCurrent()) {
+        setReplacePreview(null);
+        setError('At least one source changed during confirmation. Nothing was replaced.');
+        return;
+      }
+      dispatch({ type: 'replace-open-files', changes: plan.changes });
+      setReplacePreview(null);
+      setNotice('Replaced ' + plan.totalReplacements + ' occurrence(s) in ' +
+        plan.changes.length + ' editor buffer(s). Save modified tabs to write to disk.');
+    } catch (caught) {
+      setError('Could not confirm replacements: ' + toMessage(caught));
+    } finally {
+      setBusy(false);
+      gate.finish('replace-open-files');
+    }
+  }
+
   function goToSearchMatch(match: OpenFileSearchHit): void {
     // A click must not navigate to a position computed for earlier buffer contents.
     const current = liveEditor.current;
@@ -1175,6 +1253,18 @@ export default function App() {
                 <button type="button" onClick={() => setSearchOpen(false)}
                   aria-label="Close open-file search">Close</button>
               </div>
+              <div className="open-file-search-toolbar" aria-label="Literal replacement in open files">
+                <label htmlFor="open-file-replacement">Replace with</label>
+                <input id="open-file-replacement" type="text" maxLength={256}
+                  value={replaceText} placeholder="Literal text; empty deletes matches"
+                  onChange={(event) => setReplaceText(event.target.value)} />
+                <button type="button" onClick={previewOpenFileReplacement}
+                  disabled={!searchQuery || Boolean(openFileMatches.error) ||
+                    openFileMatches.truncated || !openFileMatches.hits.length || busy}
+                  title="Preview replacements in open buffers only; no disk writes">
+                  Preview Replace
+                </button>
+              </div>
               <div className="search-status" role="status" aria-live="polite">
                 {openFileMatches.error ||
                   (searchQuery
@@ -1183,6 +1273,29 @@ export default function App() {
                 {openFileMatches.truncated &&
                   ` · Search budget reached; results may be incomplete. ${openFileMatches.skippedDocuments} buffers skipped.`}
               </div>
+              {replacePreview && (
+                <section className="replace-preview" aria-label="Preview open-buffer replacements">
+                  <strong>{replacePreview.totalReplacements} change(s) in {replacePreview.changes.length} open file(s)</strong>
+                  <p>Review before confirming. Only editor buffers change; files on disk are not saved automatically.</p>
+                  <div className="replace-preview-list" role="list">
+                    {replacePreview.changes.map((change) => (
+                      <div className="replace-preview-item" role="listitem" key={change.id}>
+                        <strong>{change.documentName} · {change.matchCount} match(es)</strong>
+                        <div className="replace-preview-diff"><del>{change.previewBefore}</del></div>
+                        <div className="replace-preview-diff"><ins>{change.previewAfter}</ins></div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="replace-preview-actions">
+                    <button type="button" onClick={() => void confirmOpenFileReplacement()}
+                      disabled={!isTauri() || busy || compilerBusy || compilerSelecting}
+                      title="Ask for confirmation, then modify only unchanged open buffers">
+                      Confirm Replace in Open Files
+                    </button>
+                    <button type="button" onClick={() => setReplacePreview(null)}>Cancel Preview</button>
+                  </div>
+                </section>
+              )}
               {searchQuery && !openFileMatches.error && (
                 <div className="search-results" role="list" aria-label="Matches in open Scarp files">
                   {openFileMatches.hits.map((match) => (
