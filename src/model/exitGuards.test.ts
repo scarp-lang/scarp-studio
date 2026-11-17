@@ -14,6 +14,14 @@ describe('safe native window close guards', () => {
   it('blocks closing while the selected compiler is being probed', () => {
     expect(exitBlockReason(false, false, true)).toMatch(/selecting/);
   });
+  it('blocks exit during a native source or project-folder picker', () => {
+    expect(exitBlockReason(false, false, false, true)).toMatch(/source or folder/);
+    expect(exitBlockReason(false, false, false, false)).toBeNull();
+  });
+  it('gives executing and save operations priority over source picker state', () => {
+    expect(exitBlockReason(true, false, false, true)).toMatch(/being saved/);
+    expect(exitBlockReason(false, true, false, true)).toMatch(/Stop it/);
+  });
   it('prioritizes save safety over other simultaneous operations', () => {
     expect(exitBlockReason(true, true, true)).toMatch(/being saved/);
   });
