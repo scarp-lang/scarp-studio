@@ -1,4 +1,5 @@
 import { sameFilePath, type StudioDocument } from './documents';
+import { currentActiveDocument, isUnchangedSnapshot, type EditorState } from './editorState';
 
 /** An Explorer entry's path comes from a bounded, user-selected listing. */
 export interface ListedSourcePath {
@@ -29,4 +30,23 @@ export function resolveListedProjectOpen(
   return existing
     ? { kind: 'activate', documentId: existing.id }
     : { kind: 'load', path: selected.path };
+}
+
+// A selected folder's object identity changes on Choose Folder and Refresh.
+// Delayed file reads may never replace the editor's current work after either
+// a folder change or an edit to the active buffer.
+export function isCurrentListedSourceRead(
+  initialSelection: object,
+  currentSelection: object | null,
+  initialActiveId: string | null,
+  initialActiveSnapshot: StudioDocument | null,
+  currentEditor: EditorState,
+): boolean {
+  if (initialSelection !== currentSelection || initialActiveId !== currentEditor.activeId) {
+    return false;
+  }
+  const current = currentActiveDocument(currentEditor);
+  return initialActiveSnapshot === null
+    ? current === null
+    : current !== null && isUnchangedSnapshot(current, initialActiveSnapshot);
 }

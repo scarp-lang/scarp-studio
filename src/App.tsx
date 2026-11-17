@@ -13,7 +13,7 @@ import { decidePickedSourceOpen } from './model/pickedSourceOpen';
 import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
-import { resolveListedProjectOpen } from './model/listedProjectOpen';
+import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
   DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
   parseEditorPreferences, type EditorPreferences,
@@ -561,14 +561,17 @@ export default function App() {
       return;
     }
     const activeAtStart = liveEditor.current.activeId;
+    const activeSnapshot = currentActiveDocument(liveEditor.current);
     filePickerInProgress.current = true;
     setBusy(true);
     setError(null);
     try {
       const content = await readFolderSource(decision.path, selection.files);
-      if (selectedFolderRef.current !== selection ||
-          liveEditor.current.activeId !== activeAtStart) {
-        setError('The selected folder or active tab changed during the read. Select the file again.');
+      if (!isCurrentListedSourceRead(
+        selection, selectedFolderRef.current, activeAtStart,
+        activeSnapshot, liveEditor.current,
+      )) {
+        setError('The project folder, active tab or source text changed during the read. Select the file again.');
         return;
       }
       activateOpenedFile(decision.path, content);

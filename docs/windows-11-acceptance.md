@@ -48,6 +48,7 @@ This is a **manual verification worksheet** for the stacked draft Studio integra
 | P07 | Deny read access to a disposable selected folder, then click Refresh Explorer | Error shown; previous Explorer entries and dirty editor contents remain intact | NOT RUN |
 | P08 | Open a listed .srp tab, make unsaved edits, then delete/rename its source externally; click its Explorer row | Existing dirty tab receives focus without re-reading disk or losing edits | NOT RUN |
 | P09 | Start opening a large but permitted listed .srp file, then click another tab or request app exit | Stale read never steals focus, tab changes remain intact, window exit waits for read | NOT RUN |
+| P18 | Start opening a listed project source, type new text into the same active tab before read completes | Delayed Explorer read is rejected; no tab focus change or lost unsaved text | NOT RUN |
 | P10 | While a listed project source is opening, attempt Save As, Choose Folder or Refresh Explorer | Operations do not overlap and no partially read source is opened | NOT RUN |
 | P11 | Find two occurrences in two different open saved .srp files, preview a literal replacement and cancel confirmation | Neither buffers nor disk files change | NOT RUN |
 | P12 | Repeat and confirm replacement; inspect original sources on disk before Save All | Only expected open buffer text changes; files remain unchanged on disk until saved | NOT RUN |
