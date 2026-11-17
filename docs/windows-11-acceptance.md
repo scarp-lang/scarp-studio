@@ -31,6 +31,8 @@ This is a **manual verification worksheet** for the draft integrated IDE candida
 | E13 | Modify a dirty Studio tab and its on-disk source externally, click Reload and cancel | Unsaved Studio edits remain intact | NOT RUN |
 | E14 | Repeat E13, make further edits while the confirmation is open, then accept | Reload refuses stale confirmation; a fresh confirmation can reload external content | NOT RUN |
 | E15 | Begin Reload, then switch tabs or change source before disk read finishes | No stale reload replaces the changed or switched tab; native dialogs do not stack | NOT RUN |
+| E16 | Open a saved .srp tab, make unsaved changes, rename the disk file externally, then use native Open and select the original path if selectable | Existing dirty tab is reactivated without a second disk read; no edits discarded | NOT RUN |
+| E17 | Start native Open, change the active tab before the picker or source read completes | Stale result does not activate another tab or overwrite any buffer; no overlapping file operations | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 
