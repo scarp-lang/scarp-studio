@@ -3,7 +3,7 @@ import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { assertScarpSourceText } from '../model/sourceLimits';
 import { readScarpSource } from './sourceRead';
 import type { StudioDocument } from '../model/documents';
-import { isScarpPath, sameFilePath } from '../model/documents';
+import { isDirty, isScarpPath, sameFilePath } from '../model/documents';
 
 const scarpFilter = [{ name: 'Scarp source', extensions: ['srp'] }];
 
@@ -54,4 +54,44 @@ export async function writeSourceFile(
   }
   await writeTextFile(path, document.content);
   return path;
+}
+
+/** Save All is deliberately sequential: each native Save As dialog must resolve
+ * before another opens. Re-read each live document just before saving it so
+ * edits made while an earlier chooser was open are never silently lost.
+ *
+ * The editor owns the saved state; this function never closes or switches tabs.
+ * Cancellation stops the batch, preserving both completed saves and remaining
+ * dirty documents. A failure stops at the first unsafe write.
+ */
+export async function saveAllModifiedSources(
+  documentIds: readonly string[],
+  getDocument: (id: string) => StudioDocument | undefined,
+  getOtherOpenPaths: (id: string) => readonly string[],
+  onSaved: (document: StudioDocument, path: string) => void,
+): Promise<{ saved: number; cancelled: boolean }> {
+  let saved = 0;
+  const seen = new Set<string>();
+  for (const id of documentIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const document = getDocument(id);
+    if (!document || !isDirty(document)) continue;
+    let path: string | null;
+    try {
+      // Even after the chooser returns, resolve currently occupied paths.
+      path = await writeSourceFile(document, false, () => getOtherOpenPaths(id));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        'Save All stopped at ' + document.name + ' after ' + saved +
+        ' successful save(s): ' + reason,
+      );
+    }
+    if (path === null) return { saved, cancelled: true };
+    // Mark only the content snapshot actually written, not newer edits.
+    onSaved(document, path);
+    saved += 1;
+  }
+  return { saved, cancelled: false };
 }
