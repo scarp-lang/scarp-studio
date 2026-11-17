@@ -301,6 +301,30 @@ jobs:
             "$hash *$(Split-Path -Leaf $file)"
           }
           $lines | Set-Content -Path SHA256SUMS.txt -Encoding ascii
+      - name: Validate exact Windows candidate manifest and reject tampering
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = Join-Path $env:RUNNER_TEMP "scarp-studio-candidate-verification"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          $exe = "src-tauri/target/release/scarp-studio.exe"
+          $setup = @(Get-ChildItem "src-tauri/target/release/bundle/nsis" -File -Filter "*-setup.exe")
+          if ($setup.Count -ne 1) { throw "Expected one NSIS candidate in CI" }
+          Copy-Item -LiteralPath $exe -Destination $stage
+          Copy-Item -LiteralPath $setup[0].FullName -Destination $stage
+          Copy-Item -LiteralPath "SHA256SUMS.txt" -Destination $stage
+          $runUrl = "https://github.com/scarp-lang/scarp-studio/actions/runs/$env:GITHUB_RUN_ID"
+          & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl
+          # A modified executable must never pass with the old checksum file.
+          $stagedExe = Join-Path $stage "scarp-studio.exe"
+          [System.IO.File]::AppendAllText($stagedExe, "tampered")
+          try {
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl -AsJson | Out-Null
+            throw "Tampered Windows candidate was erroneously accepted."
+          } catch {
+            if ($_.Exception.Message -notmatch 'SHA-256 mismatch') { throw }
+            Write-Host "Expected checksum tamper-rejection test passed."
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: scarp-studio-windows-unbundled
