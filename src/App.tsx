@@ -12,6 +12,7 @@ import { pickSourceFile, saveAllModifiedSources, writeSourceFile } from './servi
 import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
+import { resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
   DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
   parseEditorPreferences, type EditorPreferences,
@@ -482,19 +483,16 @@ export default function App() {
     // close request could race a delayed filesystem response.
     if (filePickerInProgress.current || saveInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
-    const listed = selection.files.find((item) => sameFilePath(item.path, path));
-    if (!listed) {
+    // Resolve against the current listing first. If the path is already
+    // open, focus the live tab rather than reading a potentially stale disk
+    // copy that could be missing or modified by another editor.
+    const decision = resolveListedProjectOpen(path, selection.files, liveEditor.current.documents);
+    if (decision.kind === 'not-listed') {
       setError('That source is no longer in the selected Scarp project listing.');
       return;
     }
-    // Re-activating an already open source never requires another disk read.
-    // In particular, do not let a changed or missing external file prevent
-    // users from returning to their unsaved editor buffer.
-    const existing = liveEditor.current.documents.find(
-      (document) => document.path !== null && sameFilePath(document.path, listed.path),
-    );
-    if (existing) {
-      dispatch({ type: 'activate', id: existing.id });
+    if (decision.kind === 'activate') {
+      dispatch({ type: 'activate', id: decision.documentId });
       setError(null);
       return;
     }
@@ -503,13 +501,13 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const content = await readFolderSource(listed.path, selection.files);
+      const content = await readFolderSource(decision.path, selection.files);
       if (selectedFolderRef.current !== selection ||
           liveEditor.current.activeId !== activeAtStart) {
         setError('The selected folder or active tab changed during the read. Select the file again.');
         return;
       }
-      activateOpenedFile(listed.path, content);
+      activateOpenedFile(decision.path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
     } finally {
