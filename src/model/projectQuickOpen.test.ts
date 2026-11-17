@@ -10,6 +10,7 @@ function tab(id: string, path: string | null, dirty = false): StudioDocument {
     path,
     content: dirty ? 'edited' : 'saved',
     savedContent: 'saved',
+    revision: 0,
   };
 }
 
