@@ -49,7 +49,8 @@ describe('bounded Scarp source reading through one scoped handle', () => {
     const handle = mockFile(encoder.encode('print("hello");'));
     await expect(readScarpSource('C:/project/main.srp')).resolves.toBe('print("hello");');
     expect(open).toHaveBeenCalledWith('C:/project/main.srp', { read: true });
-    expect(handle.stat).toHaveBeenCalledTimes(1);
+    // Pre-read and post-read metadata must be checked on the same handle.
+    expect(handle.stat).toHaveBeenCalledTimes(2);
     expect(handle.read).toHaveBeenCalled();
     expect(handle.close).toHaveBeenCalledTimes(1);
   });
