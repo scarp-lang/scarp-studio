@@ -1,11 +1,11 @@
 # Scarp Studio — Windows 11 manual acceptance (development candidate)
 
-This is a **manual verification worksheet** for the draft integrated IDE candidate in [PR #46](https://github.com/scarp-lang/scarp-studio/pull/46), stacked on [PR #43](https://github.com/scarp-lang/scarp-studio/pull/43). It is not evidence that any GUI check passed. Mark each test **PASS**, **FAIL**, or **NOT RUN**, recording the build SHA and evidence before considering a merge or release.
+This is a **manual verification worksheet** for the stacked draft Studio integration and hardening work: [PR #43](https://github.com/scarp-lang/scarp-studio/pull/43), [#46](https://github.com/scarp-lang/scarp-studio/pull/46), [#47](https://github.com/scarp-lang/scarp-studio/pull/47), [#48](https://github.com/scarp-lang/scarp-studio/pull/48), [#49](https://github.com/scarp-lang/scarp-studio/pull/49) and [#50](https://github.com/scarp-lang/scarp-studio/pull/50). It is not evidence that any GUI check passed. Mark each test **PASS**, **FAIL**, or **NOT RUN**, recording the build SHA and evidence before considering a merge or release.
 
 ## Test environment and provenance
 
 - Windows 11 x64, current WebView2 runtime; use a disposable test account or virtual machine if available.
-- Download the exact-head Windows executable/unsigned NSIS **candidate** from the successful PR #46 GitHub Actions run, not from the published alpha.2 tag. Inspect each artifact's expected SHA-256 in the workflow-produced checksum file; record the actual hash from `Get-FileHash <path> -Algorithm SHA256`.
+- Download the exact-head Windows executable/unsigned NSIS **candidate from the workflow run for the exact commit being tested** (e.g. latest PR #50 head), not an earlier parent PR (#46–#49) build or the published alpha.2 release. Inspect the candidate's SHA-256 manifest in the workflow-produced installer artifact; compare the extracted executable and installer with `Get-FileHash <path> -Algorithm SHA256`. Record the exact run URL and commit SHA.
 - Record: Scarp Studio source commit, CI run URL, candidate exe SHA-256, installer SHA-256, Windows build, and any code signing information. An unsigned installer is **not** a stable release. Respect Windows security warnings; investigate them rather than bypassing device protection.
 - Obtain the official Scarp `v0.0.6-alpha.12` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.12) and verify the Windows ZIP archive SHA-256:
   `5e1fdd2f0f1631de170dd785ae23d9b87b9406463f8385b7454a43a00c96cd2c`.
@@ -31,7 +31,7 @@ This is a **manual verification worksheet** for the draft integrated IDE candida
 | E13 | Modify a dirty Studio tab and its on-disk source externally, click Reload and cancel | Unsaved Studio edits remain intact | NOT RUN |
 | E14 | Repeat E13, make further edits while the confirmation is open, then accept | Reload refuses stale confirmation; a fresh confirmation can reload external content | NOT RUN |
 | E15 | Begin Reload, then switch tabs or change source before disk read finishes | No stale reload replaces the changed or switched tab; native dialogs do not stack | NOT RUN |
-| E16 | Open a saved .srp tab, make unsaved changes, rename the disk file externally, then use native Open and select the original path if selectable | Existing dirty tab is reactivated without a second disk read; no edits discarded | NOT RUN |
+| E16 | Open a saved .srp tab, make unsaved changes, modify its still-existing on-disk source externally, then select the same file through native Open | Existing dirty tab is reactivated without rereading changed disk content; no edits discarded | NOT RUN |
 | E17 | Start native Open, change the active tab **or edit its contents** before the picker or source read completes | Stale result does not activate another tab or overwrite any buffer; no overlapping file operations | NOT RUN |
 | E18 | Immediately after switching tabs, press Ctrl+S or Ctrl+W | Save and Close target the currently active tab rather than the tab active before React rendered | NOT RUN |
 
@@ -78,7 +78,8 @@ This is a **manual verification worksheet** for the draft integrated IDE candida
 | D03 | Confirm source read and input size limits; record visible user errors | Oversized sources and prompt data fail closed | NOT RUN |
 | D06 | Load a 4 MiB valid source, a 4 MiB + 1 byte source, then a source grown while opening; inspect file handles and UI responsiveness | Boundary accepted, oversized/growing sources refused with safe error; handle closed and no excessive allocation | NOT RUN |
 | D07 | Reopen a UTF-8 Scarp source containing Hindi, emoji, BOM and CRLF; attempt an invalid UTF-8 file | Exact valid text roundtrips; malformed text is refused without corrupting an existing tab | NOT RUN |
+| D08 | While opening a disposable .srp source, externally truncate or rewrite it, then retry opening when stable | Detectable size or modification-time changes during read are rejected; no mixed text silently replaces the editor buffer; file handle is closed | NOT RUN |
 | D04 | Inspect unsigned NSIS candidate, installation/uninstallation, warnings, and Windows executable launch | Record observed behavior; do not treat a successful installer build as GUI acceptance | NOT RUN |
 | D05 | Confirm SHA-256 checksums for both candidate artifacts; review logs, dependencies, compiler provenance | Build metadata and compiler signatures/checksums are documented | NOT RUN |
 
-**Release decision:** Leave PR #46 and parent PR #43 as drafts while any required item is NOT RUN or FAIL. Record failures as reproducible cases (exact commit, OS build, steps, expected/actual behavior, logs/screenshots) before requesting another candidate. Do not tag, publish or claim stable readiness based only on CI success.
+**Release decision:** Leave all stacked PRs (#43, #46, #47, #48, #49, #50) as drafts while any required item is NOT RUN or FAIL. Record failures as reproducible cases (exact commit, OS build, steps, expected/actual behavior, logs/screenshots) before requesting another candidate. Do not tag, publish or claim stable readiness based only on CI success.

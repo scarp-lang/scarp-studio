@@ -40,6 +40,19 @@ export async function readScarpSource(path: string): Promise<string> {
     // `fatal` rejects invalid or incomplete UTF-8, rather than silently
     // altering source text. ignoreBOM preserves an existing source BOM.
     pieces.push(decoder.decode());
+
+    // Same-handle metadata must still match after the read. This catches
+    // ordinary file truncation, extension and replacement while the editor
+    // is reading, even when the actual bytes remain below 4 MiB.
+    // Metadata checks are best-effort, not a true atomic filesystem snapshot:
+    // concurrent same-size writes with indistinguishable timestamps may
+    // still require an OS-level snapshot facility to detect perfectly.
+    const finished = await file.stat();
+    if (!finished.isFile || finished.size !== info.size ||
+        finished.size !== bytesRead ||
+        finished.mtime?.getTime() !== info.mtime?.getTime()) {
+      throw new Error('Scarp source changed on disk while reading. Open it again.');
+    }
     return pieces.join('');
   } finally {
     await file.close();

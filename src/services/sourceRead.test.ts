@@ -9,13 +9,14 @@ const encoder = new TextEncoder();
 
 function mockFile(
   data: Uint8Array,
-  info: { size?: number; isFile?: boolean } = {},
+  info: { size?: number; isFile?: boolean; mtime?: Date | null } = {},
 ) {
   let cursor = 0;
   const handle = {
     stat: vi.fn(async () => ({
       size: info.size ?? data.byteLength,
       isFile: info.isFile ?? true,
+      mtime: info.mtime ?? null,
     })),
     read: vi.fn(async (buffer: Uint8Array): Promise<number | null> => {
       if (cursor >= data.byteLength) return null;
@@ -48,7 +49,8 @@ describe('bounded Scarp source reading through one scoped handle', () => {
     const handle = mockFile(encoder.encode('print("hello");'));
     await expect(readScarpSource('C:/project/main.srp')).resolves.toBe('print("hello");');
     expect(open).toHaveBeenCalledWith('C:/project/main.srp', { read: true });
-    expect(handle.stat).toHaveBeenCalledTimes(1);
+    // Pre-read and post-read metadata must be checked on the same handle.
+    expect(handle.stat).toHaveBeenCalledTimes(2);
     expect(handle.read).toHaveBeenCalled();
     expect(handle.close).toHaveBeenCalledTimes(1);
   });
@@ -129,6 +131,63 @@ describe('bounded Scarp source reading through one scoped handle', () => {
     impossible.read.mockResolvedValueOnce(999_999);
     await expect(readScarpSource('C:/project/impossible.srp')).rejects.toThrow('invalid byte count');
     expect(impossible.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a file that shrinks after initial metadata inspection', async () => {
+    const handle = mockFile(encoder.encode('print(1);'));
+    handle.stat.mockResolvedValueOnce({
+      isFile: true, size: 100, mtime: null,
+    }).mockResolvedValueOnce({
+      isFile: true, size: 9, mtime: null,
+    });
+    await expect(readScarpSource('C:/project/shrinking.srp'))
+      .rejects.toThrow('changed on disk');
+    expect(handle.stat).toHaveBeenCalledTimes(2);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects same-size rewrites with a different modified timestamp', async () => {
+    const handle = mockFile(encoder.encode('print(1);'));
+    handle.stat.mockResolvedValueOnce({
+      isFile: true, size: 9, mtime: new Date('2026-01-01T00:00:00.000Z'),
+    }).mockResolvedValueOnce({
+      isFile: true, size: 9, mtime: new Date('2026-01-01T00:00:02.000Z'),
+    });
+    await expect(readScarpSource('C:/project/rewritten.srp'))
+      .rejects.toThrow('changed on disk');
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts an unchanged file after comparing final metadata', async () => {
+    const stamp = new Date('2026-01-01T00:00:00.000Z');
+    const handle = mockFile(encoder.encode('hello'), {
+      size: 5, mtime: stamp,
+    });
+    await expect(readScarpSource('C:/project/stable.srp')).resolves.toBe('hello');
+    expect(handle.stat).toHaveBeenCalledTimes(2);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the file if the final metadata check fails', async () => {
+    const handle = mockFile(encoder.encode('hello'));
+    handle.stat.mockResolvedValueOnce({
+      isFile: true, size: 5, mtime: null,
+    }).mockRejectedValueOnce(new Error('final metadata unavailable'));
+    await expect(readScarpSource('C:/project/unavailable.srp'))
+      .rejects.toThrow('final metadata unavailable');
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a file that becomes non-regular before read completion', async () => {
+    const handle = mockFile(encoder.encode('hello'));
+    handle.stat.mockResolvedValueOnce({
+      isFile: true, size: 5, mtime: null,
+    }).mockResolvedValueOnce({
+      isFile: false, size: 5, mtime: null,
+    });
+    await expect(readScarpSource('C:/project/replaced.srp'))
+      .rejects.toThrow('changed on disk');
+    expect(handle.close).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when opening a path is forbidden', async () => {
