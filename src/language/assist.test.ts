@@ -90,7 +90,7 @@ describe('published Scarp alpha.12 aggregate and match assistance', () => {
   });
 
   it('provides versioned record, variant and match snippets', () => {
-    expect(scarpTokenHelp('record')?.insertText).toContain('new').toBe(false);
+    expect(scarpTokenHelp('record')?.insertText).not.toContain('new');
     expect(scarpTokenHelp('record')?.insertText).toContain('record ${1:Task}');
     expect(scarpTokenHelp('variant')?.insertText).toContain('variant ${1:Choice}');
     const match = scarpCompletions('match').find((item) => item.label === 'match on');
