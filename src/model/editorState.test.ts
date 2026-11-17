@@ -88,6 +88,80 @@ describe('atomic editor session transitions', () => {
     expect(sameDirtyDocuments(snapshot, changedTab.documents)).toBe(false);
   });
 
+  it('reloads a saved source and updates the exact clean snapshot', () => {
+    const opened = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/project/main.srp', content: 'original',
+    });
+    const snapshot = opened.documents[1];
+    const result = editorReducer(opened, {
+      type: 'reload', id: snapshot.id, snapshot, content: 'external change',
+    });
+    expect(result.documents[1].content).toBe('external change');
+    expect(result.documents[1].savedContent).toBe('external change');
+    expect(result.documents[1].path).toBe(snapshot.path);
+    expect(result.activeId).toBe(snapshot.id);
+  });
+
+  it('makes a confirmed dirty reload clean without affecting other tabs', () => {
+    const opened = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/main.srp', content: 'disk',
+    });
+    const edited = editorReducer(opened, {
+      type: 'edit', id: opened.activeId!, content: 'local edits',
+    });
+    const snapshot = edited.documents[1];
+    const result = editorReducer(edited, {
+      type: 'reload', id: snapshot.id, snapshot, content: 'new external disk',
+    });
+    expect(result.documents[1].content).toBe('new external disk');
+    expect(result.documents[1].savedContent).toBe('new external disk');
+    expect(result.documents[0]).toBe(edited.documents[0]);
+  });
+
+  it('refuses a stale disk reload after edits, saves or tab changes', () => {
+    const opened = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/main.srp', content: 'old',
+    });
+    const snapshot = opened.documents[1];
+    const edited = editorReducer(opened, {
+      type: 'edit', id: snapshot.id, content: 'new unsaved work',
+    });
+    expect(editorReducer(edited, { type: 'reload', id: snapshot.id, snapshot, content: 'disk' }))
+      .toBe(edited);
+    const saved = editorReducer(opened, {
+      type: 'saved', id: snapshot.id, path: snapshot.path!, savedContent: 'different',
+    });
+    expect(editorReducer(saved, { type: 'reload', id: snapshot.id, snapshot, content: 'disk' }))
+      .toBe(saved);
+    const switched = editorReducer(opened, { type: 'activate', id: 'untitled-1' });
+    expect(editorReducer(switched, { type: 'reload', id: snapshot.id, snapshot, content: 'disk' }))
+      .toBe(switched);
+  });
+
+  it('does not revive a closed tab or reload an unsaved source', () => {
+    const opened = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/main.srp', content: 'disk',
+    });
+    const snapshot = opened.documents[1];
+    const closed = editorReducer(opened, { type: 'close', id: snapshot.id, snapshot });
+    expect(editorReducer(closed, { type: 'reload', id: snapshot.id, snapshot, content: 'external' }))
+      .toBe(closed);
+    const untitled = initialEditorState.documents[0];
+    expect(editorReducer(initialEditorState, {
+      type: 'reload', id: untitled.id, snapshot: untitled, content: 'external',
+    })).toBe(initialEditorState);
+  });
+
+  it('keeps unchanged disk snapshots as an identity-preserving no-op', () => {
+    const opened = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/main.srp', content: 'unchanged',
+    });
+    const snapshot = opened.documents[1];
+    expect(editorReducer(opened, {
+      type: 'reload', id: snapshot.id, snapshot, content: 'unchanged',
+    })).toBe(opened);
+  });
+
   it('ignores stale edits and save results for a removed tab', () => {
     const doc = initialEditorState.documents[0];
     const closed = editorReducer(initialEditorState, {

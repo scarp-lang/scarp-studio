@@ -14,6 +14,7 @@ export type EditorAction =
   | { type: 'open'; path: string; content: string }
   | { type: 'edit'; id: string; content: string }
   | { type: 'saved'; id: string; path: string; savedContent: string }
+  | { type: 'reload'; id: string; snapshot: StudioDocument; content: string }
   | { type: 'activate'; id: string }
   | { type: 'close'; id: string; snapshot: StudioDocument };
 
@@ -60,6 +61,22 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...state,
         documents: markSaved(state.documents, action.id, action.path, action.savedContent),
       };
+    case 'reload': {
+      const current = state.documents.find((doc) => doc.id === action.id);
+      // A completed disk read cannot overwrite an edited, saved, closed or
+      // switched-away tab. Keep this as a reducer-level safety invariant.
+      if (!current?.path || state.activeId !== action.id ||
+          !isUnchangedSnapshot(current, action.snapshot)) return state;
+      if (current.content === action.content && current.savedContent === action.content) return state;
+      return {
+        ...state,
+        documents: state.documents.map((doc) =>
+          doc.id === action.id
+            ? { ...doc, content: action.content, savedContent: action.content }
+            : doc,
+        ),
+      };
+    }
     case 'activate':
       if (!state.documents.some((document) => document.id === action.id)) return state;
       return { ...state, activeId: action.id };

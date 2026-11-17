@@ -27,6 +27,10 @@ This is a **manual verification worksheet** for the draft integrated IDE candida
 | E09 | Open editor settings: change font size, tab width, wrap; restart and restore defaults | Preferences persist locally, then reset correctly without changing source text | NOT RUN |
 | E10 | Open native File/Folder chooser, try another picker, save, compiler selection or window exit | No stacked dialogs, no forced exit while chooser is unresolved | NOT RUN |
 | E11 | Run project tests and attempt to save a source or switch the selected project folder during the operation | Studio prevents conflicting writes/folder switching until command completion or Stop | NOT RUN |
+| E12 | Edit a clean saved .srp file externally and choose Reload in Studio | Source content and saved snapshot update to disk text without running code | NOT RUN |
+| E13 | Modify a dirty Studio tab and its on-disk source externally, click Reload and cancel | Unsaved Studio edits remain intact | NOT RUN |
+| E14 | Repeat E13, make further edits while the confirmation is open, then accept | Reload refuses stale confirmation; a fresh confirmation can reload external content | NOT RUN |
+| E15 | Begin Reload, then switch tabs or change source before disk read finishes | No stale reload replaces the changed or switched tab; native dialogs do not stack | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 

@@ -9,6 +9,7 @@ import {
 } from './model/documents';
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, saveAllModifiedSources, writeSourceFile } from './services/files';
+import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import {
@@ -48,6 +49,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'save', label: 'Save Current File', detail: 'Ctrl+S' },
   { id: 'save-all', label: 'Save All Modified Scarp Files', detail: 'Ctrl+Alt+S' },
   { id: 'save-as', label: 'Save Current File As', detail: 'Ctrl+Shift+S' },
+  { id: 'reload', label: 'Reload Current Scarp File from Disk', detail: 'Confirms before discarding unsaved edits' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
   { id: 'quick-open', label: 'Quick Open Tabs and Project Sources', detail: 'Ctrl+P' },
@@ -281,6 +283,7 @@ export default function App() {
       case 'save': void saveFile(); break;
       case 'save-all': void saveAllFiles(); break;
       case 'save-as': void saveFile(true); break;
+      case 'reload': void reloadFile(); break;
       case 'close':
         if (liveEditor.current.activeId) void closeFile(liveEditor.current.activeId);
         break;
@@ -517,6 +520,61 @@ export default function App() {
     } finally {
       saveInProgress.current = false;
       setBusy(false);
+    }
+  }
+
+  async function reloadFile(): Promise<void> {
+    if (!isTauri()) {
+      setError('Reload from Disk is available only in the desktop app.');
+      return;
+    }
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || commandInProgress.current) {
+      setError('Finish the current file or compiler operation before reloading.');
+      return;
+    }
+    const snapshot = liveEditor.current.documents.find(
+      (doc) => doc.id === liveEditor.current.activeId,
+    );
+    if (!snapshot?.path) {
+      setError('Save the Scarp source before reloading it from disk.');
+      return;
+    }
+    const gate = nativeDialogGate.current;
+    if (!gate.begin('reload-source')) return;
+    setError(null);
+    setBusy(true);
+    try {
+      if (isDirty(snapshot)) {
+        const confirmed = await ask(
+          'Discard unsaved edits to ' + snapshot.name + ' and reload its current contents from disk?',
+          { title: 'Reload Scarp source?', kind: 'warning' },
+        );
+        if (!confirmed) return;
+      }
+      const stillCurrent = () => {
+        const current = liveEditor.current.documents.find((doc) => doc.id === snapshot.id);
+        return current !== undefined && liveEditor.current.activeId === snapshot.id &&
+          isUnchangedSnapshot(current, snapshot) &&
+          !saveInProgress.current && !filePickerInProgress.current &&
+          !selectionInProgress.current && !commandInProgress.current;
+      };
+      if (!stillCurrent()) {
+        setError('Source or tab changed while preparing reload. Review edits and try again.');
+        return;
+      }
+      const content = await readScarpSource(snapshot.path);
+      if (!stillCurrent()) {
+        setError('Source or tab changed while reading disk. Reload was cancelled.');
+        return;
+      }
+      dispatch({ type: 'reload', id: snapshot.id, snapshot, content });
+      setNotice('Reloaded ' + snapshot.name + ' from disk');
+    } catch (caught) {
+      setError('Could not reload Scarp source: ' + toMessage(caught));
+    } finally {
+      setBusy(false);
+      gate.finish('reload-source');
     }
   }
 
@@ -859,6 +917,8 @@ export default function App() {
           <button onClick={() => void saveAllFiles()} disabled={busy || compilerBusy || compilerSelecting || !documents.some(isDirty)}
             title="Save All modified Scarp files (Ctrl+Alt+S)">Save All</button>
           <button onClick={() => void saveFile(true)} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save As (Ctrl+Shift+S)">Save As</button>
+          <button onClick={() => void reloadFile()} disabled={!active?.path || busy || compilerBusy || compilerSelecting}
+            title="Reload the saved Scarp source from disk, confirming before discarding edits">Reload</button>
         </nav>
         <button
           className="settings-toggle"
