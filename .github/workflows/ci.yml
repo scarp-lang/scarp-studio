@@ -217,6 +217,74 @@ jobs:
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.11" }
 
+      # Independent release-asset verification: alpha.12 extends the interpreter
+      # with records, variants, destructuring, Option/Result, lists and maps.
+      # Studio does not bundle or automatically download this compiler.
+      - name: Verify pinned Scarp alpha.12 aggregate compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.12/scarp-0.0.6-alpha.12-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha12.zip
+          $actual = (Get-FileHash scarp-alpha12.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "5e1fdd2f0f1631de170dd785ae23d9b87b9406463f8385b7454a43a00c96cd2c") {
+            throw "Official alpha.12 compiler archive hash mismatch"
+          }
+          Expand-Archive -Path scarp-alpha12.zip -DestinationPath scarp-alpha12
+          $binary = Get-ChildItem scarp-alpha12 -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Official Scarp alpha.12 executable is missing" }
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.12") {
+            throw "Unexpected Scarp alpha.12 compiler version"
+          }
+          $aggregates = @(
+            'record Task { title: string, done: boolean }'
+            'bind task = new Task { title: "Review", done: false };'
+            'bind names: list<string> = [list: "alpha", "beta"];'
+            'bind expanded = list_push(names, "gamma");'
+            'bind counts = [map: "ready": 2, "pending": 1];'
+            'print(task->title, list_len(expanded), map_get_or(counts, "ready", 0));'
+            'bind (first, second) = (20, 22);'
+            'print(first + second);'
+          ) -join "`n"
+          $aggregates | Set-Content -Path scarp-alpha12-aggregates.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha12-aggregates.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.12 aggregates verification failed" }
+          $output = & $binary.FullName exec --diagnostic-format=json -- scarp-alpha12-aggregates.srp
+          $status = $LASTEXITCODE
+          $text = $output -join "`n"
+          if ($status -ne 0 -or $text -notmatch 'Review' -or $text -notmatch '42') {
+            throw "Scarp alpha.12 aggregates execution failed"
+          }
+          $variants = @(
+            'variant Lookup { Missing, Found(integer) }'
+            'bind hit = new Lookup::Found(42);'
+            'match on hit {'
+            '    case Missing { print("Absent"); }'
+            '    case Found(value) { print(value); }'
+            '}'
+            'pure funcra increment(value: option<integer>) -> option<integer> {'
+            '    bind number = value?;'
+            '    return new option<integer>::Some(number + 1);'
+            '}'
+            'match on increment(new option<integer>::Some(41)) {'
+            '    case None { print("No value"); }'
+            '    case Some(number) { print(number); }'
+            '}'
+          ) -join "`n"
+          $variants | Set-Content -Path scarp-alpha12-variants.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha12-variants.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.12 variant/Option verification failed" }
+          $output = & $binary.FullName exec --diagnostic-format=json -- scarp-alpha12-variants.srp
+          $status = $LASTEXITCODE
+          if ($status -ne 0 -or ($output -join "`n") -notmatch '42') {
+            throw "Scarp alpha.12 variant/Option execution failed"
+          }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.12"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.12" }
+
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate
