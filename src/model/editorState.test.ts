@@ -1,7 +1,84 @@
 import { describe, expect, it } from 'vitest';
-import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, sameDirtyDocuments, sameOpenDocumentSnapshots } from './editorState';
+import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots } from './editorState';
 
 describe('atomic editor session transitions', () => {
+  it('rejects a stale close or reload after source text changes A→B→A', () => {
+    const original = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/main.srp', content: 'original source',
+    });
+    const snapshot = original.documents[1];
+    const changed = editorReducer(original, {
+      type: 'edit', id: snapshot.id, content: 'temporary different text',
+    });
+    const reverted = editorReducer(changed, {
+      type: 'edit', id: snapshot.id, content: snapshot.content,
+    });
+    expect(reverted.documents[1].content).toBe(snapshot.content);
+    expect(reverted.documents[1].savedContent).toBe(snapshot.savedContent);
+    expect(reverted.documents[1].revision).toBe(snapshot.revision + 2);
+    expect(isUnchangedSnapshot(reverted.documents[1], snapshot)).toBe(false);
+    expect(editorReducer(reverted, {
+      type: 'close', id: snapshot.id, snapshot,
+    })).toBe(reverted);
+    expect(editorReducer(reverted, {
+      type: 'reload', id: snapshot.id, snapshot, content: 'disk',
+    })).toBe(reverted);
+  });
+
+  it('does not create a new revision for identical no-op edit notifications', () => {
+    const original = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/main.srp', content: 'source',
+    });
+    const snapshot = original.documents[1];
+    expect(editorReducer(original, {
+      type: 'edit', id: snapshot.id, content: snapshot.content,
+    })).toBe(original);
+    expect(editorReducer(original, {
+      type: 'edit', id: 'nonexistent-tab', content: 'anything',
+    })).toBe(original);
+  });
+
+  it('rejects stale Replace All after editing A→B→A even with matching source content', () => {
+    const initial = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/main.srp', content: 'needle',
+    });
+    const snapshot = initial.documents[1];
+    const changes = [{ id: snapshot.id, snapshot, content: 'replacement' }];
+    const modified = editorReducer(initial, {
+      type: 'edit', id: snapshot.id, content: 'other',
+    });
+    const reverted = editorReducer(modified, {
+      type: 'edit', id: snapshot.id, content: 'needle',
+    });
+    expect(sameOpenDocumentSnapshots(initial.documents, reverted.documents)).toBe(false);
+    expect(canApplyReplacementSnapshots(reverted, changes)).toBe(false);
+    expect(editorReducer(reverted, {
+      type: 'replace-open-files', changes, allSnapshots: initial.documents,
+    })).toBe(reverted);
+  });
+
+  it('increments generations for saved snapshots, reloads and Replace All', () => {
+    const original = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/main.srp', content: 'a',
+    });
+    const snapshot = original.documents[1];
+    const saved = editorReducer(original, {
+      type: 'saved', id: snapshot.id, path: snapshot.path!, savedContent: snapshot.content,
+    });
+    expect(saved.documents[1].revision).toBe(snapshot.revision + 1);
+    expect(isUnchangedSnapshot(saved.documents[1], snapshot)).toBe(false);
+    const reloaded = editorReducer(saved, {
+      type: 'reload', id: snapshot.id, snapshot: saved.documents[1], content: 'b',
+    });
+    expect(reloaded.documents[1].revision).toBe(snapshot.revision + 2);
+    const replaced = editorReducer(reloaded, {
+      type: 'replace-open-files', changes: [{
+        id: snapshot.id, snapshot: reloaded.documents[1], content: 'c',
+      }], allSnapshots: reloaded.documents,
+    });
+    expect(replaced.documents[1].revision).toBe(snapshot.revision + 3);
+  });
+
   it('selects Save and Close targets from the newest synchronous state', () => {
     const first = editorReducer(initialEditorState, {
       type: 'open', path: '/project/first.srp', content: 'first',

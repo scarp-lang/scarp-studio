@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createUntitled, type StudioDocument } from './documents';
+import { createUntitled, updateContent, type StudioDocument } from './documents';
 import {
   MAX_SEARCH_CANDIDATES, MAX_SEARCH_CONTENT_UNITS, MAX_SEARCH_DOCUMENTS,
   MAX_SEARCH_QUERY_UNITS, MAX_SEARCH_RESULTS, isCurrentSearchHit, searchOpenFiles,
@@ -106,6 +106,17 @@ describe('bounded search across open Scarp buffers', () => {
     expect(result.hits[0].sourceContent).toBe(docs[0].content);
     expect(result.hits[0].matchText).toBe('hello');
     expect(result.hits[0].preview).toContain('print');
+  });
+
+  it('rejects stale search hits after A→B→A restores the same text', () => {
+    const doc = source(1, 'print("word");');
+    const hit = searchOpenFiles([doc], 'word', defaults).hits[0];
+    const modified = updateContent([doc], doc.id, 'other')[0];
+    const reverted = updateContent([modified], doc.id, doc.content)[0];
+    expect(reverted.content).toBe(doc.content);
+    expect(reverted.revision).toBe(doc.revision + 2);
+    expect(isCurrentSearchHit(reverted, hit)).toBe(false);
+    expect(isCurrentSearchHit(doc, hit)).toBe(true);
   });
 
   it('rejects stale, closed or malformed result locations', () => {

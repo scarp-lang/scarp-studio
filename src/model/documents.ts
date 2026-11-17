@@ -5,6 +5,8 @@ export interface StudioDocument {
   path: string | null;
   content: string;
   savedContent: string;
+  /** In-session generation to reject A-to-B-to-A (ABA) source edits. */
+  revision: number;
 }
 
 export function isScarpPath(path: string): boolean {
@@ -45,6 +47,7 @@ export function createUntitled(sequence: number): StudioDocument {
     path: null,
     content: '',
     savedContent: '',
+    revision: 0,
   };
 }
 
@@ -57,9 +60,12 @@ export function updateContent(
   id: string,
   content: string,
 ): StudioDocument[] {
-  return documents.map((document) =>
-    document.id === id ? { ...document, content } : document,
-  );
+  if (!documents.some((doc) => doc.id === id && doc.content !== content)) return documents;
+  // Monaco can fire unchanged notifications: only real changes count as edits.
+  // An edit returning to older text retains a strictly newer revision.
+  return documents.map((doc) => doc.id === id
+    ? { ...doc, content, revision: doc.revision + 1 }
+    : doc);
 }
 
 export function openedDocument(
@@ -75,7 +81,7 @@ export function openedDocument(
     id,
     documents: [
       ...documents,
-      { id, name: fileName(path), path, content, savedContent: content },
+      { id, name: fileName(path), path, content, savedContent: content, revision: 0 },
     ],
   };
 }
@@ -88,7 +94,7 @@ export function markSaved(
 ): StudioDocument[] {
   return documents.map((document) =>
     document.id === id
-      ? { ...document, name: fileName(path), path, savedContent }
+      ? { ...document, name: fileName(path), path, savedContent, revision: document.revision + 1 }
       : document,
   );
 }
