@@ -451,6 +451,12 @@ export default function App() {
     const document = liveEditor.current.documents.find((item) => item.id === activeId);
     if (!document || saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    // Project actions execute disk-backed sources. Do not rewrite their files
+    // midway through a compiler Run, Verify or Test.
+    if (commandInProgress.current) {
+      setError('Finish or stop the Scarp operation before saving source files.');
+      return;
+    }
     saveInProgress.current = true;
     setError(null);
     setBusy(true);
@@ -478,6 +484,10 @@ export default function App() {
   async function saveAllFiles(): Promise<void> {
     if (saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    if (commandInProgress.current) {
+      setError('Finish or stop the Scarp operation before saving source files.');
+      return;
+    }
     // Capture only tab identities: each source is looked up again after earlier
     // native Save As dialogs, so later edits are saved at their current snapshot.
     const ids = liveEditor.current.documents.filter(isDirty).map((document) => document.id);
@@ -845,10 +855,10 @@ export default function App() {
             aria-controls="open-file-search"
             title="Search all currently open Scarp buffers (Ctrl+Shift+F)"
           >Find in Open Files</button>
-          <button onClick={() => void saveFile()} disabled={!active || busy} title="Save (Ctrl+S)">Save</button>
-          <button onClick={() => void saveAllFiles()} disabled={busy || !documents.some(isDirty)}
+          <button onClick={() => void saveFile()} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save (Ctrl+S)">Save</button>
+          <button onClick={() => void saveAllFiles()} disabled={busy || compilerBusy || compilerSelecting || !documents.some(isDirty)}
             title="Save All modified Scarp files (Ctrl+Alt+S)">Save All</button>
-          <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
+          <button onClick={() => void saveFile(true)} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save As (Ctrl+Shift+S)">Save As</button>
         </nav>
         <button
           className="settings-toggle"

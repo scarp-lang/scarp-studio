@@ -43,6 +43,8 @@ npm run tauri build -- --no-bundle
 
 Pull-request CI tests separately SHA-256-pinned official Scarp alpha.10, alpha.11 and (in this draft) alpha.12 compiler archives, builds a Windows executable and an unsigned NSIS installer **candidate**, and uploads checksums. Passing CI is not equivalent to a verified Windows desktop GUI session.
 
+For repeatable Windows GUI verification, see the [Windows 11 acceptance matrix](docs/windows-11-acceptance.md). It records actual GUI outcomes separately from automated CI; no release is authorized by that document.
+
 ## Review and safety gates
 
 - [ ] Exact-head Windows CI must pass for the intended candidate.
