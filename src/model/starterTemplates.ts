@@ -81,6 +81,30 @@ export const scarpStarterTemplates: readonly ScarpStarterTemplate[] = [
     description: 'Preload an exact decimal input and enable prompt mode',
     source: '// Requires official Scarp v0.0.6-alpha.11+.\n// Enable Studio prompt mode and preload 19.95 in Program Input BEFORE Run.\nbind amount: decimal = input_decimal("Amount: ");\nprint(decimal_format(amount, 2, "half_even"));\n',
   },
+  {
+    id: "records",
+    title: "Typed Records (alpha.12+)",
+    description: "Construct immutable records and read named fields",
+    source: "// Requires official Scarp v0.0.6-alpha.12+ (interpreter).\nrecord Task { title: string, done: boolean }\nbind task = new Task { title: \"Review\", done: false };\nprint(task->title);\n",
+  },
+  {
+    id: "variants",
+    title: "Tagged Variants (alpha.12+)",
+    description: "Match a tagged value with exhaustive cases",
+    source: "// Requires official Scarp v0.0.6-alpha.12+ (interpreter).\nvariant Lookup { Missing, Found(integer) }\nbind hit = new Lookup::Found(42);\nmatch on hit {\n    case Missing { print(\"Absent\"); }\n    case Found(value) { print(value); }\n}\n",
+  },
+  {
+    id: "collections",
+    title: "Typed Lists and Maps (alpha.12+)",
+    description: "Build immutable snapshots with deterministic map keys",
+    source: "// Requires official Scarp v0.0.6-alpha.12+ (interpreter).\nbind names: list<string> = [list: \"alpha\", \"beta\"];\nbind expanded = list_push(names, \"gamma\");\nbind counts = [map: \"ready\": 2, \"pending\": 1];\nprint(list_len(expanded), map_get_or(counts, \"ready\", 0));\n",
+  },
+  {
+    id: "optionresult",
+    title: "Option Propagation (alpha.12+)",
+    description: "Early-return an absent optional value safely",
+    source: "// Requires official Scarp v0.0.6-alpha.12+ (interpreter).\npure funcra is_positive(value: option<integer>) -> option<boolean> {\n    bind number = value?;\n    return new option<boolean>::Some(number > 0);\n}\nmatch on is_positive(new option<integer>::Some(3)) {\n    case None { print(\"No value\"); }\n    case Some(flag) { print(flag); }\n}\n",
+  },
 ];
 
 export function getScarpStarterTemplate(id: string): ScarpStarterTemplate | null {
