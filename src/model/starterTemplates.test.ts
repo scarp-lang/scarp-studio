@@ -4,9 +4,9 @@ import { getScarpStarterTemplate, scarpStarterTemplates } from './starterTemplat
 describe('Scarp-only starter templates', () => {
   it('offers independent real Scarp learning scenarios', () => {
     expect(scarpStarterTemplates.map(({ id }) => id)).toEqual([
-      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput',
+      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput', 'records', 'variants', 'collections', 'optionresult',
     ]);
-    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(12);
+    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(16);
   });
 
   it('uses only .srp snippets that can be edited in an untitled buffer', () => {
@@ -54,6 +54,17 @@ describe('Scarp-only starter templates', () => {
     expect(prompted).toContain('input_decimal("Amount: ")');
     expect(prompted).toContain('BEFORE Run');
     expect(prompted).toContain('alpha.11');
+  });
+
+  it('offers alpha.12 records, variants, collections and optional propagation', () => {
+    for (const id of ['records', 'variants', 'collections', 'optionresult']) {
+      expect(getScarpStarterTemplate(id)?.source).toContain('alpha.12');
+      expect(getScarpStarterTemplate(id)?.source).toContain('interpreter');
+    }
+    expect(getScarpStarterTemplate('records')?.source).toContain('new Task');
+    expect(getScarpStarterTemplate('variants')?.source).toContain('match on hit');
+    expect(getScarpStarterTemplate('collections')?.source).toContain('map_get_or(');
+    expect(getScarpStarterTemplate('optionresult')?.source).toContain('value?');
   });
 
   it('looks up only registered templates without accepting arbitrary source', () => {
