@@ -28,7 +28,7 @@ describe('bounded Explorer source selection', () => {
   });
 
   it('reads new project files using exactly the current selected listing path', () => {
-    const path = String.raw`C:\\Project\\Main.srp`;
+    const path = String.raw`C:\Project\Main.srp`;
     const decision = resolveListedProjectOpen(
       'c:/project/main.SRP', [{ path }], [],
     );
@@ -37,15 +37,15 @@ describe('bounded Explorer source selection', () => {
 
   it('matches canonical Windows drive and UNC aliases conservatively', () => {
     expect(resolveListedProjectOpen(
-      String.raw`\\\\?\\C:\\Project\\Main.srp`,
+      String.raw`\\?\C:\Project\Main.srp`,
       [{ path: 'c:/project/main.srp' }],
       [],
     )).toEqual({ kind: 'load', path: 'c:/project/main.srp' });
     expect(resolveListedProjectOpen(
-      String.raw`\\\\?\\UNC\\server\\share\\Main.srp`,
-      [{ path: String.raw`\\\\server\\share\\main.srp` }],
+      String.raw`\\?\UNC\server\share\Main.srp`,
+      [{ path: String.raw`\\server\share\main.srp` }],
       [],
-    )).toEqual({ kind: 'load', path: String.raw`\\\\server\\share\\main.srp` });
+    )).toEqual({ kind: 'load', path: String.raw`\\server\share\main.srp` });
   });
 
   it('preserves distinct case-sensitive POSIX source names', () => {
