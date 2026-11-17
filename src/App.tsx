@@ -7,7 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   fileName, isDirty, sameFilePath,
 } from './model/documents';
-import { canApplyReplacementSnapshots, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
+import { canApplyReplacementSnapshots, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots, type EditorAction } from './model/editorState';
 import { pickSourceFile, saveAllModifiedSources, writeSourceFile } from './services/files';
 import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
@@ -870,6 +870,7 @@ export default function App() {
       plan.replacement === replaceText &&
       plan.options.caseSensitive === searchCaseSensitive &&
       plan.options.wholeWord === searchWholeWord &&
+      sameOpenDocumentSnapshots(plan.sourceSnapshots, liveEditor.current.documents) &&
       canApplyReplacementSnapshots(liveEditor.current, plan.changes);
     if (!previewIsCurrent()) {
       setReplacePreview(null);
@@ -894,7 +895,7 @@ export default function App() {
         setError('At least one source changed during confirmation. Nothing was replaced.');
         return;
       }
-      dispatch({ type: 'replace-open-files', changes: plan.changes });
+      dispatch({ type: 'replace-open-files', changes: plan.changes, allSnapshots: plan.sourceSnapshots });
       setReplacePreview(null);
       setNotice('Replaced ' + plan.totalReplacements + ' occurrence(s) in ' +
         plan.changes.length + ' editor buffer(s). Save modified tabs to write to disk.');

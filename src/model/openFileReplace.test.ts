@@ -20,6 +20,7 @@ describe('previewed, literal replacements in open buffers only', () => {
     const docs = [doc(1, 'Alpha'), doc(2, 'alpha ALPHA')];
     const preview = planOpenFileReplacement(docs, 'alpha', 'beta', options);
     expect(preview.totalReplacements).toBe(3);
+    expect(preview.sourceSnapshots.map((source) => source.id)).toEqual(docs.map((source) => source.id));
     expect(preview.changes.map((change) => change.content)).toEqual(['beta', 'beta beta']);
     expect(docs[0].content).toBe('Alpha');
     expect(docs[1].savedContent).toBe('alpha ALPHA');

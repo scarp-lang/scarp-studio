@@ -17,6 +17,8 @@ export interface OpenFileReplacePlan {
   query: string;
   replacement: string;
   options: SearchOptions;
+  /** Every open tab's snapshot, including those without matches. */
+  sourceSnapshots: readonly StudioDocument[];
   totalReplacements: number;
   changes: OpenFileReplaceChange[];
 }
@@ -89,6 +91,7 @@ export function planOpenFileReplacement(
     query,
     replacement,
     options: { ...options },
+    sourceSnapshots: documents.slice(),
     totalReplacements,
     changes,
   };
