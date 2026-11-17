@@ -126,6 +126,9 @@ export default function App() {
   const mountedEditorDocumentId = useRef<string | null>(null);
   const pendingSearchLocation = useRef<OpenFileSearchHit | null>(null);
   const saveInProgress = useRef(false);
+  // Shared guard for native Open File / Choose Folder dialogs. Save As has
+  // its own saveInProgress gate; confirmations use NativeDialogGate.
+  const filePickerInProgress = useRef(false);
   // Prevent overlapping native discard prompts on repeated close attempts.
   const nativeDialogGate = useRef(new NativeDialogGate());
   const commandInProgress = useRef(false);
@@ -316,6 +319,7 @@ export default function App() {
       const pending = liveEditor.current.documents.filter(isDirty);
       const blocked = exitBlockReason(
         saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+        filePickerInProgress.current,
       );
       if (!pending.length && !blocked && !nativeDialogGate.current.isActive) return;
       event.preventDefault();
@@ -331,6 +335,7 @@ export default function App() {
         })) {
           const newBlocker = exitBlockReason(
             saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+            filePickerInProgress.current,
           );
           if (newBlocker ||
               !sameDirtyDocuments(pending, liveEditor.current.documents)) {
@@ -383,16 +388,25 @@ export default function App() {
   }
 
   async function openFile(): Promise<void> {
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || nativeDialogGate.current.isActive) return;
+    filePickerInProgress.current = true;
     setError(null);
     try {
       const selected = await pickSourceFile();
       if (selected) activateOpenedFile(selected.path, selected.content);
     } catch (caught) {
       setError('Could not open source: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
     }
   }
 
   async function openFolder(): Promise<void> {
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || commandInProgress.current ||
+        nativeDialogGate.current.isActive) return;
+    filePickerInProgress.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -409,6 +423,7 @@ export default function App() {
     } catch (caught) {
       setError('Could not open folder: ' + toMessage(caught));
     } finally {
+      filePickerInProgress.current = false;
       setBusy(false);
     }
   }
@@ -434,7 +449,8 @@ export default function App() {
 
   async function saveFile(forceSaveAs = false): Promise<void> {
     const document = liveEditor.current.documents.find((item) => item.id === activeId);
-    if (!document || saveInProgress.current) return;
+    if (!document || saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || nativeDialogGate.current.isActive) return;
     saveInProgress.current = true;
     setError(null);
     setBusy(true);
@@ -460,7 +476,8 @@ export default function App() {
   }
 
   async function saveAllFiles(): Promise<void> {
-    if (saveInProgress.current || nativeDialogGate.current.isActive) return;
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || nativeDialogGate.current.isActive) return;
     // Capture only tab identities: each source is looked up again after earlier
     // native Save As dialogs, so later edits are saved at their current snapshot.
     const ids = liveEditor.current.documents.filter(isDirty).map((document) => document.id);
@@ -494,7 +511,9 @@ export default function App() {
   }
 
   async function selectCompiler(): Promise<void> {
-    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || saveInProgress.current ||
+        nativeDialogGate.current.isActive) return;
     selectionInProgress.current = true;
     setCompilerSelecting(true);
     setError(null);
@@ -527,7 +546,8 @@ export default function App() {
   }
 
   async function runCompiler(mode: ScarpMode): Promise<void> {
-    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || nativeDialogGate.current.isActive) return;
     if (saveInProgress.current) {
       setError('Finish saving before running the compiler.');
       return;
@@ -593,7 +613,8 @@ export default function App() {
 
   async function runProjectAction(action: ScarpProjectAction): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
-        saveInProgress.current) return;
+        saveInProgress.current || filePickerInProgress.current ||
+        nativeDialogGate.current.isActive) return;
     if (!compilerPath || !folderPath) {
       setError('Select the official compiler and a Scarp project folder first.');
       return;
@@ -692,8 +713,9 @@ export default function App() {
   }
 
   async function closeFile(id: string): Promise<void> {
-    if (saveInProgress.current) {
-      setError('Finish the current save before closing a tab.');
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current) {
+      setError('Finish the current file operation before closing a tab.');
       return;
     }
     // Ctrl+W and close buttons can be pressed repeatedly while ask() is pending.
