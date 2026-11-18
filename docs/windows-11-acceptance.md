@@ -65,6 +65,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | P19 | After Replace All, edit then restore identical post-replacement text and try Undo Last Replace All | Monotonic revision invalidates stale Undo; no newer edit is silently erased | NOT RUN |
 | P20 | Begin loading a listed project source, switch tabs away and back while its read is pending | Stale Explorer read never unexpectedly activates a new source | NOT RUN |
 | P21 | Search or preview Replace All in a saved file, close and reopen that identical file, then try to use the old hit/preview | Reopened file has a newer generation; stale search navigation and Replace All are refused | NOT RUN |
+| P22 | Open a disposable `.srp` buffer using mixed CR-only, CRLF and LF lines plus emoji; search across open buffers and navigate matching results | Search line/UTF-16 column numbers land at the actual Monaco locations; result previews do not include text from adjacent CR-only lines | NOT RUN |
 
 ## Official compiler alpha.13 (interpreter CLI; alpha.12 source features remain supported)
 
@@ -91,6 +92,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | D03 | Confirm source read and input size limits; record visible user errors | Oversized sources and prompt data fail closed | NOT RUN |
 | D06 | Load a 4 MiB valid source, a 4 MiB + 1 byte source, then a source grown while opening; inspect file handles and UI responsiveness | Boundary accepted, oversized/growing sources refused with safe error; handle closed and no excessive allocation | NOT RUN |
 | D07 | Reopen a UTF-8 Scarp source containing Hindi, emoji, BOM and CRLF; attempt an invalid UTF-8 file | Exact valid text roundtrips; malformed text is refused without corrupting an existing tab | NOT RUN |
+| D08 | Verify a disposable syntax-error `.srp` source with mixed CR-only/CRLF/LF lines and non-BMP Unicode before the error location | F8 diagnostic navigation targets the correct Monaco line and UTF-16 column, rather than a stale LF-only coordinate | NOT RUN |
 | D08 | While opening a disposable .srp source, externally truncate or rewrite it, then retry opening when stable | Detectable size or modification-time changes during read are rejected; no mixed text silently replaces the editor buffer; file handle is closed | NOT RUN |
 | D04 | Inspect unsigned NSIS candidate, installation/uninstallation, warnings, and Windows executable launch | Record observed behavior; do not treat a successful installer build as GUI acceptance | NOT RUN |
 | D05 | Verify the exact-run candidate exe and NSIS installer using `scripts/verify-windows-artifacts.ps1`, then review build logs and compiler provenance | Both hashes match their trusted run manifest; duplicate, missing, corrupted or mixed-run files fail closed; no candidate binaries executed by validator | NOT RUN |

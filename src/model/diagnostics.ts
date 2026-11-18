@@ -1,4 +1,5 @@
 import { fileName, sameFilePath } from './documents';
+import { sourceLineAt } from './sourceLines';
 
 /** Scarp's published --diagnostic-format=json schema v1, with scalar columns. */
 export interface ScarpDiagnostic {
@@ -78,8 +79,8 @@ export function diagnosticSourcePosition(
   // refer to a different module with the same name. Require a full path.
   if (!sameFilePath(diagnostic.path, sourcePath) &&
       /^\s*(?:pub\s+)?import\s+["']/m.test(content)) return null;
-  const line = content.split(/\r?\n/)[diagnostic.line - 1];
-  if (line === undefined) return null;
+  const line = sourceLineAt(content, diagnostic.line);
+  if (line === null) return null;
   // An insertion-point diagnostic can legitimately identify the column
   // immediately after the last Unicode scalar.
   const scalarCount = Array.from(line).length;

@@ -96,6 +96,27 @@ describe('published Scarp JSON error diagnostics', () => {
     expect(diagnosticSourcePosition(diagnostic, 'c:/project/main.srp', 'A😀B'))
       .toEqual({ lineNumber: 1, column: 4 });
   });
+  it('navigates CR-only and mixed-ending diagnostics using scalar-to-UTF-16 columns', () => {
+    const source = 'first\rmiddle\r\nA😀B\nlast';
+    const diagnostic = parseScarpDiagnostic(stderr({
+      ...fixture,
+      primary: {
+        ...fixture.primary,
+        path: 'C:/Project/main.srp',
+        start: { line: 3, column: 3 },
+      },
+    }));
+    expect(diagnosticSourcePosition(diagnostic, 'c:/project/main.srp', source))
+      .toEqual({ lineNumber: 3, column: 4 });
+    expect(diagnosticSourcePosition({
+      ...diagnostic!, line: 2, column: 7,
+    }, 'c:/project/main.srp', source))
+      .toEqual({ lineNumber: 2, column: 7 });
+    expect(diagnosticSourcePosition({
+      ...diagnostic!, line: 5, column: 1,
+    }, 'c:/project/main.srp', source)).toBeNull();
+  });
+
   it('rejects invalid, stale or foreign positions without clamping', () => {
     const diagnostic = parseScarpDiagnostic(stderr(fixture));
     expect(diagnosticSourcePosition(diagnostic, 'C:/project/main.srp', 'first\nAB'))

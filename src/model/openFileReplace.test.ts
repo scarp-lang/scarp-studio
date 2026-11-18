@@ -34,6 +34,16 @@ describe('previewed, literal replacements in open buffers only', () => {
     expect(preview.changes[0].content).toBe('print("literal");');
   });
 
+  it('preserves lone CR, CRLF and LF around bounded replacements', () => {
+    const preview = planOpenFileReplacement(
+      [doc(1, 'first needle\rsecond needle\r\nthird needle\n')],
+      'needle', 'मूल्य', options,
+    );
+    expect(preview.totalReplacements).toBe(3);
+    expect(preview.changes[0].content)
+      .toBe('first मूल्य\rsecond मूल्य\r\nthird मूल्य\n');
+  });
+
   it('preserves Windows CRLF and supplementary Unicode around replacements', () => {
     const preview = planOpenFileReplacement(
       [doc(1, '😀 first\r\n😀 first\n')], 'first', 'दूसरा', options,

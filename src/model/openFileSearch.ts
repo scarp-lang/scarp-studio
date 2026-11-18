@@ -1,4 +1,5 @@
 import type { StudioDocument } from './documents';
+import { lineBreakWidth, nextLineBreak } from './sourceLines';
 
 /** Only already-open editor buffers are searched. No filesystem permissions
  * or background file reads are needed. All limits are deliberate UI budgets.
@@ -61,13 +62,13 @@ function isWholeWord(content: string, start: number, end: number): boolean {
     (!after || !isIdentifierCodePoint(after));
 }
 
-function linePreview(content: string, start: number, lineStart: number, matchLength: number): string {
-  const endOfLine = content.indexOf('\n', start);
-  const lineEnd = endOfLine < 0 ? content.length : endOfLine;
+function linePreview(
+  content: string, start: number, lineStart: number, lineEnd: number, matchLength: number,
+): string {
   const snippetStart = Math.max(lineStart, start - 40);
   const snippetEnd = Math.min(lineEnd, start + matchLength + 60);
   return (snippetStart > lineStart ? '…' : '') +
-    content.slice(snippetStart, snippetEnd).replace(/\r$/, '') +
+    content.slice(snippetStart, snippetEnd) +
     (snippetEnd < lineEnd ? '…' : '');
 }
 
@@ -115,7 +116,9 @@ export function searchOpenFiles(
     regex.lastIndex = 0;
     let line = 1;
     let lineStart = 0;
-    let newlineCursor = 0;
+    // Advance once per source line, not once per hit: this is linear even
+    // when many matches occur on one long line.
+    let nextEnd = nextLineBreak(content, 0);
     for (const match of content.matchAll(regex)) {
       candidatesExamined++;
       if (candidatesExamined > MAX_SEARCH_CANDIDATES) {
@@ -124,12 +127,10 @@ export function searchOpenFiles(
       if (options.wholeWord && !isWholeWord(content, match.index, match.index + match[0].length)) {
         continue;
       }
-      while (true) {
-        const nextNewline = content.indexOf('\n', newlineCursor);
-        if (nextNewline === -1 || nextNewline >= match.index) break;
+      while (nextEnd >= 0 && nextEnd < match.index) {
         line++;
-        lineStart = nextNewline + 1;
-        newlineCursor = lineStart;
+        lineStart = nextEnd + lineBreakWidth(content, nextEnd);
+        nextEnd = nextLineBreak(content, lineStart);
       }
       hits.push({
         documentId: document.id,
@@ -140,7 +141,10 @@ export function searchOpenFiles(
         offset: match.index,
         line,
         column: match.index - lineStart + 1,
-        preview: linePreview(content, match.index, lineStart, match[0].length),
+        preview: linePreview(
+          content, match.index, lineStart,
+          nextEnd < 0 ? content.length : nextEnd, match[0].length,
+        ),
       });
       if (hits.length >= MAX_SEARCH_RESULTS) {
         truncated = true;

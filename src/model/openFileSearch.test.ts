@@ -52,6 +52,27 @@ describe('bounded search across open Scarp buffers', () => {
     expect(result.hits[0].offset).toBe(content.indexOf('unknown_name'));
   });
 
+  it('counts mixed CR, LF and CRLF line endings exactly once and hides other lines in previews', () => {
+    const content = 'first\rother foo\r\nthird\n😀 foo\rfoo';
+    const result = searchOpenFiles([source(1, content)], 'foo', defaults);
+    expect(result.error).toBeNull();
+    expect(result.hits.map(({ line, column }) => [line, column]))
+      .toEqual([[2, 7], [4, 4], [5, 1]]);
+    expect(result.hits.map((hit) => hit.preview))
+      .toEqual(['other foo', '😀 foo', 'foo']);
+    for (const hit of result.hits) {
+      expect(hit.preview).not.toMatch(/[\r\n]/);
+      expect(hit.offset).toBe(content.indexOf('foo', hit.offset));
+    }
+  });
+
+  it('tracks CRLF as a single line ending, including adjacent empty CR-only lines', () => {
+    const content = '\r\nprint(1)\r\rprint(2)\n';
+    const result = searchOpenFiles([source(1, content)], 'print', defaults);
+    expect(result.hits.map(({ line, column }) => [line, column]))
+      .toEqual([[2, 1], [4, 1]]);
+  });
+
   it('tracks CRLF and LF line numbers and 1-based columns', () => {
     const content = 'first\r\n  print("one");\nprint("two");';
     const result = searchOpenFiles([source(1, content)], 'print', defaults);
