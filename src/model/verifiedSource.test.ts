@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createUntitled, type StudioDocument } from './documents';
 import { editorReducer, initialEditorState } from './editorState';
-import { captureVerifiedSource, isCurrentVerifiedSource } from './verifiedSource';
+import {
+  captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
+} from './verifiedSource';
 
 function saved(path = 'C:/project/main.srp', text = 'print(1);'): StudioDocument {
   return { id: 'file-C:/project/main.srp', name: 'main.srp', path,
@@ -38,6 +40,55 @@ describe('exact in-session identity of compiler-verified source', () => {
     expect(isCurrentVerifiedSource(verified, {
       ...document, path: null,
     })).toBe(false);
+  });
+
+  it('retains Verify diagnostics when switching tabs or editing unrelated tabs', () => {
+    const first = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/project/first.srp', content: 'invalid source',
+    });
+    const verified = captureVerifiedSource(first.documents.at(-1)!);
+    const switched = editorReducer(first, { type: 'activate', id: 'untitled-1' });
+    expect(retainVerifiedSourceSnapshot(verified, switched.documents)).toBe(verified);
+    const unrelatedEdit = editorReducer(switched, {
+      type: 'edit', id: 'untitled-1', content: 'unrelated unsaved work',
+    });
+    expect(retainVerifiedSourceSnapshot(verified, unrelatedEdit.documents)).toBe(verified);
+    const anotherTab = editorReducer(unrelatedEdit, { type: 'new' });
+    expect(retainVerifiedSourceSnapshot(verified, anotherTab.documents)).toBe(verified);
+    const restoredFocus = editorReducer(anotherTab, {
+      type: 'activate', id: first.documents.at(-1)!.id,
+    });
+    expect(isCurrentVerifiedSource(verified, restoredFocus.documents.at(-2)!)).toBe(true);
+    expect(retainVerifiedSourceSnapshot(verified, restoredFocus.documents)).toBe(verified);
+    expect(retainVerifiedSourceSnapshot(null, restoredFocus.documents)).toBeNull();
+  });
+
+  it('drops the stored Verify snapshot on an edit even if the content later returns', () => {
+    const opened = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/project/main.srp', content: 'original',
+    });
+    const first = opened.documents.at(-1)!;
+    const verified = captureVerifiedSource(first);
+    const edited = editorReducer(opened, {
+      type: 'edit', id: first.id, content: 'temporary edit',
+    });
+    expect(retainVerifiedSourceSnapshot(verified, edited.documents)).toBeNull();
+    const reverted = editorReducer(edited, {
+      type: 'edit', id: first.id, content: first.content,
+    });
+    expect(retainVerifiedSourceSnapshot(verified, reverted.documents)).toBeNull();
+    const savedAgain = editorReducer(opened, {
+      type: 'saved', id: first.id, path: first.path!, savedContent: first.content,
+    });
+    expect(retainVerifiedSourceSnapshot(verified, savedAgain.documents)).toBeNull();
+    const closed = editorReducer(opened, {
+      type: 'close', id: first.id, snapshot: first,
+    });
+    expect(retainVerifiedSourceSnapshot(verified, closed.documents)).toBeNull();
+    const reopened = editorReducer(closed, {
+      type: 'open', path: first.path!, content: first.content,
+    });
+    expect(retainVerifiedSourceSnapshot(verified, reopened.documents)).toBeNull();
   });
 
   it('does not revive stale diagnostics after A-to-B-to-A edits', () => {

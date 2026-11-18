@@ -39,3 +39,21 @@ export function isCurrentVerifiedSource(
     verified.content === document.savedContent &&
     verified.revision === document.revision;
 }
+
+/** Retain a previous Verify's source ONLY while it still exists as an
+ * unchanged saved document. Switching focus, opening a different tab and
+ * editing unrelated tabs do not invalidate the source that was verified.
+ * A-to-B-to-A edits, saves, close/reopen and changed paths fail closed.
+ *
+ * Called after every reducer transition; returning the same reference avoids
+ * unnecessary rerenders, and null discards an obsolete source text snapshot.
+ */
+export function retainVerifiedSourceSnapshot(
+  verified: VerifiedSourceSnapshot | null,
+  documents: readonly StudioDocument[],
+): VerifiedSourceSnapshot | null {
+  if (!verified) return null;
+  return documents.some((document) => isCurrentVerifiedSource(verified, document))
+    ? verified
+    : null;
+}

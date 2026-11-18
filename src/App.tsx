@@ -32,7 +32,8 @@ import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
 import {
-  captureVerifiedSource, isCurrentVerifiedSource, type VerifiedSourceSnapshot,
+  captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
+  type VerifiedSourceSnapshot,
 } from './model/verifiedSource';
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReport, type ScarpTestReport } from './model/projectTestReport';
@@ -109,8 +110,11 @@ export default function App() {
     const before = liveEditor.current;
     const next = editorReducer(before, action);
     if (next === before) return;
-    // Source positions are invalid after edits, saving, or tab transitions.
-    setCompilerOutputSource(null);
+    // Keep a valid previous Verify result through tab switches and unrelated
+    // edits, but invalidate it on any change to the actual verified source.
+    // Monotonic revisions prevent stale markers returning after A→B→A edits.
+    setCompilerOutputSource((previous) =>
+      retainVerifiedSourceSnapshot(previous, next.documents));
     liveEditor.current = next;
     setEditorState(next);
   }
