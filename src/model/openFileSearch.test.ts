@@ -115,6 +115,28 @@ describe('bounded search across open Scarp buffers', () => {
     expect(result.truncated).toBe(true);
   });
 
+  it('treats exactly 200 accepted hits as complete across multiple tabs', () => {
+    const result = searchOpenFiles([
+      source(1, 'x '.repeat(MAX_SEARCH_RESULTS - 1)),
+      source(2, 'x'),
+    ], 'x', defaults);
+    expect(result.hits).toHaveLength(MAX_SEARCH_RESULTS);
+    expect(result.hits.at(-1)?.documentId).toBe('open-2');
+    expect(result.skippedDocuments).toBe(0);
+    expect(result.error).toBeNull();
+    expect(result.truncated).toBe(false);
+  });
+
+  it('recognizes a 201st accepted hit as truncated without exposing it', () => {
+    const result = searchOpenFiles([
+      source(1, 'x '.repeat(MAX_SEARCH_RESULTS)),
+      source(2, 'x'),
+    ], 'x', defaults);
+    expect(result.hits).toHaveLength(MAX_SEARCH_RESULTS);
+    expect(result.hits.at(-1)?.documentId).toBe('open-1');
+    expect(result.truncated).toBe(true);
+  });
+
   it('caps output even if many matches are present', () => {
     const result = searchOpenFiles([source(1, 'z '.repeat(MAX_SEARCH_RESULTS + 20))], 'z', defaults);
     expect(result.hits).toHaveLength(MAX_SEARCH_RESULTS);

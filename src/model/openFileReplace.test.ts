@@ -80,6 +80,23 @@ describe('previewed, literal replacements in open buffers only', () => {
       .toThrow('No matching text');
   });
 
+  it('allows a fully enumerated 200-match preview, but never partial replacements', () => {
+    const first = doc(1, 'x '.repeat(MAX_SEARCH_RESULTS - 1));
+    const second = doc(2, 'x');
+    const plan = planOpenFileReplacement([first, second], 'x', 'z', options);
+    expect(plan.totalReplacements).toBe(MAX_SEARCH_RESULTS);
+    expect(plan.changes).toHaveLength(2);
+    expect(plan.changes[0].matchCount).toBe(MAX_SEARCH_RESULTS - 1);
+    expect(plan.changes[1].matchCount).toBe(1);
+    expect(plan.changes[0].content).toBe('z '.repeat(MAX_SEARCH_RESULTS - 1));
+    expect(plan.changes[1].content).toBe('z');
+    expect(first.content).toContain('x');
+    expect(second.content).toBe('x');
+    expect(() => planOpenFileReplacement([
+      first, doc(2, 'x x'),
+    ], 'x', 'z', options)).toThrow('incomplete');
+  });
+
   it('rejects truncated searches rather than changing only the first matches', () => {
     expect(() => planOpenFileReplacement([doc(1, 'x '.repeat(MAX_SEARCH_RESULTS + 10))],
       'x', 'z', options)).toThrow('incomplete');

@@ -146,9 +146,12 @@ export function searchOpenFiles(
           nextEnd < 0 ? content.length : nextEnd, match[0].length,
         ),
       });
-      if (hits.length >= MAX_SEARCH_RESULTS) {
-        truncated = true;
-        return { hits, skippedDocuments, truncated, error: null };
+      // Do not declare a complete, exactly-at-limit result truncated.
+      // Discover the first *additional* accepted hit before stopping, while
+      // still exposing no more than MAX_SEARCH_RESULTS hits to the UI.
+      if (hits.length > MAX_SEARCH_RESULTS) {
+        hits.pop();
+        return { hits, skippedDocuments, truncated: true, error: null };
       }
     }
   }
