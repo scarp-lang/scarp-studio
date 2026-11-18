@@ -139,14 +139,16 @@ describe('Scarp function outline', () => {
     // misidentified as source declaration symbols by its conservative regex.
     const mixed = text.replace('दूसरा', 'second').replace(
       '  pub funcra third()', '\n  pub funcra third()',
-    ) + '\r\nfuncra fourth() -> unit {}';
+    ) + '\r\nfuncra fourth() -> unit {}\nfuncra fifth() -> unit {}';
     expect(scanScarpFunctions(mixed).map(({ name, line, startColumn }) =>
       [name, line, startColumn])).toEqual([
       ['first', 1, 8],
       ['second', 3, 15],
-      ['third', 5, 14],
-      ['fourth', 6, 8],
+      ['third', 4, 14],
+      ['fourth', 5, 8],
+      ['fifth', 6, 8],
     ]);
+    expect(scanScarpFunctions('funcra दूसरा() -> unit {}')).toEqual([]);
   });
 
   it('limits enormous function outlines', () => {
