@@ -40,6 +40,8 @@ This is a **manual verification worksheet** for the consolidated development can
 | E20 | During a window-exit discard confirmation, edit/save a formerly clean tab, create then close a disposable tab, **or close and reopen the exact same saved file**, then confirm exit | Whole-session revision rejects even identical-looking recreated tabs or focus-switch ABA; no newer session activity is lost | NOT RUN |
 | E21 | Start a native Open file picker or dirty Reload confirmation; switch away from the active tab and back before completing the pending operation | Stale native result rejected even though active ID and source text are identical again | NOT RUN |
 | E22 | Open a disposable Windows drive/UNC source through `src\\..\\main.srp` and then its ordinary equivalent; attempt Save As from another tab using the alias | Studio reuses the original unsaved tab; Save As rejects an occupied alias without overwriting; invalid above-root and device paths remain distinct | NOT RUN |
+| E23 | Open a dirty source from a different Scarp project plus a dirty untitled tab, then select a clean project and use Run Project | Run Project remains enabled and operates only on the selected project's saved files; unrelated dirty buffers remain unchanged | NOT RUN |
+| E24 | Open a dirty source in the selected project through a `src\\..\\main.srp` path alias and try Run Project / Verify Project / Run Tests | Studio blocks disk-backed project commands until the source is saved, even when its path contains a valid lexical alias | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 
@@ -67,6 +69,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | P20 | Begin loading a listed project source, switch tabs away and back while its read is pending | Stale Explorer read never unexpectedly activates a new source | NOT RUN |
 | P21 | Search or preview Replace All in a saved file, close and reopen that identical file, then try to use the old hit/preview | Reopened file has a newer generation; stale search navigation and Replace All are refused | NOT RUN |
 | P22 | Open a disposable `.srp` buffer using mixed CR-only, CRLF and LF lines plus emoji; search across open buffers and navigate matching results | Search line/UTF-16 column numbers land at the actual Monaco locations; result previews do not include text from adjacent CR-only lines | NOT RUN |
+| P23 | Open a `.srp` buffer with multiple `funcra` declarations separated by CR-only, CRLF and LF line endings; use the function outline to jump to each | Function outline line numbers and columns match Monaco positions, including declarations after lone CR | NOT RUN |
 
 ## Official compiler alpha.13 (interpreter CLI; alpha.12 source features remain supported)
 

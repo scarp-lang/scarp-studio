@@ -1,6 +1,8 @@
 /** Editor-only Scarp assistance, including published alpha.12 features.
  * These templates do not replace parser/compiler validation.
  */
+import { lineBreakWidth, nextLineBreak } from '../model/sourceLines';
+
 export interface ScarpCompletion {
   label: string;
   insertText: string;
@@ -379,18 +381,30 @@ export interface ScarpFunctionSymbol {
   endColumn: number;
 }
 
-/** A conservative, editor-only function outline; not a Scarp parser. */
+/** A conservative, editor-only function outline; not a Scarp parser.
+ * Share Monaco's CR, LF and CRLF boundaries with Search/Diagnostics and
+ * scan lazily so we can stop after the 500-symbol UI budget.
+ */
 export function scanScarpFunctions(content: string): ScarpFunctionSymbol[] {
   const results: ScarpFunctionSymbol[] = [];
-  for (const [index, line] of content.split(/\r?\n/).entries()) {
+  let start = 0;
+  let lineNumber = 1;
+  while (start <= content.length) {
+    const end = nextLineBreak(content, start);
+    const line = content.slice(start, end < 0 ? content.length : end);
     // Avoid treating commented-out declarations as functions.
     const match = /^\s*(?:(?:pub|pure)\s+){0,2}funcra\s+([A-Za-z_][A-Za-z_0-9]*)\s*\(/.exec(line);
-    if (!match) continue;
-    const startColumn = line.indexOf(match[1], match[0].indexOf('funcra')) + 1;
-    results.push({
-      name: match[1], line: index + 1, startColumn, endColumn: startColumn + match[1].length,
-    });
-    if (results.length >= 500) break;
+    if (match) {
+      const startColumn = line.indexOf(match[1], match[0].indexOf('funcra')) + 1;
+      results.push({
+        name: match[1], line: lineNumber,
+        startColumn, endColumn: startColumn + match[1].length,
+      });
+      if (results.length >= 500) break;
+    }
+    if (end < 0) break;
+    start = end + lineBreakWidth(content, end);
+    lineNumber++;
   }
   return results;
 }

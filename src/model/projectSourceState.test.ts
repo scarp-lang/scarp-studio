@@ -17,13 +17,15 @@ describe('disk-backed project source awareness', () => {
     ], 'c:\\work\\scarp')).toEqual(['main.srp', 'tests.srp']);
   });
 
-  it('does not confuse neighboring folder prefixes or path traversal', () => {
+  it('normalizes inside-project dot aliases but refuses outside-root traversal', () => {
     expect(dirtyProjectSourceNames([
       tab('other.srp', 'C:/project-old/other.srp'),
-      tab('traversal.srp', 'C:/project/src/../outside.srp'),
+      tab('alias.srp', 'C:/project/src/../outside.srp'),
       tab('good.srp', 'C:/project/src/good.srp'),
+      tab('traversal.srp', 'C:/project/src/../../outside.srp'),
+      tab('invalid.srp', 'C:/../../project/invalid.srp'),
       tab('drive.srp', 'D:/project/src/drive.srp'),
-    ], 'C:/project/')).toEqual(['good.srp']);
+    ], 'C:/project/')).toEqual(['alias.srp', 'good.srp']);
   });
 
   it('supports Windows extended-length drive and UNC aliases', () => {
@@ -46,8 +48,24 @@ describe('disk-backed project source awareness', () => {
     ], '/home/me/Scarp')).toEqual(['source.srp']);
   });
 
-  it('returns no blockers for an invalid or relative selected root', () => {
-    expect(dirtyProjectSourceNames([tab('example.srp', 'C:/work/src/example.srp')], './work')).toEqual([]);
-    expect(dirtyProjectSourceNames([tab('example.srp', 'C:/work/src/example.srp')], 'C:/work/../work')).toEqual([]);
+  it('normalizes a lexical selected root and accepts UNC aliases within the share', () => {
+    expect(dirtyProjectSourceNames([
+      tab('main.srp', String.raw`C:\work\src\..\main.srp`),
+    ], 'C:/work/./')).toEqual(['main.srp']);
+    expect(dirtyProjectSourceNames([
+      tab('main.srp', String.raw`\\SERVER\share\project\src\..\main.srp`),
+      tab('outside.srp', String.raw`\\server\share\project\src\..\..\outside.srp`),
+    ], String.raw`\\server\share\project`)).toEqual(['main.srp']);
+  });
+
+  it('returns no blockers for invalid, relative, device or unsupported roots', () => {
+    const documents = [tab('example.srp', 'C:/work/src/example.srp')];
+    expect(dirtyProjectSourceNames(documents, './work')).toEqual([]);
+    expect(dirtyProjectSourceNames(documents, 'C:/../work')).toEqual([]);
+    expect(dirtyProjectSourceNames(documents, String.raw`\\.\C:\work`)).toEqual([]);
+    expect(dirtyProjectSourceNames(documents, 'C:/work/../work')).toEqual(['example.srp']);
+    expect(dirtyProjectSourceNames([
+      tab('extended.srp', String.raw`\\?\C:\work\src\..\main.srp`),
+    ], 'C:/work')).toEqual([]);
   });
 });

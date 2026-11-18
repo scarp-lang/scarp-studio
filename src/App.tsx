@@ -1514,8 +1514,8 @@ export default function App() {
                 title="Verify the chosen Scarp project without executing code">Verify Project</button>
               <button type="button" onClick={() => void runProjectAction('run')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
-                  documents.some(isDirty)}
-                title="Execute the project entrypoint with preloaded input; save modified tabs first">Run Project</button>
+                  dirtyProjectSourceNames(documents, folderPath).length > 0}
+                title="Execute the project entrypoint with preloaded input; save modified files in this project first">Run Project</button>
               <button type="button" onClick={() => void runProjectAction('list-tests')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
                 title="List discovered project tests without running them">List Tests</button>

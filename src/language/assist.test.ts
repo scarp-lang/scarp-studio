@@ -128,6 +128,27 @@ describe('Scarp function outline', () => {
     expect(scanScarpFunctions(text)[0].startColumn).toBe(8);
   });
 
+  it('tracks CR-only, LF and CRLF outline lines with Monaco UTF-16 columns', () => {
+    const text = [
+      'funcra first() -> unit {}',
+      '// funcra ignored() {}',
+      '  pure funcra दूसरा() -> unit {}',
+      '  pub funcra third() -> unit {}',
+    ].join('\r');
+    // The outline is deliberately ASCII-only: non-ASCII names are not
+    // misidentified as source declaration symbols by its conservative regex.
+    const mixed = text.replace('दूसरा', 'second').replace(
+      '  pub funcra third()', '\n  pub funcra third()',
+    ) + '\r\nfuncra fourth() -> unit {}';
+    expect(scanScarpFunctions(mixed).map(({ name, line, startColumn }) =>
+      [name, line, startColumn])).toEqual([
+      ['first', 1, 8],
+      ['second', 3, 15],
+      ['third', 5, 14],
+      ['fourth', 6, 8],
+    ]);
+  });
+
   it('limits enormous function outlines', () => {
     const text = Array.from({ length: 900 }, (_, index) => 'funcra f' + index + '() -> unit {}').join('\n');
     expect(scanScarpFunctions(text)).toHaveLength(500);
