@@ -285,6 +285,55 @@ jobs:
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.12" }
 
+      # Alpha.13 retains the public alpha.12 CLI/project contract. Its new
+      # cache and workspace-generation APIs are Rust-embedding-only; this
+      # gate checks packaged Windows CLI compatibility, NOT those APIs.
+      - name: Verify pinned Scarp alpha.13 propagation and native service compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.13/scarp-0.0.6-alpha.13-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha13.zip
+          $actual = (Get-FileHash scarp-alpha13.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "43a95c012bd04492994e338dc6070cd9af9b3d702e5bb04b10c0ca6e0e1559ce") {
+            throw "Official alpha.13 compiler archive hash mismatch"
+          }
+          Expand-Archive -Path scarp-alpha13.zip -DestinationPath scarp-alpha13
+          $binary = Get-ChildItem scarp-alpha13 -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Official Scarp alpha.13 executable is missing" }
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.13") {
+            throw "Unexpected Scarp alpha.13 compiler version"
+          }
+          # Check both success and early Err forwarding; output is compared
+          # exactly, not just as an unanchored substring.
+          $source = @(
+            'pure funcra bump(value: result<integer, string>) -> result<integer, string> {'
+            '    bind number = value?;'
+            '    return new result<integer, string>::Ok(number + 1);'
+            '}'
+            'match on bump(new result<integer, string>::Ok(41)) {'
+            '    case Ok(value) { print(value); }'
+            '    case Err(_) { print("unexpected"); }'
+            '}'
+            'match on bump(new result<integer, string>::Err("expected failure")) {'
+            '    case Ok(_) { print("unexpected"); }'
+            '    case Err(message) { print(message); }'
+            '}'
+          ) -join "`n"
+          $source | Set-Content -Path scarp-alpha13-propagation.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha13-propagation.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.13 propagation verification failed" }
+          $output = & $binary.FullName exec --diagnostic-format=json -- scarp-alpha13-propagation.srp
+          $status = $LASTEXITCODE
+          if ($status -ne 0 -or ($output -join "`n") -ne "42`nexpected failure") {
+            throw "Scarp alpha.13 propagation execution failed: $($output -join ' / ')"
+          }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.13"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.13" }
+
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate

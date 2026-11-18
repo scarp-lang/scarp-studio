@@ -1,6 +1,6 @@
 # Scarp Studio — Windows 11 manual acceptance (development candidate)
 
-This is a **manual verification worksheet** for the stacked draft Studio integration and hardening work: [PR #43](https://github.com/scarp-lang/scarp-studio/pull/43), [#46](https://github.com/scarp-lang/scarp-studio/pull/46), [#47](https://github.com/scarp-lang/scarp-studio/pull/47), [#48](https://github.com/scarp-lang/scarp-studio/pull/48), [#49](https://github.com/scarp-lang/scarp-studio/pull/49) and [#50](https://github.com/scarp-lang/scarp-studio/pull/50). It is not evidence that any GUI check passed. Mark each test **PASS**, **FAIL**, or **NOT RUN**, recording the build SHA and evidence before considering a merge or release.
+This is a **manual verification worksheet** for the consolidated development candidate [draft PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), which integrates the older stacked drafts into one main-targeted review surface. It is not evidence that any GUI check passed. Mark each test **PASS**, **FAIL**, or **NOT RUN**, recording the build SHA and evidence before considering a merge or release.
 
 ## Test environment and provenance
 
@@ -9,9 +9,9 @@ This is a **manual verification worksheet** for the stacked draft Studio integra
   `pwsh -File scripts/verify-windows-artifacts.ps1 -ArtifactDirectory 'C:\\ScarpStudioAcceptance\\artifacts' -SourceCommit '<exact 40-digit commit SHA>' -RunUrl 'https://github.com/scarp-lang/scarp-studio/actions/runs/<exact run ID>'`.
   This checks for missing, duplicate and modified artifacts, but **cannot prove** that a manually supplied run URL or manifest is genuine; verify provenance in GitHub first. Record the exact run URL, commit and results.
 - Record: Scarp Studio source commit, CI run URL, candidate exe SHA-256, installer SHA-256, Windows build, and any code signing information. An unsigned installer is **not** a stable release. Respect Windows security warnings; investigate them rather than bypassing device protection.
-- Obtain the official Scarp `v0.0.6-alpha.12` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.12) and verify the Windows ZIP archive SHA-256:
-  `5e1fdd2f0f1631de170dd785ae23d9b87b9406463f8385b7454a43a00c96cd2c`.
-- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.12`. Scarp Studio must require explicit selection and trust confirmation of that compiler; it must not download or run one automatically.
+- Obtain the official Scarp `v0.0.6-alpha.13` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.13) and verify the Windows ZIP archive SHA-256:
+  `43a95c012bd04492994e338dc6070cd9af9b3d702e5bb04b10c0ca6e0e1559ce`.
+- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.13`. Scarp Studio must require explicit selection and trust confirmation of that compiler; it must not download or run one automatically.
 - Use only disposable `.srp` files in a test directory, e.g. `C:\\ScarpStudioAcceptance`; keep backups of any data you care about. Never test overwrite handling using real projects.
 
 ## Core editor and saved file behavior
@@ -37,6 +37,7 @@ This is a **manual verification worksheet** for the stacked draft Studio integra
 | E17 | Start native Open, change the active tab **or edit its contents** before the picker or source read completes | Stale result does not activate another tab or overwrite any buffer; no overlapping file operations | NOT RUN |
 | E18 | Immediately after switching tabs, press Ctrl+S or Ctrl+W | Save and Close target the currently active tab rather than the tab active before React rendered | NOT RUN |
 | E19 | While a native Reload or discard prompt is open, edit the disposable source and restore its exact original text before confirming | Stale confirmation rejected due to newer edit revision even though source text matches | NOT RUN |
+| E20 | During a window-exit discard confirmation, edit/save a formerly clean tab or create then close a disposable untitled tab, then confirm exit | Entire editor snapshot check rejects the stale exit; no newer session activity is lost | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 
@@ -62,20 +63,21 @@ This is a **manual verification worksheet** for the stacked draft Studio integra
 | P17 | Replace text, switch active tabs without editing, then Undo Last Replace All | Undo remains available and preserves current tab focus | NOT RUN |
 | P19 | After Replace All, edit then restore identical post-replacement text and try Undo Last Replace All | Monotonic revision invalidates stale Undo; no newer edit is silently erased | NOT RUN |
 
-## Official compiler alpha.12 (interpreter)
+## Official compiler alpha.13 (interpreter CLI; alpha.12 source features remain supported)
 
 | ID | Action | Required outcome | Result / evidence |
 | --- | --- | --- | --- |
-| C01 | Explicitly select verified official alpha.12 `scarp.exe`, accept trust prompt | Studio reports version; remains idle until explicit Run or Verify | NOT RUN |
+| C01 | Explicitly select verified official alpha.13 `scarp.exe`, accept trust prompt | Studio reports version; remains idle until explicit Run or Verify | NOT RUN |
 | C02 | Create **Typed Records** starter; save, Verify, Run | Record syntax verified; result prints `Review` | NOT RUN |
 | C03 | Create **Tagged Variants** starter; save, Verify, Run | Exhaustive case match executes; output contains `42` | NOT RUN |
 | C04 | Create **Typed Lists and Maps** starter; save, Verify, Run | Interpreter evaluates immutable snapshots and typed map lookup | NOT RUN |
 | C05 | Create **Option Propagation** starter; save, Verify, Run | Checked optional early return works; result displays `true` | NOT RUN |
-| C06 | Open alpha.11 exact decimal starter with alpha.12, Verify/Run; test decimal prompt with preloaded input | Exact decimal and prompted input work in supported mode | NOT RUN |
+| C06 | Open alpha.11 exact decimal starter with alpha.13, Verify/Run; test decimal prompt with preloaded input | Exact decimal and prompted input work in supported mode | NOT RUN |
 | C07 | Try to Run an unsaved/dirty source | Studio does not execute a misleading saved-on-disk snapshot | NOT RUN |
 | C08 | Stop a long-running disposable Scarp program | Native process terminates without hanging or losing source edits | NOT RUN |
 | C09 | Project Info, Verify Project, Run Project, List Tests, Run Tests in disposable project | Compiler output and structured test report match actual CLI support | NOT RUN |
 | C10 | Choose an older official compiler and attempt an alpha.12-only program | Unsupported syntax is reported; Studio does not claim that old CLI executed alpha.12 | NOT RUN |
+| C11 | With official alpha.13, Verify/Run a result-propagation example that prints a value on Ok and forwards an Err unchanged | Exactly the expected output, no automatic execution; native Stop still available | NOT RUN |
 
 ## Diagnostics, packaging and release gate
 
@@ -90,4 +92,4 @@ This is a **manual verification worksheet** for the stacked draft Studio integra
 | D04 | Inspect unsigned NSIS candidate, installation/uninstallation, warnings, and Windows executable launch | Record observed behavior; do not treat a successful installer build as GUI acceptance | NOT RUN |
 | D05 | Verify the exact-run candidate exe and NSIS installer using `scripts/verify-windows-artifacts.ps1`, then review build logs and compiler provenance | Both hashes match their trusted run manifest; duplicate, missing, corrupted or mixed-run files fail closed; no candidate binaries executed by validator | NOT RUN |
 
-**Release decision:** Leave all stacked PRs (#43, #46, #47, #48, #49, #50) as drafts while any required item is NOT RUN or FAIL. Record failures as reproducible cases (exact commit, OS build, steps, expected/actual behavior, logs/screenshots) before requesting another candidate. Do not tag, publish or claim stable readiness based only on CI success.
+**Release decision:** Keep consolidated PR #55 and its stacked source PRs in draft while any required item is NOT RUN or FAIL. Record failures as reproducible cases (exact commit, OS build, steps, expected/actual behavior, logs/screenshots) before requesting another candidate. Do not tag, publish or claim stable readiness based only on CI success.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { exitBlockReason } from './exitGuards';
+import { exitBlockReason, sameExitEditorState } from './exitGuards';
+import { editorReducer, initialEditorState } from './editorState';
 
 describe('safe native window close guards', () => {
   it('permits exit when no file or compiler operation is active', () => {
@@ -24,5 +25,59 @@ describe('safe native window close guards', () => {
   });
   it('prioritizes save safety over other simultaneous operations', () => {
     expect(exitBlockReason(true, true, true)).toMatch(/being saved/);
+  });
+});
+
+
+describe('native exit confirmation snapshots', () => {
+  it('accepts the exact unchanged session and no-op editor notifications', () => {
+    const opened = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/workspace/main.srp', content: 'unchanged',
+    });
+    expect(sameExitEditorState(opened, opened)).toBe(true);
+    const noOp = editorReducer(opened, {
+      type: 'edit', id: opened.activeId!, content: 'unchanged',
+    });
+    expect(noOp).toBe(opened);
+    expect(sameExitEditorState(opened, noOp)).toBe(true);
+  });
+
+  it('rejects edits to originally clean tabs even if text returns to its original value', () => {
+    const initial = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/workspace/main.srp', content: 'original',
+    });
+    const changed = editorReducer(initial, {
+      type: 'edit', id: initial.activeId!, content: 'new text',
+    });
+    expect(sameExitEditorState(initial, changed)).toBe(false);
+    const reverted = editorReducer(changed, {
+      type: 'edit', id: initial.activeId!, content: 'original',
+    });
+    expect(reverted.documents.at(-1)?.content).toBe('original');
+    expect(sameExitEditorState(initial, reverted)).toBe(false);
+  });
+
+  it('rejects saving an already clean tab while confirmation is pending', () => {
+    const initial = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/workspace/main.srp', content: 'original',
+    });
+    const saved = editorReducer(initial, {
+      type: 'saved', id: initial.activeId!, path: 'C:/workspace/main.srp', savedContent: 'original',
+    });
+    expect(sameExitEditorState(initial, saved)).toBe(false);
+  });
+
+  it('rejects active-tab switches and new tabs, including create-then-close ABA', () => {
+    const initial = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/workspace/main.srp', content: 'original',
+    });
+    const switched = editorReducer(initial, { type: 'activate', id: 'untitled-1' });
+    expect(sameExitEditorState(initial, switched)).toBe(false);
+    const added = editorReducer(initial, { type: 'new' });
+    expect(sameExitEditorState(initial, added)).toBe(false);
+    const created = added.documents.at(-1)!;
+    const closed = editorReducer(added, { type: 'close', id: created.id, snapshot: created });
+    expect(closed.documents).toEqual(initial.documents);
+    expect(sameExitEditorState(initial, closed)).toBe(false);
   });
 });

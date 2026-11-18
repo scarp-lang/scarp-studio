@@ -7,7 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   fileName, isDirty, sameFilePath,
 } from './model/documents';
-import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots, type EditorAction } from './model/editorState';
+import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameOpenDocumentSnapshots, type EditorAction } from './model/editorState';
 import { pickSourcePath, saveAllModifiedSources, writeSourceFile } from './services/files';
 import { decidePickedSourceOpen } from './model/pickedSourceOpen';
 import { readScarpSource } from './services/sourceRead';
@@ -27,7 +27,7 @@ import { NativeDialogGate } from './model/dialogGate';
 import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterTemplates';
 import { runnableSource } from './model/compilerReadiness';
 import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
-import { exitBlockReason } from './model/exitGuards';
+import { exitBlockReason, sameExitEditorState } from './model/exitGuards';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
@@ -346,7 +346,8 @@ export default function App() {
     let removed = false;
     let unlisten: (() => void) | undefined;
     void getCurrentWindow().onCloseRequested(async (event) => {
-      const pending = liveEditor.current.documents.filter(isDirty);
+      const exitSnapshot = liveEditor.current;
+      const pending = exitSnapshot.documents.filter(isDirty);
       const blocked = exitBlockReason(
         saveInProgress.current, commandInProgress.current, selectionInProgress.current,
         filePickerInProgress.current,
@@ -368,7 +369,7 @@ export default function App() {
             filePickerInProgress.current,
           );
           if (newBlocker ||
-              !sameDirtyDocuments(pending, liveEditor.current.documents)) {
+              !sameExitEditorState(exitSnapshot, liveEditor.current)) {
             setError(newBlocker ||
               'Files changed while confirming exit. Review your edits and try again.');
             return;
