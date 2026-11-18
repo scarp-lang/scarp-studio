@@ -64,7 +64,14 @@ export function parseScarpDiagnostic(stderr: string | null): ScarpDiagnostic | n
 /** Imported-module diagnostics cannot navigate the active tab by accident. */
 export function diagnosticBelongsToSource(diagnosticPath: string, sourcePath: string): boolean {
   if (sameFilePath(diagnosticPath, sourcePath)) return true;
-  return !/[\\/]/.test(diagnosticPath) && diagnosticPath === fileName(sourcePath);
+  if (/[\\/]/.test(diagnosticPath)) return false;
+  const basename = fileName(sourcePath);
+  if (diagnosticPath === basename) return true;
+  // Windows paths already compare case-insensitively in sameFilePath. A bare
+  // compiler diagnostic filename deserves the same treatment, but matching
+  // differently cased POSIX basenames would risk navigating a distinct file.
+  const windowsSource = /^[A-Za-z]:[\\/]/.test(sourcePath) || /^\\\\/.test(sourcePath);
+  return windowsSource && diagnosticPath.toLowerCase() === basename.toLowerCase();
 }
 
 /** A compiler-reported position must exist in this unchanged source.

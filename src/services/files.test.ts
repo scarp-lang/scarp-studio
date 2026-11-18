@@ -51,6 +51,13 @@ describe('safe .srp file writes', () => {
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
+  it('refuses Save As through a Windows parent-directory alias of an already-open tab', async () => {
+    vi.mocked(save).mockResolvedValue(String.raw`C:\Project\src\..\main.srp`);
+    await expect(writeSourceFile(createUntitled(1), true, ['c:/project/MAIN.SRP']))
+      .rejects.toThrow('already open');
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
   it('rejects a file opened in another tab while Save As is waiting', async () => {
     const livePaths: string[] = [];
     vi.mocked(save).mockImplementation(async () => {

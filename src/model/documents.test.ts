@@ -56,6 +56,49 @@ describe('Scarp-only file state', () => {
     )).toBe(false);
   });
 
+  it('detects ordinary Windows dot-segment aliases without crossing roots or device namespaces', () => {
+    expect(sameFilePath(
+      String.raw`C:\Project\src\..\Main.srp`, 'c:/project/main.SRP',
+    )).toBe(true);
+    expect(sameFilePath(
+      String.raw`C:\Project\.\Main.srp`, 'c:/project/main.SRP',
+    )).toBe(true);
+    expect(sameFilePath(
+      String.raw`\\SERVER\share\src\..\main.srp`,
+      String.raw`\\server\share\main.srp`,
+    )).toBe(true);
+    expect(sameFilePath(
+      String.raw`\\?\UNC\SERVER\share\src\main.srp`,
+      String.raw`\\server\share\src\main.srp`,
+    )).toBe(true);
+    expect(sameFilePath(
+      String.raw`C:\..\Main.srp`, 'C:/Main.srp',
+    )).toBe(false);
+    expect(sameFilePath(
+      String.raw`\\server\share\..\main.srp`,
+      String.raw`\\server\share\main.srp`,
+    )).toBe(false);
+    expect(sameFilePath(
+      String.raw`\\?\C:\Project\src\..\main.srp`,
+      'C:/Project/main.srp',
+    )).toBe(false);
+    expect(sameFilePath(
+      String.raw`\\.\C:\Project\main.srp`, 'C:/Project/main.srp',
+    )).toBe(false);
+    expect(sameFilePath(
+      '/tmp/project/src/../main.srp', '/tmp/project/main.srp',
+    )).toBe(false);
+  });
+
+  it('reuses a dirty Windows tab through an ordinary dot-segment alias', () => {
+    const initially = openedDocument([], String.raw`C:\Project\src\..\main.srp`, 'disk');
+    const edited = updateContent(initially.documents, initially.id, 'unsaved');
+    const again = openedDocument(edited, 'c:/project/main.SRP', 'stale disk');
+    expect(again.documents).toBe(edited);
+    expect(again.id).toBe(initially.id);
+    expect(again.documents[0].content).toBe('unsaved');
+  });
+
   it('reuses a Windows tab opened using different separators and casing', () => {
     const opened = openedDocument([], String.raw`C:\Project\Main.srp`, 'disk');
     const dirty = updateContent(opened.documents, opened.id, 'unsaved');

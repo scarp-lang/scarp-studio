@@ -23,7 +23,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | E03 | Create three dirty untitled tabs, Save All, choose a path for first and cancel the second picker | First completed save remains; third tab stays unsaved; no forced closure | NOT RUN |
 | E04 | Reinvoke Save All after E03, save the remaining tabs | No duplicate overwrite or skipped dirty buffer | NOT RUN |
 | E05 | With a named file open, change the on-disk file externally, edit it in Studio and Save/Save All | Studio reports external changes and does **not** overwrite the external version | NOT RUN |
-| E06 | Make two tabs target the same path through Save As (including case difference on Windows) | Conflicting destination refused without overwriting another open tab | NOT RUN |
+| E06 | Make two tabs target the same path through Save As (including case difference and ordinary `src\\..\\main.srp` path aliases on Windows) | Conflicting destination refused without overwriting another open tab | NOT RUN |
 | E07 | Trigger Save All, edit a later dirty tab while an earlier native Save As chooser is open | Later tab's latest content is used when its turn begins; older content is never falsely marked saved | NOT RUN |
 | E08 | Change source while an unsaved-close confirmation is open; then confirm discard | Newer edits remain protected and closing is refused until reconsidered | NOT RUN |
 | E09 | Open editor settings: change font size, tab width, wrap; restart and restore defaults | Preferences persist locally, then reset correctly without changing source text | NOT RUN |
@@ -39,6 +39,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | E19 | While a native Reload or discard prompt is open, edit the disposable source and restore its exact original text before confirming | Stale confirmation rejected due to newer edit revision even though source text matches | NOT RUN |
 | E20 | During a window-exit discard confirmation, edit/save a formerly clean tab, create then close a disposable tab, **or close and reopen the exact same saved file**, then confirm exit | Whole-session revision rejects even identical-looking recreated tabs or focus-switch ABA; no newer session activity is lost | NOT RUN |
 | E21 | Start a native Open file picker or dirty Reload confirmation; switch away from the active tab and back before completing the pending operation | Stale native result rejected even though active ID and source text are identical again | NOT RUN |
+| E22 | Open a disposable Windows drive/UNC source through `src\\..\\main.srp` and then its ordinary equivalent; attempt Save As from another tab using the alias | Studio reuses the original unsaved tab; Save As rejects an occupied alias without overwriting; invalid above-root and device paths remain distinct | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 
@@ -93,6 +94,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | D06 | Load a 4 MiB valid source, a 4 MiB + 1 byte source, then a source grown while opening; inspect file handles and UI responsiveness | Boundary accepted, oversized/growing sources refused with safe error; handle closed and no excessive allocation | NOT RUN |
 | D07 | Reopen a UTF-8 Scarp source containing Hindi, emoji, BOM and CRLF; attempt an invalid UTF-8 file | Exact valid text roundtrips; malformed text is refused without corrupting an existing tab | NOT RUN |
 | D08 | Verify a disposable syntax-error `.srp` source with mixed CR-only/CRLF/LF lines and non-BMP Unicode before the error location | F8 diagnostic navigation and the inline error underline target the correct Monaco line, UTF-16 column and Unicode scalar width | NOT RUN |
+| D09 | With a Windows source `main.srp`, Verify an error for which the compiler emits the bare filename `MAIN.SRP`; repeat with a POSIX case-sensitive pair where possible | Windows basename diagnostic navigates to the matching open file, while distinct POSIX casing remains protected | NOT RUN |
 | D08 | While opening a disposable .srp source, externally truncate or rewrite it, then retry opening when stable | Detectable size or modification-time changes during read are rejected; no mixed text silently replaces the editor buffer; file handle is closed | NOT RUN |
 | D04 | Inspect unsigned NSIS candidate, installation/uninstallation, warnings, and Windows executable launch | Record observed behavior; do not treat a successful installer build as GUI acceptance | NOT RUN |
 | D05 | Verify the exact-run candidate exe and NSIS installer using `scripts/verify-windows-artifacts.ps1`, then review build logs and compiler provenance | Both hashes match their trusted run manifest; duplicate, missing, corrupted or mixed-run files fail closed; no candidate binaries executed by validator | NOT RUN |

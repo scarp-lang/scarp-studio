@@ -84,6 +84,26 @@ describe('published Scarp JSON error diagnostics', () => {
     expect(diagnosticBelongsToSource('other/main.srp', 'C:/project/main.srp')).toBe(false);
     expect(diagnosticBelongsToSource('unrelated.srp', 'C:/project/main.srp')).toBe(false);
   });
+  it('accepts case-insensitive Windows diagnostic basenames but not POSIX aliases', () => {
+    expect(diagnosticBelongsToSource('MAIN.SRP', 'C:/project/main.srp')).toBe(true);
+    expect(diagnosticBelongsToSource('MAIN.SRP',
+      String.raw`\\server\share\main.srp`)).toBe(true);
+    expect(diagnosticBelongsToSource('MAIN.SRP', '/project/main.srp')).toBe(false);
+    expect(diagnosticBelongsToSource('MAIN.SRP', '/project/MAIN.SRP')).toBe(true);
+    const diagnostic = parseScarpDiagnostic(stderr({
+      ...fixture, primary: {
+        ...fixture.primary, path: 'MAIN.SRP', start: { line: 1, column: 2 },
+      },
+    }));
+    expect(diagnosticSourcePosition(diagnostic, 'C:/project/main.srp', 'abcd'))
+      .toEqual({ lineNumber: 1, column: 2 });
+    expect(diagnosticSourcePosition(diagnostic, '/project/main.srp', 'abcd'))
+      .toBeNull();
+    // Filename-only ambiguity remains blocked when project imports exist.
+    expect(diagnosticSourcePosition(diagnostic, 'C:/project/main.srp',
+      'import "module.srp" as module;\nprint(1);')).toBeNull();
+  });
+
   it('resolves extended-length Windows canonical paths into editor source locations', () => {
     const diagnostic = parseScarpDiagnostic(stderr({
       ...fixture,
