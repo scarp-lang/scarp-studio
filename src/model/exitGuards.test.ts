@@ -80,4 +80,35 @@ describe('native exit confirmation snapshots', () => {
     expect(closed.documents).toEqual(initial.documents);
     expect(sameExitEditorState(initial, closed)).toBe(false);
   });
+
+  it('rejects closing and reopening an identical saved file during a pending exit', () => {
+    const initial = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/workspace/main.srp', content: 'original',
+    });
+    const file = initial.documents.at(-1)!;
+    const closed = editorReducer(initial, {
+      type: 'close', id: file.id, snapshot: file,
+    });
+    const reopened = editorReducer(closed, {
+      type: 'open', path: 'C:/workspace/main.srp', content: 'original',
+    });
+    // All visible fields and individual revision values can match, but this
+    // is a different editor session: no earlier exit approval may survive it.
+    expect(reopened.documents).toEqual(initial.documents);
+    expect(reopened.activeId).toBe(initial.activeId);
+    expect(reopened.nextUntitled).toBe(initial.nextUntitled);
+    expect(reopened.sessionRevision).toBeGreaterThan(initial.sessionRevision);
+    expect(sameExitEditorState(initial, reopened)).toBe(false);
+  });
+
+  it('rejects switching away then returning to the same active tab', () => {
+    const initial = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/workspace/main.srp', content: 'original',
+    });
+    const switched = editorReducer(initial, { type: 'activate', id: 'untitled-1' });
+    const restored = editorReducer(switched, { type: 'activate', id: initial.activeId! });
+    expect(restored.documents).toEqual(initial.documents);
+    expect(restored.activeId).toBe(initial.activeId);
+    expect(sameExitEditorState(initial, restored)).toBe(false);
+  });
 });

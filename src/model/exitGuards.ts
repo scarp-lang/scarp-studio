@@ -21,7 +21,8 @@ export function exitBlockReason(
 export function sameExitEditorState(
   initial: EditorState, current: EditorState,
 ): boolean {
-  return initial.activeId === current.activeId &&
+  return initial.sessionRevision === current.sessionRevision &&
+    initial.activeId === current.activeId &&
     initial.nextUntitled === current.nextUntitled &&
     sameOpenDocumentSnapshots(initial.documents, current.documents);
 }

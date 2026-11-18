@@ -37,7 +37,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | E17 | Start native Open, change the active tab **or edit its contents** before the picker or source read completes | Stale result does not activate another tab or overwrite any buffer; no overlapping file operations | NOT RUN |
 | E18 | Immediately after switching tabs, press Ctrl+S or Ctrl+W | Save and Close target the currently active tab rather than the tab active before React rendered | NOT RUN |
 | E19 | While a native Reload or discard prompt is open, edit the disposable source and restore its exact original text before confirming | Stale confirmation rejected due to newer edit revision even though source text matches | NOT RUN |
-| E20 | During a window-exit discard confirmation, edit/save a formerly clean tab or create then close a disposable untitled tab, then confirm exit | Entire editor snapshot check rejects the stale exit; no newer session activity is lost | NOT RUN |
+| E20 | During a window-exit discard confirmation, edit/save a formerly clean tab, create then close a disposable tab, **or close and reopen the exact same saved file**, then confirm exit | Whole-session revision rejects even identical-looking recreated tabs or focus-switch ABA; no newer session activity is lost | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 

@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots } from './editorState';
 
 describe('atomic editor session transitions', () => {
+
+  it('advances the session revision for changes and ignores no-op editor requests', () => {
+    const initial = initialEditorState;
+    const opened = editorReducer(initial, {
+      type: 'open', path: 'C:/workspace/main.srp', content: 'one',
+    });
+    expect(opened.sessionRevision).toBe(initial.sessionRevision + 1);
+    expect(editorReducer(opened, {
+      type: 'open', path: String.raw`c:\\WORKSPACE\\MAIN.srp`, content: 'stale disk',
+    })).toBe(opened);
+    expect(editorReducer(opened, { type: 'activate', id: opened.activeId! })).toBe(opened);
+    const switched = editorReducer(opened, { type: 'activate', id: 'untitled-1' });
+    expect(switched.sessionRevision).toBe(opened.sessionRevision + 1);
+    const restored = editorReducer(switched, { type: 'activate', id: opened.activeId! });
+    expect(restored.activeId).toBe(opened.activeId);
+    expect(restored.sessionRevision).toBe(opened.sessionRevision + 2);
+  });
+
   it('rejects a stale close or reload after source text changes A→B→A', () => {
     const original = editorReducer(initialEditorState, {
       type: 'open', path: '/project/main.srp', content: 'original source',

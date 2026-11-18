@@ -7,6 +7,8 @@ export interface EditorState {
   documents: StudioDocument[];
   activeId: string | null;
   nextUntitled: number;
+  /** Monotonic whole-session generation, including close/reopen ABA transitions. */
+  sessionRevision: number;
 }
 
 /** User-reviewed replacements commit atomically only against unchanged tabs. */
@@ -45,6 +47,7 @@ export const initialEditorState: EditorState = {
   documents: [createUntitled(1)],
   activeId: 'untitled-1',
   nextUntitled: 2,
+  sessionRevision: 0,
 };
 
 /** Guard against a native close dialog racing with new keystrokes or a save. */
@@ -79,8 +82,19 @@ export function currentActiveDocument(state: EditorState): StudioDocument | null
   return state.documents.find((document) => document.id === state.activeId) ?? null;
 }
 
-/** Pure transitions keep asynchronous file-open events from replacing newer tabs. */
+/** Every *genuine* editor transition advances the session revision once.
+ * This detects close/reopen and focus-switch ABA even when per-tab snapshots
+ * become byte-identical again. No-op edits/opens preserve object identity.
+ */
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
+  const next = reduceEditorState(state, action);
+  return next === state
+    ? state
+    : { ...next, sessionRevision: state.sessionRevision + 1 };
+}
+
+/** Pure transitions keep asynchronous file-open events from replacing newer tabs. */
+function reduceEditorState(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'new': {
       const created = createUntitled(state.nextUntitled);
@@ -93,6 +107,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
     case 'open': {
       const opened = openedDocument(state.documents, action.path, action.content);
+      if (opened.documents === state.documents && opened.id === state.activeId) return state;
       return { ...state, documents: opened.documents, activeId: opened.id };
     }
     case 'edit': {
@@ -135,7 +150,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
     }
     case 'activate':
-      if (!state.documents.some((document) => document.id === action.id)) return state;
+      if (state.activeId === action.id ||
+          !state.documents.some((document) => document.id === action.id)) return state;
       return { ...state, activeId: action.id };
     case 'close': {
       const current = state.documents.find((document) => document.id === action.id);
