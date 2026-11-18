@@ -25,6 +25,26 @@ describe('Scarp Verify Monaco error markers', () => {
       { path: 'C:/project/main.srp', content: source })?.endColumn).toBe(4);
   });
 
+  it('underlines the correct scalar on CR-only and mixed-ending source lines', () => {
+    const content = 'first\rA\r\n😀B\nend';
+    const verified = { path: 'C:/project/main.srp', content };
+    expect(verifiedProblemMarker(
+      diagnostic('C:/project/main.srp', 1, 2), verified, verified,
+    )).toMatchObject({
+      startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 2,
+    });
+    expect(verifiedProblemMarker(
+      diagnostic('C:/project/main.srp', 1, 3), verified, verified,
+    )).toMatchObject({
+      startLineNumber: 3, startColumn: 1, endLineNumber: 3, endColumn: 3,
+    });
+    expect(verifiedProblemMarker(
+      diagnostic('C:/project/main.srp', 2, 3), verified, verified,
+    )).toMatchObject({
+      startLineNumber: 3, startColumn: 3, endLineNumber: 3, endColumn: 4,
+    });
+  });
+
   it('keeps EOF insertion diagnostics in source bounds', () => {
     const text = 'ABC';
     expect(verifiedProblemMarker(diagnostic('main.srp', 4),

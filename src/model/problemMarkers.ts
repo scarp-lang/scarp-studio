@@ -1,5 +1,6 @@
 import { sameFilePath } from './documents';
 import { diagnosticSourcePosition, type ScarpDiagnostic } from './diagnostics';
+import { sourceLineAt } from './sourceLines';
 
 export interface ScarpProblemMarker {
   startLineNumber: number;
@@ -25,8 +26,8 @@ export function verifiedProblemMarker(
       verified.content !== document.content) return null;
   const position = diagnosticSourcePosition(diagnostic, document.path, document.content);
   if (!position || !diagnostic) return null;
-  const line = document.content.split(/\r?\n/)[position.lineNumber - 1];
-  if (line === undefined) return null;
+  const line = sourceLineAt(document.content, position.lineNumber);
+  if (line === null) return null;
   const index = position.column - 1;
   const scalar = line.codePointAt(index);
   // At an EOF insertion point, a zero-width marker stays within Monaco's
