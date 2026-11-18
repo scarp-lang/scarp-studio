@@ -36,7 +36,9 @@ if (-not (Test-Path -LiteralPath $ArtifactDirectory -PathType Container)) {
   throw 'ArtifactDirectory must be an existing, dedicated folder.'
 }
 $root = (Resolve-Path -LiteralPath $ArtifactDirectory).ProviderPath
-$allFiles = @(Get-ChildItem -LiteralPath $root -File -Recurse -ErrorAction Stop)
+# -Force is essential: hidden/system files must not bypass the exact-folder
+# file-count gate, including hidden old installers or extra DLLs.
+$allFiles = @(Get-ChildItem -LiteralPath $root -File -Recurse -Force -ErrorAction Stop)
 if ($allFiles.Count -gt 5000) {
   throw 'Artifact folder contains too many files. Use a dedicated, empty extraction folder.'
 }

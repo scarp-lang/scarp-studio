@@ -368,6 +368,8 @@ jobs:
           # must fail closed even when the original two hashes match.
           $strayExe = Join-Path $stage "old-build-setup.exe"
           [System.IO.File]::WriteAllText($strayExe, "not from this run")
+          # Hidden files also count; Get-ChildItem without -Force would miss it.
+          [System.IO.File]::SetAttributes($strayExe, [System.IO.FileAttributes]::Hidden)
           try {
             & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl -AsJson | Out-Null
             throw "Unverified extra Windows executable was erroneously accepted."
@@ -375,7 +377,7 @@ jobs:
             if ($_.Exception.Message -notmatch 'exactly three candidate files') { throw }
             Write-Host "Expected stray-executable rejection test passed."
           } finally {
-            Remove-Item -LiteralPath $strayExe -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $strayExe -Force -ErrorAction SilentlyContinue
           }
           # A modified executable must never pass with the old checksum file.
           $stagedExe = Join-Path $stage "scarp-studio.exe"
