@@ -7,7 +7,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   fileName, isDirty, sameFilePath,
 } from './model/documents';
-import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameOpenDocumentSnapshots, type EditorAction } from './model/editorState';
+import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameOpenDocumentSnapshots, hasUnchangedEditorSession, type EditorAction } from './model/editorState';
 import { pickSourcePath, saveAllModifiedSources, writeSourceFile } from './services/files';
 import { decidePickedSourceOpen } from './model/pickedSourceOpen';
 import { readScarpSource } from './services/sourceRead';
@@ -421,8 +421,9 @@ export default function App() {
   async function openFile(): Promise<void> {
     if (filePickerInProgress.current || saveInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
-    const activeAtStart = liveEditor.current.activeId;
-    const activeSnapshot = currentActiveDocument(liveEditor.current);
+    const editorAtStart = liveEditor.current;
+    const activeAtStart = editorAtStart.activeId;
+    const activeSnapshot = currentActiveDocument(editorAtStart);
     filePickerInProgress.current = true;
     setBusy(true);
     setError(null);
@@ -431,10 +432,12 @@ export default function App() {
       // live tabs *first*: reading disk may fail after an external rename.
       const path = await pickSourcePath();
       if (path === null) return;
-      const decide = () => decidePickedSourceOpen(
-        path, liveEditor.current.documents, activeAtStart, liveEditor.current.activeId,
-        activeSnapshot,
-      );
+      const decide = () => hasUnchangedEditorSession(editorAtStart, liveEditor.current)
+        ? decidePickedSourceOpen(
+          path, liveEditor.current.documents, activeAtStart, liveEditor.current.activeId,
+          activeSnapshot,
+        )
+        : { kind: 'stale' as const };
       const initial = decide();
       if (initial.kind === 'stale') {
         setError('The active tab changed while choosing a source. Open the file again.');
@@ -561,17 +564,19 @@ export default function App() {
       setError(null);
       return;
     }
-    const activeAtStart = liveEditor.current.activeId;
-    const activeSnapshot = currentActiveDocument(liveEditor.current);
+    const editorAtStart = liveEditor.current;
+    const activeAtStart = editorAtStart.activeId;
+    const activeSnapshot = currentActiveDocument(editorAtStart);
     filePickerInProgress.current = true;
     setBusy(true);
     setError(null);
     try {
       const content = await readFolderSource(decision.path, selection.files);
-      if (!isCurrentListedSourceRead(
-        selection, selectedFolderRef.current, activeAtStart,
-        activeSnapshot, liveEditor.current,
-      )) {
+      if (!hasUnchangedEditorSession(editorAtStart, liveEditor.current) ||
+          !isCurrentListedSourceRead(
+            selection, selectedFolderRef.current, activeAtStart,
+            activeSnapshot, liveEditor.current,
+          )) {
         setError('The project folder, active tab or source text changed during the read. Select the file again.');
         return;
       }
@@ -667,8 +672,9 @@ export default function App() {
       setError('Finish the current file or compiler operation before reloading.');
       return;
     }
-    const snapshot = liveEditor.current.documents.find(
-      (doc) => doc.id === liveEditor.current.activeId,
+    const editorAtStart = liveEditor.current;
+    const snapshot = editorAtStart.documents.find(
+      (doc) => doc.id === editorAtStart.activeId,
     );
     if (!snapshot?.path) {
       setError('Save the Scarp source before reloading it from disk.');
@@ -688,7 +694,8 @@ export default function App() {
       }
       const stillCurrent = () => {
         const current = liveEditor.current.documents.find((doc) => doc.id === snapshot.id);
-        return current !== undefined && liveEditor.current.activeId === snapshot.id &&
+        return hasUnchangedEditorSession(editorAtStart, liveEditor.current) &&
+          current !== undefined && liveEditor.current.activeId === snapshot.id &&
           isUnchangedSnapshot(current, snapshot) &&
           !saveInProgress.current && !filePickerInProgress.current &&
           !selectionInProgress.current && !commandInProgress.current;

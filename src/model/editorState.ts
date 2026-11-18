@@ -82,6 +82,19 @@ export function currentActiveDocument(state: EditorState): StudioDocument | null
   return state.documents.find((document) => document.id === state.activeId) ?? null;
 }
 
+/** A deferred native operation is current only while the entire in-memory
+ * editor session remains unchanged. Focus-switch-back and file-close/reopen
+ * must not turn an older native result into a fresh user intent.
+ * The reducer increments this revision for all meaningful transitions.
+ */
+export function hasUnchangedEditorSession(
+  initial: EditorState,
+  current: EditorState,
+): boolean {
+  return initial.sessionRevision === current.sessionRevision &&
+    initial.activeId === current.activeId;
+}
+
 /** Every *genuine* editor transition advances the session revision once.
  * This detects close/reopen and focus-switch ABA even when per-tab snapshots
  * become byte-identical again. No-op edits/opens preserve object identity.
@@ -106,7 +119,9 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
       };
     }
     case 'open': {
-      const opened = openedDocument(state.documents, action.path, action.content);
+      const opened = openedDocument(
+        state.documents, action.path, action.content, state.sessionRevision + 1,
+      );
       if (opened.documents === state.documents && opened.id === state.activeId) return state;
       return { ...state, documents: opened.documents, activeId: opened.id };
     }

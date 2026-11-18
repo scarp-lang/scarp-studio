@@ -38,6 +38,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | E18 | Immediately after switching tabs, press Ctrl+S or Ctrl+W | Save and Close target the currently active tab rather than the tab active before React rendered | NOT RUN |
 | E19 | While a native Reload or discard prompt is open, edit the disposable source and restore its exact original text before confirming | Stale confirmation rejected due to newer edit revision even though source text matches | NOT RUN |
 | E20 | During a window-exit discard confirmation, edit/save a formerly clean tab, create then close a disposable tab, **or close and reopen the exact same saved file**, then confirm exit | Whole-session revision rejects even identical-looking recreated tabs or focus-switch ABA; no newer session activity is lost | NOT RUN |
+| E21 | Start a native Open file picker or dirty Reload confirmation; switch away from the active tab and back before completing the pending operation | Stale native result rejected even though active ID and source text are identical again | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 
@@ -62,6 +63,8 @@ This is a **manual verification worksheet** for the consolidated development can
 | P16 | Replace text, edit an unrelated open tab or Save one changed tab, then try Undo Last Replace All | Undo becomes unavailable; user edits and saved content are not reverted | NOT RUN |
 | P17 | Replace text, switch active tabs without editing, then Undo Last Replace All | Undo remains available and preserves current tab focus | NOT RUN |
 | P19 | After Replace All, edit then restore identical post-replacement text and try Undo Last Replace All | Monotonic revision invalidates stale Undo; no newer edit is silently erased | NOT RUN |
+| P20 | Begin loading a listed project source, switch tabs away and back while its read is pending | Stale Explorer read never unexpectedly activates a new source | NOT RUN |
+| P21 | Search or preview Replace All in a saved file, close and reopen that identical file, then try to use the old hit/preview | Reopened file has a newer generation; stale search navigation and Replace All are refused | NOT RUN |
 
 ## Official compiler alpha.13 (interpreter CLI; alpha.12 source features remain supported)
 

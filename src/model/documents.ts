@@ -72,6 +72,10 @@ export function openedDocument(
   documents: StudioDocument[],
   path: string,
   content: string,
+  // Standalone document helpers start at zero. The editor reducer supplies a
+  // session-wide generation so closing/reopening an identical saved source
+  // cannot resurrect stale search, Replace All or navigation snapshots.
+  initialRevision = 0,
 ): { documents: StudioDocument[]; id: string } {
   const existing = documents.find((document) => document.path !== null && sameFilePath(document.path, path));
   if (existing) return { documents, id: existing.id };
@@ -81,7 +85,7 @@ export function openedDocument(
     id,
     documents: [
       ...documents,
-      { id, name: fileName(path), path, content, savedContent: content, revision: 0 },
+      { id, name: fileName(path), path, content, savedContent: content, revision: initialRevision },
     ],
   };
 }

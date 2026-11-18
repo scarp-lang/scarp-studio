@@ -1,7 +1,56 @@
 import { describe, expect, it } from 'vitest';
-import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots } from './editorState';
+import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, hasUnchangedEditorSession, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, sameOpenDocumentSnapshots } from './editorState';
+import { isCurrentSearchHit, searchOpenFiles } from './openFileSearch';
 
 describe('atomic editor session transitions', () => {
+  it('rejects a stale open-buffer search hit after an identical saved file is reopened', () => {
+    const first = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/project/main.srp', content: 'print("hello");',
+    });
+    const previous = first.documents.at(-1)!;
+    const oldHit = searchOpenFiles(first.documents, 'hello', {
+      caseSensitive: true, wholeWord: false,
+    }).hits[0];
+    const closed = editorReducer(first, { type: 'close', id: previous.id, snapshot: previous });
+    const reopened = editorReducer(closed, {
+      type: 'open', path: previous.path!, content: previous.content,
+    });
+    const current = reopened.documents.at(-1)!;
+    expect(current.id).toBe(previous.id);
+    expect(current.content).toBe(previous.content);
+    expect(current.revision).toBeGreaterThan(previous.revision);
+    expect(isCurrentSearchHit(current, oldHit)).toBe(false);
+    expect(isUnchangedSnapshot(current, previous)).toBe(false);
+    expect(sameOpenDocumentSnapshots(first.documents, reopened.documents)).toBe(false);
+    expect(canApplyReplacementSnapshots(reopened, [{
+      id: previous.id, snapshot: previous, content: 'replacement',
+    }])).toBe(false);
+  });
+
+  it('invalidates deferred native actions after focus ABA, edits or file reopening', () => {
+    const initial = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/current.srp', content: 'disk',
+    });
+    expect(hasUnchangedEditorSession(initial, initial)).toBe(true);
+    expect(hasUnchangedEditorSession(initial, editorReducer(initial, {
+      type: 'activate', id: initial.activeId!,
+    }))).toBe(true);
+    const switched = editorReducer(initial, { type: 'activate', id: 'untitled-1' });
+    const restored = editorReducer(switched, { type: 'activate', id: initial.activeId! });
+    expect(restored.activeId).toBe(initial.activeId);
+    expect(hasUnchangedEditorSession(initial, restored)).toBe(false);
+    const backgroundEdit = editorReducer(initial, {
+      type: 'edit', id: 'untitled-1', content: 'new background typing',
+    });
+    expect(hasUnchangedEditorSession(initial, backgroundEdit)).toBe(false);
+    const previous = initial.documents.at(-1)!;
+    const closed = editorReducer(initial, { type: 'close', id: previous.id, snapshot: previous });
+    const reopened = editorReducer(closed, {
+      type: 'open', path: previous.path!, content: previous.content,
+    });
+    expect(hasUnchangedEditorSession(initial, reopened)).toBe(false);
+  });
+
 
   it('advances the session revision for changes and ignores no-op editor requests', () => {
     const initial = initialEditorState;
