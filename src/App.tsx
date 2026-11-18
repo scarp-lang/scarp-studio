@@ -31,6 +31,9 @@ import { exitBlockReason, sameExitEditorState } from './model/exitGuards';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
+import {
+  captureVerifiedSource, isCurrentVerifiedSource, type VerifiedSourceSnapshot,
+} from './model/verifiedSource';
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReport, type ScarpTestReport } from './model/projectTestReport';
 import { dirtyProjectSourceNames } from './model/projectSourceState';
@@ -157,7 +160,7 @@ export default function App() {
   const [compilerBusy, setCompilerBusy] = useState(false);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
-  const [compilerOutputSource, setCompilerOutputSource] = useState<{path: string; content: string} | null>(null);
+  const [compilerOutputSource, setCompilerOutputSource] = useState<VerifiedSourceSnapshot | null>(null);
   // This input is session-local, not persisted or stored in source files.
   const [stdinText, setStdinText] = useState('');
   const [promptInputMode, setPromptInputMode] = useState(false);
@@ -169,9 +172,7 @@ export default function App() {
 
   const active = documents.find((document) => document.id === activeId) || null;
   const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
-  const diagnosticPosition = active?.path && compilerOutputSource &&
-    sameFilePath(active.path, compilerOutputSource.path) &&
-    active.content === compilerOutputSource.content
+  const diagnosticPosition = isCurrentVerifiedSource(compilerOutputSource, active) && active?.path
     ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
   const problemMarker = useMemo(() => verifiedProblemMarker(diagnostic, compilerOutputSource, active),
     [diagnostic, compilerOutputSource, active]);
@@ -763,12 +764,16 @@ export default function App() {
     }
     let source: string;
     let expectedContent: string;
+    let verifiedSnapshot: VerifiedSourceSnapshot;
     try {
       const selected = liveEditor.current.documents.find(
         (item) => item.id === liveEditor.current.activeId,
       ) ?? null;
       source = runnableSource(selected);
       expectedContent = selected!.savedContent;
+      const captured = captureVerifiedSource(selected);
+      if (!captured) throw new Error('Save the Scarp source before Run or Verify.');
+      verifiedSnapshot = captured;
       if (!compilerPath) throw new Error('Select the trusted Scarp compiler first.');
       if (mode === 'exec') validateProgramInput(stdinText);
     } catch (caught) {
@@ -778,7 +783,7 @@ export default function App() {
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
-    setCompilerOutputSource({ path: source, content: expectedContent });
+    setCompilerOutputSource(verifiedSnapshot);
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
@@ -807,10 +812,8 @@ export default function App() {
     const current = liveEditor.current.documents.find(
       (item) => item.id === liveEditor.current.activeId,
     );
-    if (!current?.path || !compilerOutputSource ||
-        !sameFilePath(current.path, compilerOutputSource.path) ||
-        current.content !== compilerOutputSource.content ||
-        mountedEditorDocumentId.current !== current.id) return;
+    if (!isCurrentVerifiedSource(compilerOutputSource, current ?? null) ||
+        !current?.path || mountedEditorDocumentId.current !== current.id) return;
     const position = diagnosticSourcePosition(diagnostic, current.path, current.content);
     const editor = mountedEditor.current;
     if (!position || !editor) return;

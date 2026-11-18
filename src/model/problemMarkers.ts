@@ -1,6 +1,7 @@
-import { sameFilePath } from './documents';
+import type { StudioDocument } from './documents';
 import { diagnosticSourcePosition, type ScarpDiagnostic } from './diagnostics';
 import { sourceLineAt } from './sourceLines';
+import { isCurrentVerifiedSource, type VerifiedSourceSnapshot } from './verifiedSource';
 
 export interface ScarpProblemMarker {
   startLineNumber: number;
@@ -18,12 +19,10 @@ export interface ScarpProblemMarker {
  */
 export function verifiedProblemMarker(
   diagnostic: ScarpDiagnostic | null,
-  verified: { path: string; content: string } | null,
-  document: { path: string | null; content: string } | null,
+  verified: VerifiedSourceSnapshot | null,
+  document: StudioDocument | null,
 ): ScarpProblemMarker | null {
-  if (!verified || !document?.path ||
-      !sameFilePath(verified.path, document.path) ||
-      verified.content !== document.content) return null;
+  if (!isCurrentVerifiedSource(verified, document) || !document?.path) return null;
   const position = diagnosticSourcePosition(diagnostic, document.path, document.content);
   if (!position || !diagnostic) return null;
   const line = sourceLineAt(document.content, position.lineNumber);
