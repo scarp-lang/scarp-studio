@@ -92,9 +92,14 @@ describe('native exit confirmation snapshots', () => {
     const reopened = editorReducer(closed, {
       type: 'open', path: 'C:/workspace/main.srp', content: 'original',
     });
-    // All visible fields and individual revision values can match, but this
-    // is a different editor session: no earlier exit approval may survive it.
-    expect(reopened.documents).toEqual(initial.documents);
+    // Visible saved content and path still match, but the reopened file is a
+    // new document generation: stale source or exit approval must not survive.
+    expect(reopened.documents[0]).toEqual(initial.documents[0]);
+    expect(reopened.documents.at(-1)).toMatchObject({
+      id: file.id, name: file.name, path: file.path,
+      content: file.content, savedContent: file.savedContent,
+    });
+    expect(reopened.documents.at(-1)?.revision).toBeGreaterThan(file.revision);
     expect(reopened.activeId).toBe(initial.activeId);
     expect(reopened.nextUntitled).toBe(initial.nextUntitled);
     expect(reopened.sessionRevision).toBeGreaterThan(initial.sessionRevision);
