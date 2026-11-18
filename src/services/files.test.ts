@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { save } from '@tauri-apps/plugin-dialog';
-import { readTextFile, stat, writeTextFile } from '@tauri-apps/plugin-fs';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
+import { readScarpSource } from './sourceRead';
 import { createUntitled } from '../model/documents';
 import { writeSourceFile } from './files';
 
@@ -8,16 +9,13 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: vi.fn(),
   save: vi.fn(),
 }));
-vi.mock('@tauri-apps/plugin-fs', () => ({
-  readTextFile: vi.fn(),
-  stat: vi.fn(),
-  writeTextFile: vi.fn(),
-}));
+vi.mock('@tauri-apps/plugin-fs', () => ({ writeTextFile: vi.fn() }));
+vi.mock('./sourceRead', () => ({ readScarpSource: vi.fn() }));
 
 describe('safe .srp file writes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(stat).mockResolvedValue({ isFile: true, size: 16 } as Awaited<ReturnType<typeof stat>>);
+    vi.mocked(readScarpSource).mockResolvedValue('original');
   });
 
   it('rejects oversized UTF-8 editor buffers before opening a save dialog', async () => {
@@ -32,9 +30,11 @@ describe('safe .srp file writes', () => {
       ...createUntitled(9), path: 'C:/project/main.srp',
       savedContent: 'small', content: 'edited',
     };
-    vi.mocked(stat).mockResolvedValue({ isFile: true, size: 4 * 1024 * 1024 + 1 } as Awaited<ReturnType<typeof stat>>);
+    vi.mocked(readScarpSource).mockRejectedValue(new Error('Scarp source exceeds the 4 MiB editor file limit.'));
     await expect(writeSourceFile(document, false, [])).rejects.toThrow('4 MiB');
-    expect(readTextFile).not.toHaveBeenCalled();
+    // Source size validation is now inside the bounded handle reader.
+    // The caller must invoke that reader and must not invoke the writer.
+    expect(readScarpSource).toHaveBeenCalledWith(document.path);
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
@@ -47,6 +47,13 @@ describe('safe .srp file writes', () => {
   it('rejects a conflicting Windows path already open in another tab', async () => {
     vi.mocked(save).mockResolvedValue('c:/project/main.SRP');
     await expect(writeSourceFile(createUntitled(1), true, ['C:\\Project\\main.srp']))
+      .rejects.toThrow('already open');
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('refuses Save As through a Windows parent-directory alias of an already-open tab', async () => {
+    vi.mocked(save).mockResolvedValue(String.raw`C:\Project\src\..\main.srp`);
+    await expect(writeSourceFile(createUntitled(1), true, ['c:/project/MAIN.SRP']))
       .rejects.toThrow('already open');
     expect(writeTextFile).not.toHaveBeenCalled();
   });
@@ -83,7 +90,7 @@ describe('safe .srp file writes', () => {
     const currentPaths = vi.fn(() => [String.raw`c:\PROJECT\EXISTING.srp`]);
     await expect(writeSourceFile(document, false, currentPaths)).rejects.toThrow('already open');
     expect(currentPaths).toHaveBeenCalledTimes(1);
-    expect(readTextFile).not.toHaveBeenCalled();
+    expect(readScarpSource).not.toHaveBeenCalled();
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
@@ -109,9 +116,9 @@ describe('safe .srp file writes', () => {
       savedContent: 'original',
       content: 'edited',
     };
-    vi.mocked(readTextFile).mockResolvedValue('original');
+    vi.mocked(readScarpSource).mockResolvedValue('original');
     await expect(writeSourceFile(document, false, [])).resolves.toBe(document.path);
-    expect(readTextFile).toHaveBeenCalledWith(document.path);
+    expect(readScarpSource).toHaveBeenCalledWith(document.path);
     expect(writeTextFile).toHaveBeenCalledWith(document.path, 'edited');
   });
 
@@ -122,7 +129,7 @@ describe('safe .srp file writes', () => {
       savedContent: 'last saved version',
       content: 'new local edit',
     };
-    vi.mocked(readTextFile).mockResolvedValue('external editor changes');
+    vi.mocked(readScarpSource).mockResolvedValue('external editor changes');
     await expect(writeSourceFile(document, false, [])).rejects.toThrow('changed on disk');
     expect(writeTextFile).not.toHaveBeenCalled();
   });
@@ -134,7 +141,7 @@ describe('safe .srp file writes', () => {
       savedContent: 'original',
       content: 'local text',
     };
-    vi.mocked(readTextFile).mockRejectedValue(new Error('file not found'));
+    vi.mocked(readScarpSource).mockRejectedValue(new Error('file not found'));
     await expect(writeSourceFile(document, false, [])).rejects.toThrow('file not found');
     expect(writeTextFile).not.toHaveBeenCalled();
   });
@@ -148,7 +155,7 @@ describe('safe .srp file writes', () => {
     };
     vi.mocked(save).mockResolvedValue('C:/project/backup.srp');
     await expect(writeSourceFile(document, true, [])).resolves.toBe('C:/project/backup.srp');
-    expect(readTextFile).not.toHaveBeenCalled();
+    expect(readScarpSource).not.toHaveBeenCalled();
     expect(writeTextFile).toHaveBeenCalledWith('C:/project/backup.srp', 'new');
   });
 

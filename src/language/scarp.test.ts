@@ -6,6 +6,7 @@ type TokenProvider = {
   keywords: string[];
   typeKeywords: string[];
   legacyKeywords: string[];
+  builtinFunctions: string[];
   tokenizer: { root: TokenRule[]; string: TokenRule[] };
 };
 
@@ -19,6 +20,10 @@ function captureProvider(): TokenProvider {
       setMonarchTokensProvider: vi.fn((_language: string, provider: TokenProvider) => {
         captured = provider;
       }),
+      registerCompletionItemProvider: vi.fn(),
+      registerHoverProvider: vi.fn(),
+      registerDocumentSymbolProvider: vi.fn(),
+      CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
     },
   };
   registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
@@ -39,19 +44,21 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     ]) {
       expect(provider.keywords, word).toContain(word);
     }
-    for (const type of ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple']) {
+    for (const type of ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint']) {
       expect(provider.typeKeywords, type).toContain(type);
     }
   });
 
   it('keeps unsupported proposals and ordinary intrinsic calls out of keywords', () => {
     const provider = captureProvider();
-    for (const name of ['for', 'match', 'ask', 'class', 'read_line']) {
+    for (const name of ['for', 'ask', 'class', 'read_line']) {
       expect(provider.keywords, name).not.toContain(name);
     }
     expect(provider.legacyKeywords).toEqual(['let', 'mut']);
     const identifier = provider.tokenizer.root.find(([, action]) =>
-      typeof action === 'object' && action !== null && 'cases' in action
+      typeof action === 'object' && action !== null && 'cases' in action &&
+      typeof action.cases === 'object' && action.cases !== null &&
+      '@typeKeywords' in action.cases
     );
     expect(identifier?.[1]).toEqual({
       cases: {
@@ -63,7 +70,51 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     });
   });
 
-  it('accepts published hexadecimal and binary integers but rejects malformed literals', () => {
+  it('recognizes alpha.10 calls but keeps them distinct from Scarp keywords', () => {
+    const provider = captureProvider();
+    for (const builtin of ['input', 'ask', 'ask_or', 'input_integer', 'input_bigint',
+      'try_read_line', 'flush_stdout', 'bigint_gcd', 'bigint_divmod']) {
+      expect(provider.builtinFunctions).toContain(builtin);
+      expect(provider.keywords).not.toContain(builtin);
+    }
+    const contextualType = provider.tokenizer.root.find(([, token]) => token === 'type')?.[0];
+    expect(contextualType?.test('array<integer, 2>')).toBe(true);
+    expect(contextualType?.test('array = 2')).toBe(false);
+  });
+
+  it('recognizes alpha.11 exact decimal type and built-ins without inventing keywords', () => {
+    const provider = captureProvider();
+    expect(provider.typeKeywords).toContain('decimal');
+    for (const name of [
+      'decimal', 'decimal_from_integer', 'decimal_to_integer', 'decimal_to_text',
+      'decimal_round', 'decimal_format', 'decimal_div_rounded', 'input_decimal',
+    ]) {
+      expect(provider.builtinFunctions).toContain(name);
+      expect(provider.keywords).not.toContain(name);
+    }
+  });
+
+  it('highlights published alpha.12 records, variants, tagged matches and collections', () => {
+    const provider = captureProvider();
+    for (const keyword of ['record', 'variant', 'match', 'on', 'case', 'new']) {
+      expect(provider.keywords).toContain(keyword);
+    }
+    for (const type of ['list', 'map', 'option', 'result']) {
+      expect(provider.typeKeywords).toContain(type);
+    }
+    for (const name of ['list_len', 'list_push', 'list_remove', 'map_len',
+      'map_keys', 'map_values', 'map_contains', 'map_get_or', 'map_set', 'map_remove']) {
+      expect(provider.builtinFunctions).toContain(name);
+      expect(provider.keywords).not.toContain(name);
+    }
+    const contextualType = provider.tokenizer.root.find(([, token]) => token === 'type')?.[0];
+    for (const generic of ['list<integer>', 'map<string, integer>', 'option<boolean>', 'result<integer,string>']) {
+      expect(contextualType?.test(generic), generic).toBe(true);
+    }
+    expect(contextualType?.test('list = 2')).toBe(false);
+  });
+
+  it('recognizes published hexadecimal and binary integer literals', () => {
     const root = captureProvider().tokenizer.root;
     const valid = root.filter(([, token]) => token === 'number').map(([rule]) => rule);
     const invalid = root.find(([, token]) => token === 'number.invalid')?.[0];
@@ -100,10 +151,63 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
         register,
         setLanguageConfiguration: vi.fn(),
         setMonarchTokensProvider,
+        registerCompletionItemProvider: vi.fn(),
+        registerHoverProvider: vi.fn(),
+        registerDocumentSymbolProvider: vi.fn(),
+        CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
       },
     };
     registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
     expect(register).not.toHaveBeenCalled();
     expect(setMonarchTokensProvider).not.toHaveBeenCalled();
+  });
+});
+
+describe('Scarp editor assistance registration', () => {
+  it('registers code completion, hover, and document symbols for .srp only', () => {
+    const provideCompletion = vi.fn();
+    const provideHover = vi.fn();
+    const provideSymbols = vi.fn();
+    const mockMonaco = {
+      Range: class {
+        constructor(public startLineNumber: number, public startColumn: number,
+          public endLineNumber: number, public endColumn: number) {}
+      },
+      languages: {
+        getLanguages: () => [],
+        register: vi.fn(),
+        setLanguageConfiguration: vi.fn(),
+        setMonarchTokensProvider: vi.fn(),
+        registerCompletionItemProvider: provideCompletion,
+        registerHoverProvider: provideHover,
+        registerDocumentSymbolProvider: provideSymbols,
+        CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
+        CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
+        SymbolKind: { Function: 11 },
+      },
+    };
+    registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
+    for (const spy of [provideCompletion, provideHover, provideSymbols]) {
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0]).toBe('scarp');
+    }
+    const handler = provideCompletion.mock.calls[0][1] as {
+      provideCompletionItems: (model: unknown, position: unknown) => { suggestions: Array<{ label: string }> },
+    };
+    const model = {
+      getLineContent: () => 'func',
+      getWordUntilPosition: () => ({ word: 'func', startColumn: 1, endColumn: 5 }),
+    };
+    const position = { lineNumber: 1, column: 5 };
+    expect(handler.provideCompletionItems(model, position).suggestions.some((s) => s.label === 'funcra')).toBe(true);
+    const commentModel = { ...model, getLineContent: () => '// func' };
+    expect(handler.provideCompletionItems(commentModel, { lineNumber: 1, column: 8 }).suggestions).toEqual([]);
+    const outline = provideSymbols.mock.calls[0][1] as {
+      provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
+    };
+    expect(outline.provideDocumentSymbols({
+      getValue: () => 'funcra add(a: integer) -> integer { return a; }',
+      getLineMaxColumn: () => 44,
+    }).map((item) => item.name)).toEqual(['add']);
   });
 });

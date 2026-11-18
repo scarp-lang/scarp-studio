@@ -1,0 +1,75 @@
+import { describe, expect, it } from 'vitest';
+import { getScarpStarterTemplate, scarpStarterTemplates } from './starterTemplates';
+
+describe('Scarp-only starter templates', () => {
+  it('offers independent real Scarp learning scenarios', () => {
+    expect(scarpStarterTemplates.map(({ id }) => id)).toEqual([
+      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput', 'records', 'variants', 'collections', 'optionresult',
+    ]);
+    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(16);
+  });
+
+  it('uses only .srp snippets that can be edited in an untitled buffer', () => {
+    for (const starter of scarpStarterTemplates) {
+      expect(starter.id).toMatch(/^[a-z]+$/);
+      expect(starter.title.length).toBeGreaterThan(2);
+      expect(starter.source.endsWith('\n')).toBe(true);
+      expect(starter.source.length).toBeLessThan(4096);
+      expect(starter.source).not.toContain('fn main(');
+      expect(starter.source).not.toMatch(/\b(?:class|let|mut|def|async|await)\b/);
+    }
+  });
+
+  it('includes an explicit saved-source compiler input example', () => {
+    expect(getScarpStarterTemplate('input')?.source).toContain('read_line()');
+    expect(getScarpStarterTemplate('input')?.source).toContain('Program Input');
+  });
+
+  it('includes a version-gated exact decimal BigInt example', () => {
+    const source = getScarpStarterTemplate('bigint')?.source ?? '';
+    expect(source).toContain('alpha.9');
+    expect(source).toContain('bind large: bigint');
+    expect(source).toContain('bigint_from_integer(1)');
+  });
+
+  it('version-gates three alpha.10 starter programs with explicit execution modes', () => {
+    const prompt = getScarpStarterTemplate('prompts')?.source ?? '';
+    expect(prompt).toContain('alpha.10');
+    expect(prompt).toContain('BEFORE Run');
+    expect(prompt).toContain('input("Name: ")');
+    const arrays = getScarpStarterTemplate('arrays')?.source ?? '';
+    expect(arrays).toContain('array<integer, 2>');
+    expect(arrays).toContain('[array: 10, 20]');
+    const exact = getScarpStarterTemplate('exactmath')?.source ?? '';
+    expect(exact).toContain('bigint_gcd(left, right)');
+  });
+
+  it('provides alpha.11 exact-decimal and preloaded prompt examples', () => {
+    const arithmetic = getScarpStarterTemplate('decimals')?.source ?? '';
+    expect(arithmetic).toContain('alpha.11');
+    expect(arithmetic).toContain('bind price: decimal');
+    expect(arithmetic).toContain('decimal_format(');
+    expect(arithmetic).toContain('half_even');
+    const prompted = getScarpStarterTemplate('decimalinput')?.source ?? '';
+    expect(prompted).toContain('input_decimal("Amount: ")');
+    expect(prompted).toContain('BEFORE Run');
+    expect(prompted).toContain('alpha.11');
+  });
+
+  it('offers alpha.12 records, variants, collections and optional propagation', () => {
+    for (const id of ['records', 'variants', 'collections', 'optionresult']) {
+      expect(getScarpStarterTemplate(id)?.source).toContain('alpha.12');
+      expect(getScarpStarterTemplate(id)?.source).toContain('interpreter');
+    }
+    expect(getScarpStarterTemplate('records')?.source).toContain('new Task');
+    expect(getScarpStarterTemplate('variants')?.source).toContain('match on hit');
+    expect(getScarpStarterTemplate('collections')?.source).toContain('map_get_or(');
+    expect(getScarpStarterTemplate('optionresult')?.source).toContain('value?');
+  });
+
+  it('looks up only registered templates without accepting arbitrary source', () => {
+    expect(getScarpStarterTemplate('functions')?.source).toContain('pure funcra add');
+    expect(getScarpStarterTemplate('../../outside')).toBeNull();
+    expect(getScarpStarterTemplate('')).toBeNull();
+  });
+});

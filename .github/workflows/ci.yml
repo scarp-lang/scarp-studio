@@ -41,6 +41,299 @@ jobs:
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Native Rust compilation
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+      - name: Rust service tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
+      - name: Verify official Scarp CLI compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.10/scarp-0.0.6-alpha.10-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-compiler.zip
+          $actual = (Get-FileHash scarp-compiler.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "02da845a634ff3f05e9592f41195c84e9d6f62089f35be44a3c9b41296550190") {
+            throw "Official compiler archive hash mismatch"
+          }
+          Expand-Archive -Path scarp-compiler.zip -DestinationPath scarp-compiler
+          $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Official Scarp binary missing from archive" }
+          $reportedVersion = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $reportedVersion -ne "scarp 0.0.6-alpha.10") {
+            throw "Unexpected Scarp compiler version"
+          }
+          & $binary.FullName guide exec
+          if ($LASTEXITCODE -ne 0) { throw "Scarp exec probe failed" }
+          & $binary.FullName guide verify
+          if ($LASTEXITCODE -ne 0) { throw "Scarp verify probe failed" }
+          'assert(2 + 2 == 4, "Studio alpha.10 smoke"); print("Studio CLI smoke");' | Set-Content -Path scarp-smoke.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-smoke.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp static verification failed" }
+          $execution = & $binary.FullName exec --max-steps 200000 --max-prints 1000 --diagnostic-format=json -- scarp-smoke.srp
+          if ($LASTEXITCODE -ne 0 -or $execution -notmatch "Studio CLI smoke") { throw "Scarp execution smoke failed" }
+          'bind name = input("Name? "); print("Hello", name);' | Set-Content -Path scarp-prompt.srp -Encoding utf8
+          $promptOutput = 'Studio' | & $binary.FullName exec --interactive --diagnostic-format=json -- scarp-prompt.srp
+          if ($LASTEXITCODE -ne 0 -or $promptOutput -notmatch "Hello Studio") {
+            throw "Scarp alpha.10 preloaded prompt smoke failed"
+          }
+          'bind numbers: array<integer, 2> = [array: 10, 20]; print(numbers[1]);' | Set-Content -Path scarp-arrays.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-arrays.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.10 arrays verify smoke failed" }
+          $arrayOutput = & $binary.FullName exec --diagnostic-format=json -- scarp-arrays.srp
+          if ($LASTEXITCODE -ne 0 -or $arrayOutput -notmatch "20") {
+            throw "Scarp alpha.10 arrays execution smoke failed"
+          }
+          'bind a = bigint("120"); bind b = bigint("18"); print(bigint_gcd(a, b));' | Set-Content -Path scarp-bigmath.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-bigmath.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.10 BigInt verify smoke failed" }
+          $bigmathOutput = & $binary.FullName exec --diagnostic-format=json -- scarp-bigmath.srp
+          if ($LASTEXITCODE -ne 0 -or $bigmathOutput -notmatch "6") {
+            throw "Scarp alpha.10 BigInt execution smoke failed"
+          }
+
+      - name: Smoke official Scarp project commands
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Pinned Scarp compiler missing" }
+          & $binary.FullName init studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp init project failed" }
+          & $binary.FullName project info --json studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp project info failed" }
+          & $binary.FullName verify --diagnostic-format=json -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp project verify failed" }
+          $defaultRun = & $binary.FullName run --max-input-line-bytes 4096 --max-input-bytes 16384 --max-input-reads 256 --diagnostic-format=json -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp project entrypoint run failed" }
+          'bind name = input("Name? "); print("Hello", name);' | Set-Content -Path studio-project-smoke/src/main.srp -Encoding utf8
+          $interactiveRun = 'Studio' | & $binary.FullName run --max-input-line-bytes 4096 --max-input-bytes 16384 --max-input-reads 256 --diagnostic-format=json --interactive -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0 -or $interactiveRun -notmatch "Hello Studio") {
+            throw "Scarp project alpha.10 interactive Run smoke failed"
+          }
+          New-Item -ItemType Directory -Force studio-project-smoke/tests | Out-Null
+          'assert(2 + 2 == 4);' | Set-Content -Path studio-project-smoke/tests/check.srp -Encoding utf8
+          & $binary.FullName test --list -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp list project tests failed" }
+          & $binary.FullName test --require-tests -- studio-project-smoke
+          if ($LASTEXITCODE -ne 0) { throw "Scarp run project tests failed" }
+          # Launch through System.Diagnostics.Process to match Studio's
+          # native Command API and capture stdout/stderr even on exit status 1.
+          function Invoke-ScarpProjectTestJson {
+            param([string[]]$CommandArgs)
+            $info = [System.Diagnostics.ProcessStartInfo]::new()
+            $info.FileName = $binary.FullName
+            $info.WorkingDirectory = (Get-Location).Path
+            $info.UseShellExecute = $false
+            $info.RedirectStandardOutput = $true
+            $info.RedirectStandardError = $true
+            foreach ($arg in $CommandArgs) { [void]$info.ArgumentList.Add($arg) }
+            $process = [System.Diagnostics.Process]::Start($info)
+            if (-not $process) { throw "Could not start pinned Scarp test compiler" }
+            try {
+              $stderrTask = $process.StandardError.ReadToEndAsync()
+              $stdoutText = $process.StandardOutput.ReadToEnd()
+              $stderrText = $stderrTask.GetAwaiter().GetResult()
+              $process.WaitForExit()
+              Write-Host "Scarp JSON v2 test exit: $($process.ExitCode)"
+              return @{ Exit = $process.ExitCode; Output = $stdoutText; ErrorText = $stderrText }
+            } finally {
+              $process.Dispose()
+            }
+          }
+          $listed = Invoke-ScarpProjectTestJson @("test", "--json=v2", "--list", "--", "studio-project-smoke")
+          if ($listed.Exit -ne 0) {
+            Write-Host "Listing stdout: $($listed.Output); stderr: $($listed.ErrorText)"
+            throw "Scarp project JSON v2 test listing failed"
+          }
+          $listedReport = $listed.Output | ConvertFrom-Json
+          if ($listedReport.schema_version -ne 2 -or $listedReport.mode -ne "list" -or $listedReport.discovered -ne 1) {
+            throw "Unexpected Scarp test discovery JSON schema"
+          }
+          $passing = Invoke-ScarpProjectTestJson @("test", "--json=v2", "--require-tests", "--", "studio-project-smoke")
+          if ($passing.Exit -ne 0) {
+            Write-Host "Passing suite stdout: $($passing.Output); stderr: $($passing.ErrorText)"
+            throw "Scarp project JSON v2 test run failed"
+          }
+          $passingReport = $passing.Output | ConvertFrom-Json
+          if ($passingReport.schema_version -ne 2 -or $passingReport.passed -ne 1 -or $passingReport.failed -ne 0) {
+            throw "Unexpected Scarp test run JSON schema"
+          }
+          'assert(false, "expected Studio test failure");' | Set-Content -Path studio-project-smoke/tests/failing.srp -Encoding utf8
+          $failed = Invoke-ScarpProjectTestJson @("test", "--json=v2", "--require-tests", "--", "studio-project-smoke")
+          if ($failed.Exit -eq 0) { throw "Failing test unexpectedly passed" }
+          $failedReport = $failed.Output | ConvertFrom-Json
+          if ($failedReport.schema_version -ne 2 -or $failedReport.failed -ne 1 -or $failedReport.tests.Count -ne 2) {
+            Write-Host "Failing suite stdout: $($failed.Output); stderr: $($failed.ErrorText)"
+            throw "Unexpected structured failing test report"
+          }
+          Remove-Item studio-project-smoke/tests/failing.srp
+
+      - name: Test Studio native process service against pinned Scarp compiler
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Pinned Scarp compiler missing from integration test" }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.10"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Native Scarp process integration failed" }
+      # Retain the alpha.10 compatibility gate above, and independently
+      # validate the published alpha.11 Decimal features against the real CLI.
+      - name: Verify pinned Scarp alpha.11 exact-decimal compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.11/scarp-0.0.6-alpha.11-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha11.zip
+          $actual = (Get-FileHash scarp-alpha11.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "7e86ae069f197c273c1c89424e0931198a7e3e29a74f1e9d7d9c092d49582a56") {
+            throw "Official alpha.11 compiler archive hash mismatch"
+          }
+          Expand-Archive -Path scarp-alpha11.zip -DestinationPath scarp-alpha11
+          $binary = Get-ChildItem scarp-alpha11 -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Official Scarp alpha.11 executable is missing" }
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.11") {
+            throw "Unexpected Scarp alpha.11 compiler version"
+          }
+          'bind price: decimal = decimal("199.99"); bind tax = decimal("0.18"); print(decimal_format(price + price * tax, 2, "half_even")); print(decimal("0.1") + decimal("0.2")); print(decimal_div_rounded(decimal("1"), decimal("3"), 2, "half_even"));' | Set-Content -Path scarp-decimal.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-decimal.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.11 Decimal verification failed" }
+          $decimal = & $binary.FullName exec --diagnostic-format=json -- scarp-decimal.srp
+          $decimalExit = $LASTEXITCODE
+          $decimalText = $decimal -join "`n"
+          if ($decimalExit -ne 0 -or $decimalText -notmatch '235\.99' -or $decimalText -notmatch '0\.3' -or $decimalText -notmatch '0\.33') {
+            throw "Scarp alpha.11 exact decimal smoke failed"
+          }
+          'bind amount: decimal = input_decimal("Amount: "); print(decimal_format(amount, 2, "half_even"));' | Set-Content -Path scarp-decimal-input.srp -Encoding utf8
+          $prompt = '19.95' | & $binary.FullName exec --interactive --diagnostic-format=json -- scarp-decimal-input.srp
+          $promptExit = $LASTEXITCODE
+          $promptText = $prompt -join "`n"
+          if ($promptExit -ne 0 -or $promptText -notmatch '19\.95') {
+            throw "Scarp alpha.11 typed decimal prompt smoke failed"
+          }
+          # Verify that Studio's native runner also accepts alpha.11 capabilities.
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.11"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.11" }
+
+      # Independent release-asset verification: alpha.12 extends the interpreter
+      # with records, variants, destructuring, Option/Result, lists and maps.
+      # Studio does not bundle or automatically download this compiler.
+      - name: Verify pinned Scarp alpha.12 aggregate compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.12/scarp-0.0.6-alpha.12-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha12.zip
+          $actual = (Get-FileHash scarp-alpha12.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "5e1fdd2f0f1631de170dd785ae23d9b87b9406463f8385b7454a43a00c96cd2c") {
+            throw "Official alpha.12 compiler archive hash mismatch"
+          }
+          Expand-Archive -Path scarp-alpha12.zip -DestinationPath scarp-alpha12
+          $binary = Get-ChildItem scarp-alpha12 -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Official Scarp alpha.12 executable is missing" }
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.12") {
+            throw "Unexpected Scarp alpha.12 compiler version"
+          }
+          $aggregates = @(
+            'record Task { title: string, done: boolean }'
+            'bind task = new Task { title: "Review", done: false };'
+            'bind names: list<string> = [list: "alpha", "beta"];'
+            'bind expanded = list_push(names, "gamma");'
+            'bind counts = [map: "ready": 2, "pending": 1];'
+            'print(task->title, list_len(expanded), map_get_or(counts, "ready", 0));'
+            'bind (first, second) = (20, 22);'
+            'print(first + second);'
+          ) -join "`n"
+          $aggregates | Set-Content -Path scarp-alpha12-aggregates.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha12-aggregates.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.12 aggregates verification failed" }
+          $output = & $binary.FullName exec --diagnostic-format=json -- scarp-alpha12-aggregates.srp
+          $status = $LASTEXITCODE
+          $text = $output -join "`n"
+          if ($status -ne 0 -or $text -notmatch 'Review' -or $text -notmatch '42') {
+            throw "Scarp alpha.12 aggregates execution failed"
+          }
+          $variants = @(
+            'variant Lookup { Missing, Found(integer) }'
+            'bind hit = new Lookup::Found(42);'
+            'match on hit {'
+            '    case Missing { print("Absent"); }'
+            '    case Found(value) { print(value); }'
+            '}'
+            'pure funcra increment(value: option<integer>) -> option<integer> {'
+            '    bind number = value?;'
+            '    return new option<integer>::Some(number + 1);'
+            '}'
+            'match on increment(new option<integer>::Some(41)) {'
+            '    case None { print("No value"); }'
+            '    case Some(number) { print(number); }'
+            '}'
+          ) -join "`n"
+          $variants | Set-Content -Path scarp-alpha12-variants.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha12-variants.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.12 variant/Option verification failed" }
+          $output = & $binary.FullName exec --diagnostic-format=json -- scarp-alpha12-variants.srp
+          $status = $LASTEXITCODE
+          if ($status -ne 0 -or ($output -join "`n") -notmatch '42') {
+            throw "Scarp alpha.12 variant/Option execution failed"
+          }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.12"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.12" }
+
+      # Alpha.13 retains the public alpha.12 CLI/project contract. Its new
+      # cache and workspace-generation APIs are Rust-embedding-only; this
+      # gate checks packaged Windows CLI compatibility, NOT those APIs.
+      - name: Verify pinned Scarp alpha.13 propagation and native service compatibility
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.13/scarp-0.0.6-alpha.13-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha13.zip
+          $actual = (Get-FileHash scarp-alpha13.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne "43a95c012bd04492994e338dc6070cd9af9b3d702e5bb04b10c0ca6e0e1559ce") {
+            throw "Official alpha.13 compiler archive hash mismatch"
+          }
+          Expand-Archive -Path scarp-alpha13.zip -DestinationPath scarp-alpha13
+          $binary = Get-ChildItem scarp-alpha13 -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Official Scarp alpha.13 executable is missing" }
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.13") {
+            throw "Unexpected Scarp alpha.13 compiler version"
+          }
+          # Check both success and early Err forwarding; output is compared
+          # exactly, not just as an unanchored substring.
+          $source = @(
+            'pure funcra bump(value: result<integer, string>) -> result<integer, string> {'
+            '    bind number = value?;'
+            '    return new result<integer, string>::Ok(number + 1);'
+            '}'
+            'match on bump(new result<integer, string>::Ok(41)) {'
+            '    case Ok(value) { print(value); }'
+            '    case Err(_) { print("unexpected"); }'
+            '}'
+            'match on bump(new result<integer, string>::Err("expected failure")) {'
+            '    case Ok(_) { print("unexpected"); }'
+            '    case Err(message) { print(message); }'
+            '}'
+          ) -join "`n"
+          $source | Set-Content -Path scarp-alpha13-propagation.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha13-propagation.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.13 propagation verification failed" }
+          $output = & $binary.FullName exec --diagnostic-format=json -- scarp-alpha13-propagation.srp
+          $status = $LASTEXITCODE
+          if ($status -ne 0 -or ($output -join "`n") -ne "42`nexpected failure") {
+            throw "Scarp alpha.13 propagation execution failed: $($output -join ' / ')"
+          }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.13"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.13" }
+
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate
@@ -57,6 +350,45 @@ jobs:
             "$hash *$(Split-Path -Leaf $file)"
           }
           $lines | Set-Content -Path SHA256SUMS.txt -Encoding ascii
+      - name: Validate exact Windows candidate manifest and reject tampering
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = Join-Path $env:RUNNER_TEMP "scarp-studio-candidate-verification"
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          $exe = "src-tauri/target/release/scarp-studio.exe"
+          $setup = @(Get-ChildItem "src-tauri/target/release/bundle/nsis" -File -Filter "*-setup.exe")
+          if ($setup.Count -ne 1) { throw "Expected one NSIS candidate in CI" }
+          Copy-Item -LiteralPath $exe -Destination $stage
+          Copy-Item -LiteralPath $setup[0].FullName -Destination $stage
+          Copy-Item -LiteralPath "SHA256SUMS.txt" -Destination $stage
+          $runUrl = "https://github.com/scarp-lang/scarp-studio/actions/runs/$env:GITHUB_RUN_ID"
+          & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl
+          # Extra unverified files (including a second plausible installer)
+          # must fail closed even when the original two hashes match.
+          $strayExe = Join-Path $stage "old-build-setup.exe"
+          [System.IO.File]::WriteAllText($strayExe, "not from this run")
+          # Hidden files also count; Get-ChildItem without -Force would miss it.
+          [System.IO.File]::SetAttributes($strayExe, [System.IO.FileAttributes]::Hidden)
+          try {
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl -AsJson | Out-Null
+            throw "Unverified extra Windows executable was erroneously accepted."
+          } catch {
+            if ($_.Exception.Message -notmatch 'exactly three candidate files') { throw }
+            Write-Host "Expected stray-executable rejection test passed."
+          } finally {
+            Remove-Item -LiteralPath $strayExe -Force -ErrorAction SilentlyContinue
+          }
+          # A modified executable must never pass with the old checksum file.
+          $stagedExe = Join-Path $stage "scarp-studio.exe"
+          [System.IO.File]::AppendAllText($stagedExe, "tampered")
+          try {
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl -AsJson | Out-Null
+            throw "Tampered Windows candidate was erroneously accepted."
+          } catch {
+            if ($_.Exception.Message -notmatch 'SHA-256 mismatch') { throw }
+            Write-Host "Expected checksum tamper-rejection test passed."
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: scarp-studio-windows-unbundled
