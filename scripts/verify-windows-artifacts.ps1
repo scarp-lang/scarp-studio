@@ -4,9 +4,10 @@
   Verify a Windows Scarp Studio development candidate without running it.
 .DESCRIPTION
   Reads SHA256SUMS.txt from a small, dedicated folder containing artifacts
-  extracted from ONE exact GitHub Actions workflow run. Requires exactly one
-  unbundled scarp-studio.exe, one *-setup.exe and one checksum manifest.
-  Does not download, install or execute any binary.
+  extracted from ONE exact GitHub Actions workflow run. Requires exactly
+  three files in total: one unbundled scarp-studio.exe, one *-setup.exe and
+  one checksum manifest; rejects all unverified extra files. Does not
+  download, install or execute any binary.
 
   SourceCommit and RunUrl label the evidence; they cannot independently prove
   GitHub provenance. Confirm they match the successful exact-head run in the
@@ -38,6 +39,13 @@ $root = (Resolve-Path -LiteralPath $ArtifactDirectory).ProviderPath
 $allFiles = @(Get-ChildItem -LiteralPath $root -File -Recurse -ErrorAction Stop)
 if ($allFiles.Count -gt 5000) {
   throw 'Artifact folder contains too many files. Use a dedicated, empty extraction folder.'
+}
+# The trial folder must not contain an unverified third executable, DLL,
+# stale installer, or any other file from a different build. Hashing only
+# known names while ignoring extras gives misleading "verified" output.
+# Both GitHub Actions artifact ZIPs together yield exactly these three files.
+if ($allFiles.Count -ne 3) {
+  throw 'Expected exactly three candidate files (scarp-studio.exe, one NSIS *-setup.exe and SHA256SUMS.txt). Remove unexpected or mixed-run files.'
 }
 $manifests = @($allFiles | Where-Object { $_.Name -ceq 'SHA256SUMS.txt' })
 if ($manifests.Count -ne 1) {

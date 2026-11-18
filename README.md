@@ -54,6 +54,7 @@ npm run tauri build -- --no-bundle
 ```
 
 Pull-request CI tests separately SHA-256-pinned official Scarp alpha.10, alpha.11, alpha.12 and alpha.13 compiler archives, builds a Windows executable and an unsigned NSIS installer **candidate**, and uploads checksums. An offline PowerShell verifier (`scripts/verify-windows-artifacts.ps1`) checks both artifacts against their exact-run checksum manifest; CI also tests that a tampered executable is rejected. This does not execute the binaries, prove remote provenance by itself, or replace Windows GUI acceptance.
+- **Strict candidate-folder contents (unreleased draft):** Windows SHA-256 acceptance now rejects *any* extra file in the dedicated candidate folder, including a second old installer; the automated workflow tests this rejection separately from checksum tampering. Only the exact-run executable, its NSIS setup and SHA256SUMS manifest are permitted.
 
 For repeatable Windows GUI verification, see the [Windows 11 acceptance matrix](docs/windows-11-acceptance.md). It records actual GUI outcomes separately from automated CI; no release is authorized by that document.
 
