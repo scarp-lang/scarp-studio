@@ -19,3 +19,25 @@ export function assertWellFormedUtf16(text: string, label: string): void {
     }
   }
 }
+
+/** Adjust a bounded, UI-only UTF-16 preview range so neither edge cuts an
+ * emoji / other supplementary Unicode scalar in half. The returned offsets
+ * are still source offsets; callers may use them for display slicing only.
+ * Monaco navigation and actual edit ranges must use their original offsets.
+ */
+export function unicodeSafePreviewBounds(
+  text: string, requestedStart: number, requestedEnd: number,
+): { start: number; end: number } {
+  let start = requestedStart;
+  let end = requestedEnd;
+  const splitPair = (index: number): boolean => {
+    if (index <= 0 || index >= text.length) return false;
+    const preceding = text.charCodeAt(index - 1);
+    const following = text.charCodeAt(index);
+    return preceding >= 0xd800 && preceding <= 0xdbff &&
+      following >= 0xdc00 && following <= 0xdfff;
+  };
+  if (splitPair(start)) start--;
+  if (splitPair(end)) end++;
+  return { start, end };
+}

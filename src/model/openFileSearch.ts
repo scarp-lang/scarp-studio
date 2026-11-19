@@ -1,5 +1,6 @@
 import type { StudioDocument } from './documents';
 import { lineBreakWidth, nextLineBreak } from './sourceLines';
+import { unicodeSafePreviewBounds } from './utf8Text';
 
 /** Only already-open editor buffers are searched. No filesystem permissions
  * or background file reads are needed. All limits are deliberate UI budgets.
@@ -65,25 +66,16 @@ function isWholeWord(content: string, start: number, end: number): boolean {
     (!after || !isIdentifierCodePoint(after));
 }
 
-/** A substring boundary inside a surrogate pair would manufacture an invalid
- * preview even though the source is valid. Use Monaco's UTF-16 offsets while
- * extending only the clipped display text by one code unit when required.
+/** Source navigation stays at the exact Monaco UTF-16 match offset.
+ * Only its display snippet is extended to avoid splitting Unicode scalars.
  */
-function splitsSurrogatePair(content: string, offset: number): boolean {
-  if (offset <= 0 || offset >= content.length) return false;
-  const previous = content.charCodeAt(offset - 1);
-  const next = content.charCodeAt(offset);
-  return previous >= 0xd800 && previous <= 0xdbff &&
-    next >= 0xdc00 && next <= 0xdfff;
-}
-
 function linePreview(
   content: string, start: number, lineStart: number, lineEnd: number, matchLength: number,
 ): string {
-  let snippetStart = Math.max(lineStart, start - 40);
-  let snippetEnd = Math.min(lineEnd, start + matchLength + 60);
-  if (snippetStart > lineStart && splitsSurrogatePair(content, snippetStart)) snippetStart--;
-  if (snippetEnd < lineEnd && splitsSurrogatePair(content, snippetEnd)) snippetEnd++;
+  const { start: snippetStart, end: snippetEnd } = unicodeSafePreviewBounds(
+    content, Math.max(lineStart, start - 40),
+    Math.min(lineEnd, start + matchLength + 60),
+  );
   return (snippetStart > lineStart ? '…' : '') +
     content.slice(snippetStart, snippetEnd) +
     (snippetEnd < lineEnd ? '…' : '');
