@@ -9,9 +9,9 @@ This is a **manual verification worksheet** for the consolidated development can
   `pwsh -File scripts/verify-windows-artifacts.ps1 -ArtifactDirectory 'C:\\ScarpStudioAcceptance\\artifacts' -SourceCommit '<exact 40-digit commit SHA>' -RunUrl 'https://github.com/scarp-lang/scarp-studio/actions/runs/<exact run ID>'`.
   This checks for missing, duplicate and modified artifacts, but **cannot prove** that a manually supplied run URL or manifest is genuine; verify provenance in GitHub first. Record the exact run URL, commit and results.
 - Record: Scarp Studio source commit, CI run URL, candidate exe SHA-256, installer SHA-256, Windows build, and any code signing information. An unsigned installer is **not** a stable release. Respect Windows security warnings; investigate them rather than bypassing device protection.
-- Obtain the official Scarp `v0.0.6-alpha.13` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.13) and verify the Windows ZIP archive SHA-256:
-  `43a95c012bd04492994e338dc6070cd9af9b3d702e5bb04b10c0ca6e0e1559ce`.
-- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.13`. Scarp Studio must require explicit selection and trust confirmation of that compiler; it must not download or run one automatically.
+- Obtain the official Scarp `v0.0.6-alpha.14` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.14) and verify the Windows ZIP archive SHA-256 against its published GitHub release-asset digest:
+  `d6c523ba4a5bef283a6ce8065ecb05262d07d90e0cb8c8414a3edfa84ee72138`. The installer and compiler archives are distinct files; never compare their hashes interchangeably.
+- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.14`. Scarp Studio must require explicit selection and trust confirmation of that compiler; it must not download or run one automatically. Automated CI also checks alpha.10–alpha.13 backwards compatibility, but this manual pass is against alpha.14.
 - Use only disposable `.srp` files in a test directory, e.g. `C:\\ScarpStudioAcceptance`; keep backups of any data you care about. Never test overwrite handling using real projects.
 
 ## Core editor and saved file behavior
