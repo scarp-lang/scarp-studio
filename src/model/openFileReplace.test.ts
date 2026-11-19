@@ -124,4 +124,12 @@ describe('previewed, literal replacements in open buffers only', () => {
     expect(preview.changes[0].snapshot.path).toBeNull();
     expect(preview.changes[0].content).toBe('replacement');
   });
+  it('refuses replacements producing malformed UTF-16 without mutating any buffer', () => {
+    const document = doc(1, 'bind greeting = "hello";');
+    expect(() => planOpenFileReplacement(
+      [document], 'hello', '\uD800', options,
+    )).toThrow(/unpaired UTF-16 surrogate/);
+    expect(document.content).toBe('bind greeting = "hello";');
+    expect(document.savedContent).toBe(document.content);
+  });
 });

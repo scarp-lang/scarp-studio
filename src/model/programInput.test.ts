@@ -28,4 +28,10 @@ describe('bounded explicit Scarp program input', () => {
     expect(() => validateProgramInput('a'.repeat(MAX_INPUT_LINE_BYTES - 2) + '\r\n')).not.toThrow();
     expect(() => validateProgramInput('a'.repeat(MAX_INPUT_LINE_BYTES - 1) + '\r\n')).toThrow('4096');
   });
+  it('refuses malformed UTF-16 rather than sending silent replacement characters as stdin', () => {
+    for (const input of ['one\uD800', '\uDC00two', '😀\uD83D']) {
+      expect(() => validateProgramInput(input)).toThrow(/Program input.*unpaired UTF-16 surrogate/);
+    }
+    expect(() => validateProgramInput('नमस्ते 😀\nOK')).not.toThrow();
+  });
 });

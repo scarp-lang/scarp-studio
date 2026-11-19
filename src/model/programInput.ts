@@ -1,3 +1,5 @@
+import { assertWellFormedUtf16 } from './utf8Text';
+
 /** Fixed Studio limits smaller than the Scarp CLI defaults.
  * A Run receives only this explicit, session-local UTF-8 snapshot.
  * Native Rust repeats every check; UI validation is not a security boundary.
@@ -16,6 +18,8 @@ export function validateProgramInput(input: string): void {
   if (bytes.byteLength > MAX_INPUT_BYTES) {
     throw new Error('Program input exceeds Studio\'s 16 KiB UTF-8 limit.');
   }
+  // TextEncoder would otherwise silently replace unpaired UTF-16 with U+FFFD.
+  assertWellFormedUtf16(input, 'Program input');
   if (!bytes.length) return;
   let lineBytes = 0;
   let lines = 1;

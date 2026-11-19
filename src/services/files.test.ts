@@ -159,4 +159,11 @@ describe('safe .srp file writes', () => {
     expect(writeTextFile).toHaveBeenCalledWith('C:/project/backup.srp', 'new');
   });
 
+  it('never opens a dialog or writes if the buffer has an unpaired Unicode surrogate', async () => {
+    const document = { ...createUntitled(8), content: 'print("\uD800");' };
+    await expect(writeSourceFile(document, true, [])).rejects.toThrow(/unpaired UTF-16 surrogate/);
+    expect(save).not.toHaveBeenCalled();
+    expect(readScarpSource).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
 });
