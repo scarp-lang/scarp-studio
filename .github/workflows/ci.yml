@@ -438,6 +438,21 @@ jobs:
           } finally {
             Remove-Item -LiteralPath $strayExe -Force -ErrorAction SilentlyContinue
           }
+          # A hidden empty folder has no files to count. It must still fail
+          # the exact-folder rule rather than hiding mixed-run contents.
+          $strayFolder = Join-Path $stage "old-extracted-artifact"
+          New-Item -ItemType Directory -Path $strayFolder -Force | Out-Null
+          $folderInfo = Get-Item -LiteralPath $strayFolder -Force
+          $folderInfo.Attributes = $folderInfo.Attributes -bor [System.IO.FileAttributes]::Hidden
+          try {
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl -AsJson | Out-Null
+            throw "Hidden stray Windows candidate directory was erroneously accepted."
+          } catch {
+            if ($_.Exception.Message -notmatch 'exactly three candidate files') { throw }
+            Write-Host "Expected hidden-directory rejection test passed."
+          } finally {
+            Remove-Item -LiteralPath $strayFolder -Recurse -Force -ErrorAction SilentlyContinue
+          }
           # A modified executable must never pass with the old checksum file.
           $stagedExe = Join-Path $stage "scarp-studio.exe"
           [System.IO.File]::AppendAllText($stagedExe, "tampered")
