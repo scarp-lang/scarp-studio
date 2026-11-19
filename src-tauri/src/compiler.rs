@@ -546,8 +546,14 @@ fn compiler_supports_reserved(
 ) -> Result<bool, String> {
     let args = [OsString::from("guide"), OsString::from(verb)];
     let result = process_with_input_reserved(
-        binary, &args, None, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT,
-        runtime, None, reservation,
+        binary,
+        &args,
+        None,
+        PROBE_TIMEOUT,
+        PROBE_OUTPUT_LIMIT,
+        runtime,
+        None,
+        reservation,
     )?;
     if result.cancelled {
         return Err("Scarp compiler capability probe was cancelled.".into());
@@ -681,9 +687,8 @@ pub async fn scarp_probe(
     let runtime = state.inner().clone();
     let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let result = probe_reserved(&binary, Some(&runtime), Some(&reserved)).map(|(_, version)| {
-            format!("Scarp {version} — exec and static verify available")
-        });
+        let result = probe_reserved(&binary, Some(&runtime), Some(&reserved))
+            .map(|(_, version)| format!("Scarp {version} — exec and static verify available"));
         release_job(&runtime, reserved.id);
         result
     })
@@ -1268,9 +1273,15 @@ mod tests {
             let slot = runtime.active.lock().unwrap();
             let job = slot.as_ref().expect("reservation survives each subprocess");
             assert_eq!(job.id, reserved.id);
-            assert!(job.child.is_none(), "completed child handle must be cleared");
+            assert!(
+                job.child.is_none(),
+                "completed child handle must be cleared"
+            );
             drop(slot); // Do not call reserve_job while holding the same mutex.
-            assert!(reserve_job(&runtime).is_err(), "another job must not take the slot");
+            assert!(
+                reserve_job(&runtime).is_err(),
+                "another job must not take the slot"
+            );
         }
         release_job(&runtime, reserved.id);
         assert!(runtime.active.lock().unwrap().is_none());
@@ -1297,18 +1308,32 @@ mod tests {
         });
         let started = Instant::now();
         loop {
-            let spawned = runtime.active.lock().unwrap().as_ref()
+            let spawned = runtime
+                .active
+                .lock()
+                .unwrap()
+                .as_ref()
                 .is_some_and(|job| job.child.is_some());
-            if spawned { break; }
-            assert!(started.elapsed() < Duration::from_secs(8), "probe child did not launch");
+            if spawned {
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(8),
+                "probe child did not launch"
+            );
             thread::sleep(Duration::from_millis(10));
         }
         assert!(cancel_active_job(&runtime).unwrap());
         let result = worker.join().unwrap().expect("cancelled probe result");
         assert!(result.cancelled, "native Stop must be visible to the probe");
-        assert!(!result.status.success(), "Stop must kill the active probe child");
+        assert!(
+            !result.status.success(),
+            "Stop must kill the active probe child"
+        );
         let slot = runtime.active.lock().unwrap();
-        let job = slot.as_ref().expect("cancelled probe reservation remains until worker exits");
+        let job = slot
+            .as_ref()
+            .expect("cancelled probe reservation remains until worker exits");
         assert_eq!(job.id, reserved.id);
         assert!(job.child.is_none());
         assert!(job.cancelled.load(Ordering::SeqCst));
@@ -1322,7 +1347,9 @@ mod tests {
             Some(&runtime),
             None,
             Some(&reserved),
-        ).err().expect("cancelled reservation must not spawn another process");
+        )
+        .err()
+        .expect("cancelled reservation must not spawn another process");
         assert!(blocked.contains("cancelled before launch"), "{blocked}");
         release_job(&runtime, reserved.id);
         assert!(!cancel_active_job(&runtime).unwrap());
