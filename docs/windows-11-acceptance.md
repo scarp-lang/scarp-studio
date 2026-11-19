@@ -70,6 +70,8 @@ This is a **manual verification worksheet** for the consolidated development can
 | P21 | Search or preview Replace All in a saved file, close and reopen that identical file, then try to use the old hit/preview | Reopened file has a newer generation; stale search navigation and Replace All are refused | NOT RUN |
 | P22 | Open a disposable `.srp` buffer using mixed CR-only, CRLF and LF lines plus emoji; search across open buffers and navigate matching results | Search line/UTF-16 column numbers land at the actual Monaco locations; result previews do not include text from adjacent CR-only lines | NOT RUN |
 | P23 | Open a `.srp` buffer with multiple `funcra` declarations separated by CR-only, CRLF and LF line endings; use the function outline to jump to each | Function outline line numbers and columns match Monaco positions, including declarations after lone CR | NOT RUN |
+| P24 | In open-buffer Find/Replace, use **Whole Word** on `a` in `a◌́` (a plus combining acute), `a` followed by a Unicode joiner, and a standalone `a` | Matches only standalone whole words; no replacement splits a decomposed word or a joined identifier | NOT RUN |
+| P25 | Search for a term between long runs of text whose preview boundary falls inside an emoji at either edge | The preview shows complete emoji, not replacement glyphs or broken halves; the result still navigates using exact UTF-16 columns | NOT RUN |
 
 ## Official compiler alpha.13 (interpreter CLI; alpha.12 source features remain supported)
 

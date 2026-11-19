@@ -43,7 +43,10 @@ function quoteForRegex(query: string): string {
 }
 
 function isIdentifierCodePoint(char: string): boolean {
-  return /[\p{L}\p{N}_]/u.test(char);
+  // Unicode ID_Continue includes combining marks, connector punctuation and
+  // joiners. Splitting an identifier between a base letter and a mark can
+  // make whole-word Replace All accidentally alter only part of a name.
+  return /[\p{ID_Continue}]/u.test(char);
 }
 
 function previousCharacter(content: string, index: number): string {
@@ -62,11 +65,25 @@ function isWholeWord(content: string, start: number, end: number): boolean {
     (!after || !isIdentifierCodePoint(after));
 }
 
+/** A substring boundary inside a surrogate pair would manufacture an invalid
+ * preview even though the source is valid. Use Monaco's UTF-16 offsets while
+ * extending only the clipped display text by one code unit when required.
+ */
+function splitsSurrogatePair(content: string, offset: number): boolean {
+  if (offset <= 0 || offset >= content.length) return false;
+  const previous = content.charCodeAt(offset - 1);
+  const next = content.charCodeAt(offset);
+  return previous >= 0xd800 && previous <= 0xdbff &&
+    next >= 0xdc00 && next <= 0xdfff;
+}
+
 function linePreview(
   content: string, start: number, lineStart: number, lineEnd: number, matchLength: number,
 ): string {
-  const snippetStart = Math.max(lineStart, start - 40);
-  const snippetEnd = Math.min(lineEnd, start + matchLength + 60);
+  let snippetStart = Math.max(lineStart, start - 40);
+  let snippetEnd = Math.min(lineEnd, start + matchLength + 60);
+  if (snippetStart > lineStart && splitsSurrogatePair(content, snippetStart)) snippetStart--;
+  if (snippetEnd < lineEnd && splitsSurrogatePair(content, snippetEnd)) snippetEnd++;
   return (snippetStart > lineStart ? '…' : '') +
     content.slice(snippetStart, snippetEnd) +
     (snippetEnd < lineEnd ? '…' : '');
