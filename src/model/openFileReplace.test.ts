@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createUntitled, type StudioDocument } from './documents';
 import { MAX_SEARCH_RESULTS } from './openFileSearch';
 import { MAX_REPLACEMENT_TEXT_UNITS, planOpenFileReplacement } from './openFileReplace';
+import { assertWellFormedUtf16 } from './utf8Text';
 
 const options = { caseSensitive: false, wholeWord: false };
 function doc(number: number, content: string): StudioDocument {
@@ -102,6 +103,22 @@ describe('previewed, literal replacements in open buffers only', () => {
       'x', 'z', options)).toThrow('incomplete');
   });
 
+  it('preserves complete emoji pairs at both Replace All preview clipping edges', () => {
+    // 1-based requested start and requested end both fall between an emoji's
+    // high and low surrogate: the source edit itself must remain unaffected.
+    const source = '😀' + 'x'.repeat(31) + 'needle' + 'y'.repeat(43) + '😀tail';
+    const document = doc(1, source);
+    const plan = planOpenFileReplacement([document], 'needle', 'value', options);
+    expect(plan.totalReplacements).toBe(1);
+    const change = plan.changes[0];
+    expect(change.previewBefore).toBe('😀' + 'x'.repeat(31) + 'needle' + 'y'.repeat(43) + '😀');
+    expect(change.previewAfter).toBe('😀' + 'x'.repeat(31) + 'value' + 'y'.repeat(43) + '😀');
+    expect(() => assertWellFormedUtf16(change.previewBefore, 'Preview')).not.toThrow();
+    expect(() => assertWellFormedUtf16(change.previewAfter, 'Preview')).not.toThrow();
+    expect(change.content).toBe(source.replace('needle', 'value'));
+    expect(document.content).toBe(source);
+  });
+
   it('rejects oversized and multiline replacement input', () => {
     expect(() => planOpenFileReplacement([doc(1, 'a')], 'a',
       'z'.repeat(MAX_REPLACEMENT_TEXT_UNITS + 1), options)).toThrow('256');
@@ -123,5 +140,13 @@ describe('previewed, literal replacements in open buffers only', () => {
     const preview = planOpenFileReplacement([untitled], 'needle', 'replacement', options);
     expect(preview.changes[0].snapshot.path).toBeNull();
     expect(preview.changes[0].content).toBe('replacement');
+  });
+  it('refuses replacements producing malformed UTF-16 without mutating any buffer', () => {
+    const document = doc(1, 'bind greeting = "hello";');
+    expect(() => planOpenFileReplacement(
+      [document], 'hello', '\uD800', options,
+    )).toThrow(/unpaired UTF-16 surrogate/);
+    expect(document.content).toBe('bind greeting = "hello";');
+    expect(document.savedContent).toBe(document.content);
   });
 });

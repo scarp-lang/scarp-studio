@@ -29,7 +29,7 @@ function count(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 64;
 }
 
-function validTestPath(path: unknown): path is string {
+export function isScarpTestReportPath(path: unknown): path is string {
   if (typeof path !== 'string' || !path.startsWith('tests/') || path.length > 512) return false;
   const name = path.slice(6);
   return name.length > 4 && name.toLowerCase().endsWith('.srp') &&
@@ -52,7 +52,7 @@ export function parseScarpTestReport(json: string | null): ScarpTestReport | nul
   const seen = new Set<string>();
   for (const rawCase of root.tests as unknown[]) {
     const item = record(rawCase);
-    if (!item || !validTestPath(item.path) || seen.has(item.path)) return null;
+    if (!item || !isScarpTestReportPath(item.path) || seen.has(item.path)) return null;
     seen.add(item.path);
     const status: ScarpTestStatus | null = item.status === 'discovered' ||
       item.status === 'passed' || item.status === 'failed' ? item.status : null;

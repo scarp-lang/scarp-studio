@@ -1,5 +1,6 @@
 import type { StudioDocument } from './documents';
 import { lineBreakWidth, nextLineBreak } from './sourceLines';
+import { unicodeSafePreviewBounds } from './utf8Text';
 
 /** Only already-open editor buffers are searched. No filesystem permissions
  * or background file reads are needed. All limits are deliberate UI budgets.
@@ -43,7 +44,10 @@ function quoteForRegex(query: string): string {
 }
 
 function isIdentifierCodePoint(char: string): boolean {
-  return /[\p{L}\p{N}_]/u.test(char);
+  // Unicode ID_Continue includes combining marks, connector punctuation and
+  // joiners. Splitting an identifier between a base letter and a mark can
+  // make whole-word Replace All accidentally alter only part of a name.
+  return /[\p{ID_Continue}]/u.test(char);
 }
 
 function previousCharacter(content: string, index: number): string {
@@ -62,11 +66,16 @@ function isWholeWord(content: string, start: number, end: number): boolean {
     (!after || !isIdentifierCodePoint(after));
 }
 
+/** Source navigation stays at the exact Monaco UTF-16 match offset.
+ * Only its display snippet is extended to avoid splitting Unicode scalars.
+ */
 function linePreview(
   content: string, start: number, lineStart: number, lineEnd: number, matchLength: number,
 ): string {
-  const snippetStart = Math.max(lineStart, start - 40);
-  const snippetEnd = Math.min(lineEnd, start + matchLength + 60);
+  const { start: snippetStart, end: snippetEnd } = unicodeSafePreviewBounds(
+    content, Math.max(lineStart, start - 40),
+    Math.min(lineEnd, start + matchLength + 60),
+  );
   return (snippetStart > lineStart ? '…' : '') +
     content.slice(snippetStart, snippetEnd) +
     (snippetEnd < lineEnd ? '…' : '');

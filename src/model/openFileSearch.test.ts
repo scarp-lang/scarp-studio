@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createUntitled, updateContent, type StudioDocument } from './documents';
+import { assertWellFormedUtf16 } from './utf8Text';
 import {
   MAX_SEARCH_CANDIDATES, MAX_SEARCH_CONTENT_UNITS, MAX_SEARCH_DOCUMENTS,
   MAX_SEARCH_QUERY_UNITS, MAX_SEARCH_RESULTS, isCurrentSearchHit, searchOpenFiles,
@@ -87,6 +88,36 @@ describe('bounded search across open Scarp buffers', () => {
     });
     expect(result.hits.map((hit) => hit.offset))
       .toEqual([0, content.lastIndexOf('résumé')]);
+  });
+
+  it('does not split decomposed Unicode identifiers, combining marks or joiners', () => {
+    // A base letter followed by a combining mark is still a word continuation.
+    // A joiner and connector punctuation are also Unicode ID_Continue.
+    const content = 'a\u0301 a\u200Db a\u203Ftail a';
+    const result = searchOpenFiles([source(1, content)], 'a', {
+      ...defaults, wholeWord: true,
+    });
+    expect(result.error).toBeNull();
+    expect(result.hits.map((hit) => hit.offset)).toEqual([content.lastIndexOf('a')]);
+    // Match starts inside an identifier must be rejected as well.
+    const beforeMark = 'x\u0301b b';
+    const after = searchOpenFiles([source(1, beforeMark)], 'b', {
+      ...defaults, wholeWord: true,
+    });
+    expect(after.hits.map((hit) => hit.offset)).toEqual([beforeMark.lastIndexOf('b')]);
+  });
+
+  it('keeps complete emoji pairs when both preview clipping edges split UTF-16 pairs', () => {
+    const content = '😀' + 'x'.repeat(39) + 'needle' + 'b'.repeat(59) + '😀tail';
+    const result = searchOpenFiles([source(1, content)], 'needle', defaults);
+    expect(result.hits).toHaveLength(1);
+    const hit = result.hits[0];
+    expect(hit.offset).toBe(41);
+    expect(hit.column).toBe(42);
+    expect(hit.preview).toBe(
+      '😀' + 'x'.repeat(39) + 'needle' + 'b'.repeat(59) + '😀…',
+    );
+    expect(() => assertWellFormedUtf16(hit.preview, 'Search preview')).not.toThrow();
   });
 
   it('handles supplementary Unicode surrounding identifier boundaries', () => {

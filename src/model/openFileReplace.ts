@@ -1,4 +1,5 @@
 import { assertScarpSourceText } from './sourceLimits';
+import { unicodeSafePreviewBounds } from './utf8Text';
 import type { StudioDocument } from './documents';
 import { searchOpenFiles, type SearchOptions } from './openFileSearch';
 import type { BufferReplacement } from './editorState';
@@ -66,8 +67,11 @@ export function planOpenFileReplacement(
     if (content === document.content) continue;
     assertScarpSourceText(content);
     const first = hits[0];
-    const start = Math.max(0, first.offset - 32);
-    const end = Math.min(document.content.length, first.offset + first.matchText.length + 44);
+    const { start, end } = unicodeSafePreviewBounds(
+      document.content,
+      Math.max(0, first.offset - 32),
+      Math.min(document.content.length, first.offset + first.matchText.length + 44),
+    );
     const previewBefore = document.content.slice(start, end).replace(/[\r\n]+/g, ' ↵ ');
     const previewAfter = (
       document.content.slice(start, first.offset) + replacement +

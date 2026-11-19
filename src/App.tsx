@@ -37,6 +37,7 @@ import {
 } from './model/verifiedSource';
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReport, type ScarpTestReport } from './model/projectTestReport';
+import { resolveListedTestSource } from './model/projectTestNavigation';
 import { dirtyProjectSourceNames } from './model/projectSourceState';
 
 import {
@@ -827,6 +828,20 @@ export default function App() {
     editor.focus();
   }
 
+  function openProjectTestSource(testPath: string, reportFolder: string): void {
+    // Re-resolve on click: the report may outlive an Explorer refresh or
+    // project change. The shared openFolderFile path also rejects stale
+    // async reads and preserves existing dirty editor buffers.
+    const path = resolveListedTestSource(
+      testPath, reportFolder, selectedFolderRef.current,
+    );
+    if (!path || folderPath !== reportFolder) {
+      setError('This test source is not in the current Scarp Explorer listing. Refresh Explorer and try again.');
+      return;
+    }
+    void openFolderFile(path);
+  }
+
   async function runProjectAction(action: ScarpProjectAction): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
         saveInProgress.current || filePickerInProgress.current ||
@@ -1576,6 +1591,15 @@ export default function App() {
                       <strong>{test.status === 'passed' ? 'PASS' :
                         test.status === 'failed' ? 'FAIL' : 'TEST'}</strong>
                       <span>{test.path}</span>
+                      <button type="button" className="project-test-open"
+                        disabled={busy || compilerBusy || compilerSelecting ||
+                          !resolveListedTestSource(
+                            test.path, projectTestResult.folder, selectedFolderRef.current,
+                          )}
+                        onClick={() => openProjectTestSource(test.path, projectTestResult.folder)}
+                        title="Open only if this test is in the current Scarp Explorer listing">
+                        Open Source
+                      </button>
                       {test.message && (
                         <div className="project-test-error">
                           <strong>{test.code || test.phase || 'Scarp test failure'}</strong>

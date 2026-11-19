@@ -5,9 +5,10 @@
 .DESCRIPTION
   Reads SHA256SUMS.txt from a small, dedicated folder containing artifacts
   extracted from ONE exact GitHub Actions workflow run. Requires exactly
-  three files in total: one unbundled scarp-studio.exe, one *-setup.exe and
-  one checksum manifest; rejects all unverified extra files. Does not
-  download, install or execute any binary.
+  three regular files directly in the candidate folder: one unbundled
+  scarp-studio.exe, one *-setup.exe and one checksum manifest. Rejects extra
+  files (including hidden), empty/nested directories and reparse-point links.
+  Does not download, install or execute any binary.
 
   SourceCommit and RunUrl label the evidence; they cannot independently prove
   GitHub provenance. Confirm they match the successful exact-head run in the
@@ -35,20 +36,27 @@ $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $ArtifactDirectory -PathType Container)) {
   throw 'ArtifactDirectory must be an existing, dedicated folder.'
 }
+# Resolve the actual candidate directory without traversing arbitrary nested
+# folders or following linked entries. An ordinary user-supplied junction or
+# symlink must not make this a different verification scope.
+$rootItem = Get-Item -LiteralPath $ArtifactDirectory -Force -ErrorAction Stop
+if (($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+  throw 'ArtifactDirectory must be a real directory, not a link or reparse point.'
+}
 $root = (Resolve-Path -LiteralPath $ArtifactDirectory).ProviderPath
-# -Force is essential: hidden/system files must not bypass the exact-folder
-# file-count gate, including hidden old installers or extra DLLs.
-$allFiles = @(Get-ChildItem -LiteralPath $root -File -Recurse -Force -ErrorAction Stop)
-if ($allFiles.Count -gt 5000) {
-  throw 'Artifact folder contains too many files. Use a dedicated, empty extraction folder.'
+# -Force is essential: hidden/system files and directories must not bypass
+# the count. Verify only the three direct children; never recurse into a
+# symlink/junction or accept an unverified nested/extracted folder.
+$entries = @(Get-ChildItem -LiteralPath $root -Force -ErrorAction Stop)
+if ($entries.Count -ne 3 -or @($entries | Where-Object { $_.PSIsContainer }).Count -ne 0) {
+  throw 'Expected exactly three candidate files (scarp-studio.exe, one NSIS *-setup.exe and SHA256SUMS.txt) at the folder root; no extra files or directories.'
 }
-# The trial folder must not contain an unverified third executable, DLL,
-# stale installer, or any other file from a different build. Hashing only
-# known names while ignoring extras gives misleading "verified" output.
-# Both GitHub Actions artifact ZIPs together yield exactly these three files.
-if ($allFiles.Count -ne 3) {
-  throw 'Expected exactly three candidate files (scarp-studio.exe, one NSIS *-setup.exe and SHA256SUMS.txt). Remove unexpected or mixed-run files.'
+if (@($entries | Where-Object {
+  ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+}).Count -ne 0) {
+  throw 'Candidate files must be regular files, not symbolic links or reparse points.'
 }
+$allFiles = $entries
 $manifests = @($allFiles | Where-Object { $_.Name -ceq 'SHA256SUMS.txt' })
 if ($manifests.Count -ne 1) {
   throw 'Expected exactly one SHA256SUMS.txt from the exact Windows CI run.'
