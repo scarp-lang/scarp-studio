@@ -284,7 +284,19 @@ fn process_with_input_reserved(
     if let (Some(runtime), Some(id)) = (runtime, job_id) {
         if let Ok(mut slot) = runtime.active.lock() {
             if slot.as_ref().is_some_and(|job| job.id == id) {
-                *slot = None;
+                if reservation.is_some() {
+                    // A reserved Run/Verify/Project/selection may spawn up to
+                    // three sequential capability subprocesses before doing
+                    // real work. Retain its reservation between processes,
+                    // but drop the completed child handle. Stop can now
+                    // cancel the NEXT probe or launch without another job
+                    // stealing this slot in between.
+                    if let Some(job) = slot.as_mut() {
+                        job.child = None;
+                    }
+                } else {
+                    *slot = None;
+                }
             }
         }
     }
@@ -468,7 +480,8 @@ pub async fn scarp_project_action(
                 return Err("Program input and prompt mode are allowed only for Run Project.".into());
             }
             let root = selected_project_root(&folder)?;
-            let (binary, version) = probe(&binary)?;
+            let (binary, version) =
+                probe_reserved(&binary, Some(&runtime), Some(&reserved))?;
             let args = if action == "run" {
                 project_run_args(&root, wants_prompt)
             } else {
@@ -522,33 +535,69 @@ pub async fn scarp_project_action(
     .map_err(|e| format!("Scarp project worker failed: {e}"))?
 }
 
-fn compiler_supports(binary: &Path, verb: &str) -> Result<bool, String> {
+/// Capability probes share a single reserved job ID across --version,
+/// guide exec, and guide verify. Stop may terminate whichever child is active;
+/// a cancelled reservation must never start the next child or user source.
+fn compiler_supports_reserved(
+    binary: &Path,
+    verb: &str,
+    runtime: Option<&CompilerRuntime>,
+    reservation: Option<&ActiveJob>,
+) -> Result<bool, String> {
     let args = [OsString::from("guide"), OsString::from(verb)];
-    let result = process(binary, &args, None, PROBE_TIMEOUT, PROBE_OUTPUT_LIMIT, None)?;
+    let result = process_with_input_reserved(
+        binary,
+        &args,
+        None,
+        PROBE_TIMEOUT,
+        PROBE_OUTPUT_LIMIT,
+        runtime,
+        None,
+        reservation,
+    )?;
+    if result.cancelled {
+        return Err("Scarp compiler capability probe was cancelled.".into());
+    }
     Ok(result.status.success()
         && !result.truncated
         && result.stdout.starts_with(&format!("Usage: scarp {verb}")))
 }
 
-fn probe(binary: &str) -> Result<(PathBuf, String), String> {
+fn probe_reserved(
+    binary: &str,
+    runtime: Option<&CompilerRuntime>,
+    reservation: Option<&ActiveJob>,
+) -> Result<(PathBuf, String), String> {
     let binary = compiler_binary(binary)?;
-    let result = process(
+    let result = process_with_input_reserved(
         &binary,
         &[OsString::from("--version")],
         None,
         PROBE_TIMEOUT,
         PROBE_OUTPUT_LIMIT,
+        runtime,
         None,
+        reservation,
     )?;
+    if result.cancelled {
+        return Err("Scarp compiler version probe was cancelled.".into());
+    }
     if !result.status.success() || result.truncated {
         return Err("Scarp --version failed or returned invalid output.".into());
     }
     let version = parse_version(&result.stdout)
         .ok_or("The executable did not report a valid Scarp version.")?;
-    if !compiler_supports(&binary, "exec")? || !compiler_supports(&binary, "verify")? {
+    if !compiler_supports_reserved(&binary, "exec", runtime, reservation)?
+        || !compiler_supports_reserved(&binary, "verify", runtime, reservation)?
+    {
         return Err("This Scarp build does not advertise both exec and static verify.".into());
     }
     Ok((binary, version))
+}
+
+/// Direct Rust integration tests may probe without an active Studio job.
+fn probe(binary: &str) -> Result<(PathBuf, String), String> {
+    probe_reserved(binary, None, None)
 }
 
 fn ensure_matching_disk_snapshot(source: &Path, expected_content: &str) -> Result<(), String> {
@@ -631,12 +680,17 @@ fn command_args_with_input(
 
 /// Probe only the executable selected by the user. No execution or PATH search.
 #[tauri::command]
-pub async fn scarp_probe(binary: String) -> Result<String, String> {
+pub async fn scarp_probe(
+    binary: String,
+    state: tauri::State<'_, CompilerRuntime>,
+) -> Result<String, String> {
+    let runtime = state.inner().clone();
+    let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let (_, version) = probe(&binary)?;
-        Ok(format!(
-            "Scarp {version} — exec and static verify available"
-        ))
+        let result = probe_reserved(&binary, Some(&runtime), Some(&reserved))
+            .map(|(_, version)| format!("Scarp {version} — exec and static verify available"));
+        release_job(&runtime, reserved.id);
+        result
     })
     .await
     .map_err(|e| format!("Scarp probe worker failed: {e}"))?
@@ -667,7 +721,9 @@ pub async fn scarp_execute(
             validate_stdin(&stdin_text)?;
             let mut args = command_args_with_input(&mode, &source, !stdin_text.is_empty())?;
             let (binary, version) =
-                with_verified_source_snapshot(&source, &expected_content, || probe(&binary))?;
+                with_verified_source_snapshot(&source, &expected_content, || {
+                    probe_reserved(&binary, Some(&runtime), Some(&reserved))
+                })?;
             if interactive.unwrap_or(false) {
                 if mode != "exec" || !supports_prompt_input(&version) {
                     return Err("Prompt Run requires the official Scarp v0.0.6-alpha.10 CLI with --interactive support.".into());
@@ -975,6 +1031,26 @@ mod tests {
         let selected = std::env::var("SCARP_TEST_BIN")
             .expect("CI must explicitly provide the verified official Scarp executable");
         let (binary, version) = probe(&selected).expect("official compiler probe");
+        // Studio's actual selection/Run path reserves the same job across
+        // all three probe subprocesses and keeps Stop available throughout.
+        let selected_runtime = CompilerRuntime::default();
+        let selected_reservation = reserve_job(&selected_runtime).unwrap();
+        let (reserved_binary, reserved_version) = probe_reserved(
+            &selected,
+            Some(&selected_runtime),
+            Some(&selected_reservation),
+        )
+        .expect("official compiler reserved probe");
+        assert_eq!(reserved_binary, binary);
+        assert_eq!(reserved_version, version);
+        assert!(selected_runtime
+            .active
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|job| job.id == selected_reservation.id && job.child.is_none()));
+        release_job(&selected_runtime, selected_reservation.id);
+        assert!(selected_runtime.active.lock().unwrap().is_none());
         let expected_version = std::env::var("SCARP_TEST_EXPECTED_VERSION")
             .expect("CI must explicitly provide the pinned Scarp compiler version");
         assert_eq!(version, expected_version);
@@ -1171,6 +1247,111 @@ mod tests {
         assert!(result.cancelled, "Stop must be observable by the worker");
         assert!(!result.status.success(), "Stop must terminate the child");
         assert!(runtime.active.lock().unwrap().is_none());
+        assert!(!cancel_active_job(&runtime).unwrap());
+    }
+
+    #[test]
+    fn reserved_probe_children_keep_the_slot_between_launches() {
+        let binary = std::env::current_exe().unwrap();
+        let runtime = CompilerRuntime::default();
+        let reserved = reserve_job(&runtime).unwrap();
+        let args = [OsString::from("--list")];
+        for _ in 0..2 {
+            let result = process_with_input_reserved(
+                &binary,
+                &args,
+                None,
+                Duration::from_secs(8),
+                4096,
+                Some(&runtime),
+                None,
+                Some(&reserved),
+            )
+            .expect("reserved capability subprocess");
+            assert!(result.status.success());
+            assert!(!result.cancelled);
+            let slot = runtime.active.lock().unwrap();
+            let job = slot.as_ref().expect("reservation survives each subprocess");
+            assert_eq!(job.id, reserved.id);
+            assert!(
+                job.child.is_none(),
+                "completed child handle must be cleared"
+            );
+            drop(slot); // Do not call reserve_job while holding the same mutex.
+            assert!(
+                reserve_job(&runtime).is_err(),
+                "another job must not take the slot"
+            );
+        }
+        release_job(&runtime, reserved.id);
+        assert!(runtime.active.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn stop_during_reserved_probe_kills_child_and_blocks_followup_launch() {
+        let binary = std::env::current_exe().unwrap();
+        let runtime = CompilerRuntime::default();
+        let reserved = reserve_job(&runtime).unwrap();
+        let worker_runtime = runtime.clone();
+        let worker_reservation = reserved.clone();
+        let worker = thread::spawn(move || {
+            process_with_input_reserved(
+                &binary,
+                &slow_test_process_args(),
+                None,
+                Duration::from_secs(12),
+                4096,
+                Some(&worker_runtime),
+                None,
+                Some(&worker_reservation),
+            )
+        });
+        let started = Instant::now();
+        loop {
+            let spawned = runtime
+                .active
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|job| job.child.is_some());
+            if spawned {
+                break;
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(8),
+                "probe child did not launch"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(cancel_active_job(&runtime).unwrap());
+        let result = worker.join().unwrap().expect("cancelled probe result");
+        assert!(result.cancelled, "native Stop must be visible to the probe");
+        assert!(
+            !result.status.success(),
+            "Stop must kill the active probe child"
+        );
+        let slot = runtime.active.lock().unwrap();
+        let job = slot
+            .as_ref()
+            .expect("cancelled probe reservation remains until worker exits");
+        assert_eq!(job.id, reserved.id);
+        assert!(job.child.is_none());
+        assert!(job.cancelled.load(Ordering::SeqCst));
+        drop(slot);
+        let blocked = process_with_input_reserved(
+            &std::env::current_exe().unwrap(),
+            &slow_test_process_args(),
+            None,
+            Duration::from_secs(1),
+            4096,
+            Some(&runtime),
+            None,
+            Some(&reserved),
+        )
+        .err()
+        .expect("cancelled reservation must not spawn another process");
+        assert!(blocked.contains("cancelled before launch"), "{blocked}");
+        release_job(&runtime, reserved.id);
         assert!(!cancel_active_job(&runtime).unwrap());
     }
 

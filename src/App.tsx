@@ -1519,8 +1519,8 @@ export default function App() {
                 <button onClick={() => void runCompiler('verify')}
                   disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
                   title="Statically verify saved Scarp source without runtime execution">Verify</button>
-                <button onClick={() => void stopCompiler()} disabled={!compilerBusy}
-                  title="Stop the active compiler process">Stop</button>
+                <button onClick={() => void stopCompiler()} disabled={!compilerBusy && !compilerSelecting}
+                  title="Stop a running Scarp process or compiler capability probe">Stop</button>
               </div>
             </div>
             <div className="compiler-meta">{compilerInfo || (compilerPath
