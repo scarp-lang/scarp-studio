@@ -79,17 +79,18 @@ This is a **manual verification worksheet** for the consolidated development can
 
 | ID | Action | Required outcome | Result / evidence |
 | --- | --- | --- | --- |
-| C01 | Explicitly select verified official alpha.13 `scarp.exe`, accept trust prompt | Studio reports version; remains idle until explicit Run or Verify | NOT RUN |
+| C01 | Explicitly select verified official alpha.14 `scarp.exe`, accept trust prompt | Studio reports version; remains idle until explicit Run or Verify | NOT RUN |
 | C02 | Create **Typed Records** starter; save, Verify, Run | Record syntax verified; result prints `Review` | NOT RUN |
 | C03 | Create **Tagged Variants** starter; save, Verify, Run | Exhaustive case match executes; output contains `42` | NOT RUN |
 | C04 | Create **Typed Lists and Maps** starter; save, Verify, Run | Interpreter evaluates immutable snapshots and typed map lookup | NOT RUN |
 | C05 | Create **Option Propagation** starter; save, Verify, Run | Checked optional early return works; result displays `true` | NOT RUN |
-| C06 | Open alpha.11 exact decimal starter with alpha.13, Verify/Run; test decimal prompt with preloaded input | Exact decimal and prompted input work in supported mode | NOT RUN |
+| C06 | Open alpha.11 exact decimal starter with alpha.14, Verify/Run; test decimal prompt with preloaded input | Exact decimal and prompted input work in supported mode | NOT RUN |
 | C07 | Try to Run an unsaved/dirty source | Studio does not execute a misleading saved-on-disk snapshot | NOT RUN |
 | C08 | Stop a long-running disposable Scarp program | Native process terminates without hanging or losing source edits | NOT RUN |
+| C12 | Select a trusted but deliberately slow disposable test compiler probe, then click Stop during version or capability checking; also Stop after a completed probe before Run | Only that subprocess terminates; no later capability check or Run starts from its cancelled reservation, no stale success is shown, and a fresh compiler selection/Run can start afterward | NOT RUN |
 | C09 | Project Info, Verify Project, Run Project, List Tests, Run Tests in disposable project | Compiler output and structured test report match actual CLI support | NOT RUN |
 | C10 | Choose an older official compiler and attempt an alpha.12-only program | Unsupported syntax is reported; Studio does not claim that old CLI executed alpha.12 | NOT RUN |
-| C11 | With official alpha.13, Verify/Run a result-propagation example that prints a value on Ok and forwards an Err unchanged | Exactly the expected output, no automatic execution; native Stop still available | NOT RUN |
+| C11 | With official alpha.14, Verify/Run a result-propagation example that prints a value on Ok and forwards an Err unchanged | Exactly the expected output, no automatic execution; native Stop still available | NOT RUN |
 
 ## Diagnostics, packaging and release gate
 
