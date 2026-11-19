@@ -72,6 +72,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | P23 | Open a `.srp` buffer with multiple `funcra` declarations separated by CR-only, CRLF and LF line endings; use the function outline to jump to each | Function outline line numbers and columns match Monaco positions, including declarations after lone CR | NOT RUN |
 | P24 | In open-buffer Find/Replace, use **Whole Word** on `a` in `a◌́` (a plus combining acute), `a` followed by a Unicode joiner, and a standalone `a` | Matches only standalone whole words; no replacement splits a decomposed word or a joined identifier | NOT RUN |
 | P25 | Search for a term between long runs of text whose preview boundary falls inside an emoji at either edge | The preview shows complete emoji, not replacement glyphs or broken halves; the result still navigates using exact UTF-16 columns | NOT RUN |
+| P26 | Run/List Tests for a project with a visible `tests/` `.srp` file; click **Open Source** in the structured report, then remove/rename the test or change projects and try the old action | Only an exactly listed current project test source opens; already open dirty tabs retain edits; missing, truncated, changed-folder and invalid test paths cannot be opened through report navigation | NOT RUN |
 
 ## Official compiler alpha.13 (interpreter CLI; alpha.12 source features remain supported)
 
