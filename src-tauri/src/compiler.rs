@@ -1269,6 +1269,7 @@ mod tests {
             let job = slot.as_ref().expect("reservation survives each subprocess");
             assert_eq!(job.id, reserved.id);
             assert!(job.child.is_none(), "completed child handle must be cleared");
+            drop(slot); // Do not call reserve_job while holding the same mutex.
             assert!(reserve_job(&runtime).is_err(), "another job must not take the slot");
         }
         release_job(&runtime, reserved.id);
