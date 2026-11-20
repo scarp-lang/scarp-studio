@@ -93,17 +93,30 @@ export function parseScarpTestReport(json: string | null): ScarpTestReport | nul
 /** Tie the structured report to the EXACT command the user requested.
  * Schema validity alone is insufficient: otherwise an unexpected 'list'
  * payload from Run Tests could be presented as if tests actually ran.
+ * The native process exit code must also agree with the JSON summary: a
+ * crash, CLI error or a claimed PASS accompanied by exit 1 is never a pass.
  * Unknown/non-test actions never acquire structured test results.
  * Keep raw compiler output available as the UI fallback.
  */
 export function parseScarpTestReportForAction(
   json: string | null,
   action: ScarpProjectAction,
+  exitCode: number | null,
 ): ScarpTestReport | null {
   const expectedMode = action === 'list-tests'
     ? 'list'
     : action === 'run-tests' ? 'run' : null;
-  if (!expectedMode) return null;
+  if (!expectedMode || !Number.isSafeInteger(exitCode)) return null;
+  // Per Scarp's test CLI contract: discovery succeeds with zero; a fully
+  // executed suite succeeds with zero failures (exit 0) or reports failed
+  // tests (exit 1). A CLI error, crash or contradictory summary cannot
+  // become a trustworthy PASS/FAIL list, even if JSON itself is schema-valid.
+  if (expectedMode === 'list' && exitCode !== 0) return null;
+  if (expectedMode === 'run' && exitCode !== 0 && exitCode !== 1) return null;
   const report = parseScarpTestReport(json);
-  return report?.mode === expectedMode ? report : null;
+  if (!report || report.mode !== expectedMode) return null;
+  if (expectedMode === 'run' && ((exitCode === 0) !== (report.failed === 0))) {
+    return null;
+  }
+  return report;
 }
