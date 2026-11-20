@@ -447,6 +447,18 @@ fn supports_structured_project_tests(version: &str) -> bool {
         .is_some_and(|alpha| alpha >= 9)
 }
 
+/// Only an ordinary CLI exit can support a trusted structured test report.
+/// Test suites with failures intentionally exit 1, whereas test discovery
+/// must succeed with 0. A crash, signal, timeout, cancellation or CLI-level
+/// failure must never acquire a structured PASS/FAIL navigation surface.
+fn allowed_project_test_exit_code(action: &str, code: Option<i32>) -> bool {
+    match action {
+        "list-tests" => code == Some(0),
+        "run-tests" => matches!(code, Some(0 | 1)),
+        _ => false,
+    }
+}
+
 fn project_test_args(action: &str, folder: &Path, version: &str) -> Result<Vec<OsString>, String> {
     let mut args = project_action_args(action, folder)?;
     if matches!(action, "list-tests" | "run-tests") && supports_structured_project_tests(version) {
@@ -465,7 +477,7 @@ pub async fn scarp_project_action(
     stdin_text: Option<String>,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<(String, Option<String>), String> {
+) -> Result<(String, Option<String>, Option<i32>), String> {
     let runtime = state.inner().clone();
     let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -500,7 +512,8 @@ pub async fn scarp_project_action(
                 if action == "run" { Some(input.as_str()) } else { None },
                 Some(&reserved),
             )?;
-            let exit = result.status.code()
+            let exit_code = result.status.code();
+            let exit = exit_code
                 .map_or("terminated by signal".to_owned(), |value| value.to_string());
             let outcome = if result.cancelled { "cancelled" }
                 else if result.status.success() { "completed" } else { "failed" };
@@ -510,7 +523,7 @@ pub async fn scarp_project_action(
             // Only the official compiler's complete test-report stdout
             // is passed to the frontend. It is still parsed strictly there.
             // Per-test failures return exit 1 with a complete JSON report.
-            let report_json = if matches!(action.as_str(), "list-tests" | "run-tests")
+            let report_json = if allowed_project_test_exit_code(&action, exit_code)
                 && supports_structured_project_tests(&version)
                 && !result.truncated
                 && !result.cancelled
@@ -526,7 +539,9 @@ pub async fn scarp_project_action(
                 if result.stderr.is_empty() { "" } else { "\nCompiler diagnostics:\n" },
                 result.stderr, cap_notice,
             );
-            Ok((display, report_json))
+            // The UI independently checks exit_code against the exact schema
+            // counts. Do not infer success by regexing the display string.
+            Ok((display, report_json, exit_code))
         })();
         release_job(&runtime, reserved.id);
         execution
@@ -887,6 +902,25 @@ mod tests {
         assert!(run.contains(&OsString::from("--require-tests")));
         for action in ["run", "exec", "init", "delete", "test --all", "../run", ""] {
             assert!(project_action_args(action, root).is_err(), "{action}");
+        }
+    }
+
+    #[test]
+    fn structured_project_test_reports_require_expected_native_exit_codes() {
+        assert!(allowed_project_test_exit_code("list-tests", Some(0)));
+        assert!(!allowed_project_test_exit_code("list-tests", Some(1)));
+        assert!(!allowed_project_test_exit_code("list-tests", Some(2)));
+        assert!(allowed_project_test_exit_code("run-tests", Some(0)));
+        // A failed assertion/test is a genuine complete suite with exit 1.
+        assert!(allowed_project_test_exit_code("run-tests", Some(1)));
+        assert!(!allowed_project_test_exit_code("run-tests", Some(2)));
+        assert!(!allowed_project_test_exit_code("run-tests", Some(-1)));
+        for action in ["list-tests", "run-tests", "verify", "info", "run"] {
+            assert!(!allowed_project_test_exit_code(action, None));
+        }
+        for action in ["verify", "info", "run", "test --all", ""] {
+            assert!(!allowed_project_test_exit_code(action, Some(0)));
+            assert!(!allowed_project_test_exit_code(action, Some(1)));
         }
     }
 
