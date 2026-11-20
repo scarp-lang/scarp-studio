@@ -78,7 +78,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | P29 | After Run/List Tests, reselect the same project folder, refresh Explorer, then switch project A→B→A | Any successful new folder listing clears the old report; a cancelled chooser or failed refresh does not silently replace the listing | NOT RUN |
 | P30 | Start Run Tests on a disposable Scarp project and edit an open source before the compiler exits | Raw output remains visible with an explicit stale-results warning; no old PASS/FAIL structured report is presented until another run | NOT RUN |
 
-## Official compiler alpha.13 (interpreter CLI; alpha.12 source features remain supported)
+## Official compiler alpha.15 candidate (interpreter CLI; older Scarp sources remain supported)
 
 | ID | Action | Required outcome | Result / evidence |
 | --- | --- | --- | --- |
@@ -91,6 +91,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | C07 | Try to Run an unsaved/dirty source | Studio does not execute a misleading saved-on-disk snapshot | NOT RUN |
 | C08 | Stop a long-running disposable Scarp program | Native process terminates without hanging or losing source edits | NOT RUN |
 | C12 | Select a trusted but deliberately slow disposable test compiler probe, then click Stop during version or capability checking; also Stop after a completed probe before Run | Only that subprocess terminates; no later capability check or Run starts from its cancelled reservation, no stale success is shown, and a fresh compiler selection/Run can start afterward | NOT RUN |
+| C13 | Select the separately verified official Scarp alpha.15 Windows executable and explicitly approve its use; Verify and Run a saved disposable Unicode greeting/equality source, then Verify an undefined identifier | Studio reports alpha.15, correct output and structured JSON v1 error location; no automatic compiler installation, execution or false success. Recheck work-limit behavior against alpha.15 for long string comparisons | NOT RUN |
 | C09 | Project Info, Verify Project, Run Project, List Tests, Run Tests in disposable project | Compiler output and structured test report match actual CLI support | NOT RUN |
 | C10 | Choose an older official compiler and attempt an alpha.12-only program | Unsupported syntax is reported; Studio does not claim that old CLI executed alpha.12 | NOT RUN |
 | C11 | With official alpha.14, Verify/Run a result-propagation example that prints a value on Ok and forwards an Err unchanged | Exactly the expected output, no automatic execution; native Stop still available | NOT RUN |
