@@ -923,10 +923,10 @@ export default function App() {
       setCompilerOutput(freshness.warning
         ? freshness.warning + '\n\n' + output.output
         : output.output);
-      // Trust the schema AND the requested command, not an arbitrary test
-      // report mode returned by a changed or incompatible compiler.
+      // Trust the schema, requested command AND exact native process exit.
+      // An incongruent test report cannot present a fabricated pass/fail.
       const structured = freshness.allowStructuredTests
-        ? parseScarpTestReportForAction(output.testReportJson, action)
+        ? parseScarpTestReportForAction(output.testReportJson, action, output.exitCode)
         : null;
       if (structured) {
         setProjectTestResult({ folder: folderPath, report: structured });
