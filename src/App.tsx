@@ -39,6 +39,7 @@ import { scarpProjectAction, type ScarpProjectAction } from './services/project'
 import { parseScarpTestReport, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource } from './model/projectTestNavigation';
 import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/projectSourceState';
+import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -813,9 +814,18 @@ export default function App() {
         mode === 'exec' ? stdinText : '',
         mode === 'exec' && promptInputMode,
       );
-      setCompilerOutput(result.output);
-      setCompilerDiagnosticStderr(result.diagnosticStderr);
-      setNotice('Scarp ' + mode + ' finished; see output');
+      // The compiler operated on the saved disk snapshot captured BEFORE the
+      // async probe/launch. An edit, same-content Save, Save As or close/reopen
+      // while it runs makes the old output informational, not a live result.
+      const staleSource = sourceResultIsStale(verifiedSnapshot, liveEditor.current.documents);
+      setCompilerOutput(staleSource
+        ? '[Scarp source changed while this command ran. Output below is from an earlier saved snapshot; save edits and rerun.]\n\n' + result.output
+        : result.output);
+      setCompilerDiagnosticStderr(staleSource ? null : result.diagnosticStderr);
+      if (staleSource) setCompilerOutputSource(null);
+      setNotice(staleSource
+        ? 'Scarp result is stale; save the changed source and rerun'
+        : 'Scarp ' + mode + ' finished; see output');
     } catch (caught) {
       const message = toMessage(caught);
       setCompilerOutputSource(null);
@@ -905,20 +915,20 @@ export default function App() {
         action === 'run' ? stdinText : '',
         action === 'run' && promptInputMode,
       );
-      const isTestAction = action === 'list-tests' || action === 'run-tests';
-      const staleReport = isTestAction && (
-        projectResultEpoch.current !== reportEpoch ||
-        selectedFolderRef.current !== reportSelection
+      const freshness = projectResultFreshness(
+        action,
+        { epoch: reportEpoch, listing: reportSelection },
+        { epoch: projectResultEpoch.current, listing: selectedFolderRef.current },
       );
-      setCompilerOutput(staleReport
-        ? '[Project sources or Explorer changed during testing. Results below may be stale; run tests again.]\n\n' + output.output
+      setCompilerOutput(freshness.warning
+        ? freshness.warning + '\n\n' + output.output
         : output.output);
       const structured = parseScarpTestReport(output.testReportJson);
-      if (structured && isTestAction && !staleReport) {
+      if (structured && freshness.allowStructuredTests) {
         setProjectTestResult({ folder: folderPath, report: structured });
       }
-      setNotice(staleReport
-        ? 'Project test results are stale; rerun tests after saving changes'
+      setNotice(freshness.stale
+        ? 'Scarp project ' + action + ' result is stale; save changed sources and rerun'
         : 'Scarp project ' + action + ' finished');
     } catch (caught) {
       const message = toMessage(caught);
