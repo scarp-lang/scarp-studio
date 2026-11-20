@@ -6,10 +6,10 @@ export type ScarpProjectAction = 'info' | 'verify' | 'list-tests' | 'run-tests' 
 export function scarpProjectAction(
   binary: string, folder: string, action: ScarpProjectAction,
   stdinText = '', interactive = false,
-): Promise<{ output: string; testReportJson: string | null }> {
+): Promise<{ output: string; testReportJson: string | null; exitCode: number | null }> {
   const args = { binary, folder, action };
   // Preserve the arguments for existing non-executing commands.
-  return invoke<[string, string | null]>('scarp_project_action',
+  return invoke<[string, string | null, number | null]>('scarp_project_action',
     action === 'run' ? { ...args, stdinText, interactive } : args,
-  ).then(([output, testReportJson]) => ({ output, testReportJson }));
+  ).then(([output, testReportJson, exitCode]) => ({ output, testReportJson, exitCode }));
 }
