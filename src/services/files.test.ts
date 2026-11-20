@@ -16,6 +16,11 @@ describe('safe .srp file writes', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(readScarpSource).mockResolvedValue('original');
+    // Model the filesystem's successful write and subsequent bounded
+    // read-back, rather than returning the pre-save disk snapshot forever.
+    vi.mocked(writeTextFile).mockImplementation(async (_path, content) => {
+      vi.mocked(readScarpSource).mockResolvedValue(content);
+    });
   });
 
   it('rejects oversized UTF-8 editor buffers before opening a save dialog', async () => {
@@ -166,4 +171,45 @@ describe('safe .srp file writes', () => {
     expect(readScarpSource).not.toHaveBeenCalled();
     expect(writeTextFile).not.toHaveBeenCalled();
   });
+  it('verifies a successful Save As by reading back the exact saved UTF-8 source', async () => {
+    vi.mocked(save).mockResolvedValue('C:/project/unicode.srp');
+    const source = { ...createUntitled(10), content: 'print("नमस्ते 👋");' };
+    await expect(writeSourceFile(source, false, [])).resolves.toBe('C:/project/unicode.srp');
+    expect(writeTextFile).toHaveBeenCalledWith('C:/project/unicode.srp', source.content);
+    expect(readScarpSource).toHaveBeenCalledWith('C:/project/unicode.srp');
+  });
+
+  it('refuses to report Save success after an external same-length rewrite', async () => {
+    const source = { ...createUntitled(11), path: 'C:/project/main.srp',
+      savedContent: 'original', content: 'print("aaa");' };
+    // Simulate a sync client / second editor replacing the bytes after the
+    // successful native write but before the editor records savedContent.
+    vi.mocked(writeTextFile).mockResolvedValue(undefined);
+    vi.mocked(readScarpSource).mockResolvedValueOnce('original')
+      .mockResolvedValueOnce('print("bbb");');
+    await expect(writeSourceFile(source, false, []))
+      .rejects.toThrow('NOT marked saved');
+    expect(writeTextFile).toHaveBeenCalledWith(source.path, source.content);
+    expect(readScarpSource).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not trust a successful write when read-back fails or source disappears', async () => {
+    vi.mocked(save).mockResolvedValue('C:/project/vanished.srp');
+    vi.mocked(writeTextFile).mockResolvedValue(undefined);
+    vi.mocked(readScarpSource).mockRejectedValue(new Error('file not found'));
+    await expect(writeSourceFile(
+      { ...createUntitled(12), content: 'print(12);' }, false, [],
+    )).rejects.toThrow('could not be verified on disk');
+    expect(writeTextFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not trust a successful write if the destination grows beyond the reader limit', async () => {
+    vi.mocked(save).mockResolvedValue('C:/project/grown.srp');
+    vi.mocked(writeTextFile).mockResolvedValue(undefined);
+    vi.mocked(readScarpSource).mockRejectedValue(new Error('4 MiB editor file limit'));
+    await expect(writeSourceFile(
+      { ...createUntitled(13), content: 'print(13);' }, true, [],
+    )).rejects.toThrow('could not be verified on disk');
+  });
+
 });
