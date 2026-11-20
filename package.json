@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "check:release-candidate": "node scripts/check-release-candidate.mjs",
+    "test:release-candidate": "node --test scripts/check-release-candidate.test.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
