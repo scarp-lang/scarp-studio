@@ -648,6 +648,16 @@ fn with_verified_source_snapshot<T>(
     Ok(verified)
 }
 
+/// After a Run or Verify completes, recheck the original *saved bytes* using
+/// the same bounded reader as the preflight. Another editor may have replaced,
+/// truncated or removed the source while the compiler was processing it.
+/// Preserve the compiler's raw output, but never use its positions against
+/// a source now known to be different or unavailable. This is best-effort:
+/// a modification restored to byte-identical content is not observable here.
+fn source_stale_after_execution(source: &Path, expected_content: &str) -> bool {
+    ensure_matching_disk_snapshot(source, expected_content).is_err()
+}
+
 fn command_args(mode: &str, source: &Path) -> Result<Vec<OsString>, String> {
     let mut args = match mode {
         "exec" => vec![
@@ -759,6 +769,10 @@ pub async fn scarp_execute(
                 },
                 Some(&reserved),
             )?;
+            // A second editor can change the on-disk source *after* our
+            // pre-launch check. Never lose useful output or misapply old
+            // compiler diagnostics to the presently saved source.
+            let source_stale = source_stale_after_execution(&source, &expected_content);
             let exit = result
                 .status
                 .code()
@@ -783,14 +797,20 @@ pub async fn scarp_execute(
                 && !result.status.success()
                 && !result.cancelled
                 && !result.truncated
+                && !source_stale
                 && !result.stderr.is_empty()
             {
                 Some(result.stderr.clone())
             } else {
                 None
             };
+            let stale_notice = if source_stale {
+                "[Source changed or became unavailable on disk during this command. Compiler output below refers to the previously saved snapshot; reload/review the file and rerun. Diagnostic navigation was disabled.]\n\n"
+            } else {
+                ""
+            };
             let display = format!(
-                "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
+                "{stale_notice}Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
                 source.display(),
                 result.stdout,
                 if result.stderr.is_empty() {
@@ -1018,6 +1038,39 @@ mod tests {
         });
         assert!(result.unwrap_err().contains("changed on disk"));
         fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn completed_compiler_output_detects_external_source_changes_without_discarding_logs() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "studio-source-postcheck-{}-{unique}.srp",
+            std::process::id()
+        ));
+        let saved = "print(\"original\");";
+        fs::write(&path, saved).unwrap();
+        assert!(!source_stale_after_execution(&path, saved));
+
+        // A same-length external change defeats size-only or timestamp-only
+        // checks, but exact saved-byte comparison still catches it.
+        let changed = "print(\"modified\");";
+        assert_eq!(saved.len(), changed.len());
+        fs::write(&path, changed).unwrap();
+        assert!(source_stale_after_execution(&path, saved));
+
+        fs::write(&path, saved).unwrap();
+        assert!(!source_stale_after_execution(&path, saved));
+        // Growth beyond the 4 MiB limit must remain bounded and be stale.
+        let huge = vec![b'x'; MAX_SOURCE_BYTES as usize + 1];
+        fs::write(&path, huge).unwrap();
+        assert!(source_stale_after_execution(&path, saved));
+
+        fs::remove_file(&path).unwrap();
+        assert!(source_stale_after_execution(&path, saved));
     }
 
     #[test]
