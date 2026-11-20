@@ -60,34 +60,67 @@ describe('structured test reports are bound to the originating command', () => {
   const executed = report('run', [pass, fail], 1, 1);
 
   it('accepts the matching result mode and expected counts', () => {
-    expect(parseScarpTestReportForAction(discovered, 'list-tests')?.mode).toBe('list');
-    expect(parseScarpTestReportForAction(executed, 'run-tests')?.mode).toBe('run');
-    expect(parseScarpTestReportForAction(executed, 'run-tests')?.failed).toBe(1);
-    expect(parseScarpTestReportForAction(report('run', [], 0, 0), 'run-tests')?.mode).toBe('run');
-    expect(parseScarpTestReportForAction(report('list', [], 0, 0), 'list-tests')?.mode).toBe('list');
+    expect(parseScarpTestReportForAction(discovered, 'list-tests', 0)?.mode).toBe('list');
+    expect(parseScarpTestReportForAction(executed, 'run-tests', 1)?.mode).toBe('run');
+    expect(parseScarpTestReportForAction(executed, 'run-tests', 1)?.failed).toBe(1);
+    expect(parseScarpTestReportForAction(report('run', [], 0, 0), 'run-tests', 0)?.mode).toBe('run');
+    expect(parseScarpTestReportForAction(report('list', [], 0, 0), 'list-tests', 0)?.mode).toBe('list');
   });
 
   it('rejects a discovery report supplied to Run Tests even though its JSON is otherwise valid', () => {
     expect(parseScarpTestReport(discovered)?.mode).toBe('list');
-    expect(parseScarpTestReportForAction(discovered, 'run-tests')).toBeNull();
+    expect(parseScarpTestReportForAction(discovered, 'run-tests', 0)).toBeNull();
   });
 
   it('rejects an execution report supplied to List Tests even though its JSON is otherwise valid', () => {
     expect(parseScarpTestReport(executed)?.mode).toBe('run');
-    expect(parseScarpTestReportForAction(executed, 'list-tests')).toBeNull();
+    expect(parseScarpTestReportForAction(executed, 'list-tests', 1)).toBeNull();
   });
 
   it('never presents structured test results from other project commands', () => {
     for (const action of ['info', 'run', 'verify'] as const) {
-      expect(parseScarpTestReportForAction(executed, action)).toBeNull();
-      expect(parseScarpTestReportForAction(discovered, action)).toBeNull();
+      expect(parseScarpTestReportForAction(executed, action, 1)).toBeNull();
+      expect(parseScarpTestReportForAction(discovered, action, 0)).toBeNull();
     }
   });
 
   it('does not turn malformed or unsupported payloads into a valid result', () => {
     for (const payload of [null, '{invalid', '{"schema_version":3}', '']) {
-      expect(parseScarpTestReportForAction(payload, 'list-tests')).toBeNull();
-      expect(parseScarpTestReportForAction(payload, 'run-tests')).toBeNull();
+      expect(parseScarpTestReportForAction(payload, 'list-tests', 0)).toBeNull();
+      expect(parseScarpTestReportForAction(payload, 'run-tests', 0)).toBeNull();
     }
   });
+  it('refuses a PASS-only run report paired with a failed compiler exit code', () => {
+    const success = report('run', [pass], 1, 0);
+    expect(parseScarpTestReport(success)?.failed).toBe(0);
+    for (const exitCode of [1, 2, -1, null]) {
+      expect(parseScarpTestReportForAction(success, 'run-tests', exitCode)).toBeNull();
+    }
+    expect(parseScarpTestReportForAction(success, 'run-tests', 0)?.passed).toBe(1);
+  });
+
+  it('refuses claimed failing tests with exit zero but preserves genuine exit-one failures', () => {
+    const failed = report('run', [pass, fail], 1, 1);
+    expect(parseScarpTestReportForAction(failed, 'run-tests', 0)).toBeNull();
+    expect(parseScarpTestReportForAction(failed, 'run-tests', 1)?.failed).toBe(1);
+  });
+
+  it('requires successful native discovery and rejects abnormal exits', () => {
+    const discovery = report('list', [
+      { path: 'tests/example.srp', status: 'discovered' },
+    ], 0, 0);
+    expect(parseScarpTestReportForAction(discovery, 'list-tests', 0)?.discovered).toBe(1);
+    for (const exitCode of [1, 2, 128, -1, null]) {
+      expect(parseScarpTestReportForAction(discovery, 'list-tests', exitCode)).toBeNull();
+    }
+  });
+
+  it('rejects mismatched JSON and status regardless of the report size', () => {
+    const emptyRun = report('run', [], 0, 0);
+    expect(parseScarpTestReportForAction(emptyRun, 'run-tests', 1)).toBeNull();
+    expect(parseScarpTestReportForAction(emptyRun, 'run-tests', 0)?.discovered).toBe(0);
+    expect(parseScarpTestReportForAction(emptyRun, 'run-tests', Number.NaN)).toBeNull();
+    expect(parseScarpTestReportForAction(emptyRun, 'run-tests', 0.5)).toBeNull();
+  });
+
 });
