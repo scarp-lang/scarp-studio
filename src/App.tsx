@@ -38,7 +38,7 @@ import {
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReport, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource } from './model/projectTestNavigation';
-import { dirtyProjectSourceNames } from './model/projectSourceState';
+import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/projectSourceState';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -106,11 +106,19 @@ export default function App() {
   // Apply actions synchronously to the live state so native close requests and
   // file operations observe new edits before React renders the next frame.
   const liveEditor = useRef(editorState);
+  // Advances whenever a selected-project source changes or its Explorer is
+  // successfully replaced. In-flight test reports must match this generation.
+  const projectResultEpoch = useRef(0);
   const { documents, activeId } = editorState;
   function dispatch(action: EditorAction): void {
     const before = liveEditor.current;
     const next = editorReducer(before, action);
     if (next === before) return;
+    const project = selectedFolderRef.current?.path;
+    if (project && projectSourceBuffersChanged(before.documents, next.documents, project)) {
+      projectResultEpoch.current++;
+      setProjectTestResult(null);
+    }
     // Keep a valid previous Verify result through tab switches and unrelated
     // edits, but invalidate it on any change to the actual verified source.
     // Monotonic revisions prevent stale markers returning after A→B→A edits.
@@ -492,6 +500,10 @@ export default function App() {
     try {
       const result = await chooseSourceFolder();
       if (!result) return;
+      // Even reselecting the same path creates a new project listing; old
+      // test passes must not reappear after folder A→B→A selection cycles.
+      projectResultEpoch.current++;
+      setProjectTestResult(null);
       selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderPath(result.path);
       setFolderEntries(result.files);
@@ -529,6 +541,9 @@ export default function App() {
         setError('The selected folder changed during refresh. Choose Refresh again.');
         return;
       }
+      // A refresh can observe on-disk changes the editor did not make.
+      projectResultEpoch.current++;
+      setProjectTestResult(null);
       selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderEntries(result.files);
       setFolderListingLimited(result.truncated);
@@ -870,6 +885,11 @@ export default function App() {
         return;
       }
     }
+    // Capture the current listing instance AND the selected-project source
+    // generation before the async compiler begins. Edits during Run Tests can
+    // leave its disk-backed JSON report stale by the time the process exits.
+    const reportEpoch = projectResultEpoch.current;
+    const reportSelection = selectedFolderRef.current;
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
@@ -885,12 +905,21 @@ export default function App() {
         action === 'run' ? stdinText : '',
         action === 'run' && promptInputMode,
       );
-      setCompilerOutput(output.output);
+      const isTestAction = action === 'list-tests' || action === 'run-tests';
+      const staleReport = isTestAction && (
+        projectResultEpoch.current !== reportEpoch ||
+        selectedFolderRef.current !== reportSelection
+      );
+      setCompilerOutput(staleReport
+        ? '[Project sources or Explorer changed during testing. Results below may be stale; run tests again.]\n\n' + output.output
+        : output.output);
       const structured = parseScarpTestReport(output.testReportJson);
-      if (structured && (action === 'list-tests' || action === 'run-tests')) {
+      if (structured && isTestAction && !staleReport) {
         setProjectTestResult({ folder: folderPath, report: structured });
       }
-      setNotice('Scarp project ' + action + ' finished');
+      setNotice(staleReport
+        ? 'Project test results are stale; rerun tests after saving changes'
+        : 'Scarp project ' + action + ' finished');
     } catch (caught) {
       const message = toMessage(caught);
       setCompilerOutput('Scarp project ' + action + ' could not complete:\n' + message);
