@@ -20,6 +20,9 @@ describe('sequential Save All safety', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(readScarpSource).mockResolvedValue('original');
+    vi.mocked(writeTextFile).mockImplementation(async (_path, content) => {
+      vi.mocked(readScarpSource).mockResolvedValue(content);
+    });
   });
 
   it('does not prompt for clean, closed, or duplicate tab identities', async () => {
@@ -139,4 +142,26 @@ describe('sequential Save All safety', () => {
     )).rejects.toThrow('permission denied');
     expect(onSaved).not.toHaveBeenCalled();
   });
+  it('stops Save All after a post-write race, without marking any source clean', async () => {
+    const first = unsaved(20, 'print("first");');
+    const next = unsaved(21, 'print("next");');
+    const sources = new Map([[first.id, first], [next.id, next]]);
+    vi.mocked(save).mockResolvedValueOnce('C:/work/first.srp')
+      .mockResolvedValueOnce('C:/work/next.srp');
+    // Write returned successfully, but another writer changed the contents
+    // before the bounded read-back. Do not advance to the next tab.
+    vi.mocked(writeTextFile).mockResolvedValue(undefined);
+    vi.mocked(readScarpSource).mockResolvedValue('print("other");');
+    const marked = vi.fn();
+    await expect(saveAllModifiedSources(
+      [first.id, next.id],
+      (id) => sources.get(id),
+      () => [],
+      marked,
+    )).rejects.toThrow('Save All stopped at Untitled-20.srp after 0 successful save(s)');
+    expect(marked).not.toHaveBeenCalled();
+    expect(writeTextFile).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
 });
