@@ -160,7 +160,10 @@ describe('safe .srp file writes', () => {
     };
     vi.mocked(save).mockResolvedValue('C:/project/backup.srp');
     await expect(writeSourceFile(document, true, [])).resolves.toBe('C:/project/backup.srp');
-    expect(readScarpSource).not.toHaveBeenCalled();
+    // Save As must not read the old file to validate its snapshot. The only
+    // read is the NEW destination after writing, for exact byte verification.
+    expect(readScarpSource).toHaveBeenCalledTimes(1);
+    expect(readScarpSource).toHaveBeenCalledWith('C:/project/backup.srp');
     expect(writeTextFile).toHaveBeenCalledWith('C:/project/backup.srp', 'new');
   });
 
