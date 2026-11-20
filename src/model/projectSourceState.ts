@@ -53,6 +53,14 @@ function pathParts(path: string): CanonicalParts | null {
   return null;
 }
 
+function belongsToProject(path: string | null, root: CanonicalParts): boolean {
+  if (!path) return false;
+  const candidate = pathParts(path);
+  return candidate !== null && candidate.kind === root.kind &&
+    candidate.parts.length > root.parts.length &&
+    root.parts.every((part, index) => candidate.parts[index] === part);
+}
+
 /** Only dirty, named .srp source tabs under the selected project can make a
  * disk-backed project operation misleading. Other projects and untitled tabs
  * must not block an otherwise valid Run/Verify/Test operation.
@@ -62,11 +70,33 @@ export function dirtyProjectSourceNames(
 ): string[] {
   const root = pathParts(folderPath);
   if (!root) return [];
-  return documents.filter((document) => {
-    if (!isDirty(document) || !document.path) return false;
-    const candidate = pathParts(document.path);
-    return candidate !== null && candidate.kind === root.kind &&
-      candidate.parts.length > root.parts.length &&
-      root.parts.every((part, index) => candidate.parts[index] === part);
-  }).map((document) => document.name);
+  return documents
+    .filter((document) => isDirty(document) && belongsToProject(document.path, root))
+    .map((document) => document.name);
+}
+
+/** Detect edits, Saves, Reloads, replacements or Save As path changes to an
+ * already-open source in the selected project. A mere tab switch, opening a
+ * source for inspection, or editing an unrelated project is not a mutation.
+ * Revisions intentionally detect content A→B→A and unchanged-byte Saves.
+ */
+export function projectSourceBuffersChanged(
+  before: readonly StudioDocument[],
+  after: readonly StudioDocument[],
+  folderPath: string,
+): boolean {
+  const root = pathParts(folderPath);
+  if (!root) return false;
+  const currentById = new Map(after.map((document) => [document.id, document]));
+  return before.some((previous) => {
+    const current = currentById.get(previous.id);
+    if (!current ||
+        (!belongsToProject(previous.path, root) && !belongsToProject(current.path, root))) {
+      return false;
+    }
+    return current.path !== previous.path ||
+      current.content !== previous.content ||
+      current.savedContent !== previous.savedContent ||
+      current.revision !== previous.revision;
+  });
 }

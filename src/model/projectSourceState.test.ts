@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dirtyProjectSourceNames } from './projectSourceState';
+import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './projectSourceState';
 import type { StudioDocument } from './documents';
 
 function tab(name: string, path: string | null, dirty = true): StudioDocument {
@@ -67,5 +67,65 @@ describe('disk-backed project source awareness', () => {
     expect(dirtyProjectSourceNames([
       tab('extended.srp', String.raw`\\?\C:\work\src\..\main.srp`),
     ], 'C:/work')).toEqual([]);
+  });
+});
+
+describe('project test result freshness', () => {
+  const folder = 'C:/Work/Scarp';
+  const project = tab('main.srp', 'C:/Work/Scarp/src/main.srp', false);
+  const unrelated = tab('other.srp', 'C:/Other/src/other.srp', false);
+
+  it('retains reports while switching tabs, opening files and editing another project', () => {
+    expect(projectSourceBuffersChanged([project], [project], folder)).toBe(false);
+    expect(projectSourceBuffersChanged([project], [project, tab('new.srp', null)], folder)).toBe(false);
+    expect(projectSourceBuffersChanged([project], [project, tab('test.srp',
+      'C:/Work/Scarp/tests/test.srp', false)], folder)).toBe(false);
+    expect(projectSourceBuffersChanged([project, unrelated], [project,
+      { ...unrelated, content: 'new text', revision: 1 }], folder)).toBe(false);
+  });
+
+  it('invalidates reports for edits, same-content Saves and Reloads in the project', () => {
+    expect(projectSourceBuffersChanged([project], [
+      { ...project, content: 'edited', revision: 1 },
+    ], folder)).toBe(true);
+    expect(projectSourceBuffersChanged([project], [
+      { ...project, revision: 1 },
+    ], folder)).toBe(true);
+    expect(projectSourceBuffersChanged([project], [
+      { ...project, savedContent: 'disk changed', revision: 1 },
+    ], folder)).toBe(true);
+    expect(projectSourceBuffersChanged([project], [
+      { ...project, revision: 2, content: project.content },
+    ], folder)).toBe(true);
+  });
+
+  it('invalidates reports when Save As moves a source into or out of the project', () => {
+    expect(projectSourceBuffersChanged([unrelated], [
+      { ...unrelated, path: 'C:/Work/Scarp/new.srp', revision: 1 },
+    ], folder)).toBe(true);
+    expect(projectSourceBuffersChanged([project], [
+      { ...project, path: 'C:/Other/main.srp', revision: 1 },
+    ], folder)).toBe(true);
+  });
+
+  it('recognizes safe Windows aliases and UNC roots without confusing siblings', () => {
+    const alias = tab('main.srp', String.raw`C:\Work\Scarp\src\..\main.srp`, false);
+    expect(projectSourceBuffersChanged([alias], [{ ...alias, revision: 1 }],
+      'c:/work/scarp/./')).toBe(true);
+    const unc = tab('test.srp', String.raw`\\SERVER\share\project\tests\a.srp`, false);
+    expect(projectSourceBuffersChanged([unc], [{ ...unc, content: 'edited' }],
+      String.raw`\\server\share\project`)).toBe(true);
+    expect(projectSourceBuffersChanged([project], [{ ...project, content: 'edited' }],
+      'C:/Work/Scarp-old')).toBe(false);
+  });
+
+  it('rejects unsafe, non-project and mismatched POSIX path identities', () => {
+    const posix = tab('main.srp', '/home/me/Scarp/main.srp', false);
+    expect(projectSourceBuffersChanged([posix], [{ ...posix, revision: 1 }],
+      '/home/me/Scarp')).toBe(true);
+    expect(projectSourceBuffersChanged([posix], [{ ...posix, revision: 1 }],
+      '/home/me/scarp')).toBe(false);
+    expect(projectSourceBuffersChanged([project], [{ ...project, revision: 1 }],
+      String.raw`\\.\C:\Work\Scarp`)).toBe(false);
   });
 });
