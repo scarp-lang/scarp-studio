@@ -35,6 +35,10 @@ jobs:
         run: npm run typecheck
       - name: Frontend tests
         run: npm test
+      - name: Check prerelease candidate version consistency (read-only)
+        run: npm run check:release-candidate
+      - name: Test prerelease candidate safety gates
+        run: npm run test:release-candidate
       - name: Frontend production bundle
         run: npm run build
       - name: Rust formatting
@@ -392,6 +396,69 @@ jobs:
           $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.14"
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.14" }
+
+      # Official Scarp alpha.15 retains the interpreter CLI and JSON v1
+      # diagnostic contract. Its compiler cache/ELF64 improvements are Rust
+      # embedding APIs and are not new Scarp Studio capabilities.
+      # The verified CLI binary is a CI-only dependency, never bundled.
+      - name: Verify SHA-pinned Scarp alpha.15 CLI and native Studio integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.15/scarp-0.0.6-alpha.15-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha15.zip
+          $actual = (Get-FileHash scarp-alpha15.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          # Exact official release asset SHA-256 (published November 19, 2026).
+          $pin = (Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json).compilerWindowsZipSha256
+          if ($actual -ne $pin -or $pin -ne "49d67aaf2b2ba52f6c3086188ebd3961929f5db9c09bf44ed22c029a4cdff302") {
+            throw "Official Scarp alpha.15 Windows CLI archive digest mismatch"
+          }
+          Expand-Archive -Path scarp-alpha15.zip -DestinationPath scarp-alpha15
+          $binaries = @(Get-ChildItem scarp-alpha15 -File -Recurse -Filter "scarp.exe")
+          if ($binaries.Count -ne 1) { throw "Expected exactly one Scarp alpha.15 executable" }
+          $binary = $binaries[0]
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.15") {
+            throw "Unexpected official Scarp alpha.15 version"
+          }
+          $valid = @(
+            'funcra add_one(value: integer) -> integer {'
+            '    return value + 1;'
+            '}'
+            'bind greeting = "नमस्ते 👋";'
+            'assert(add_one(41) == 42, "alpha.15 compatibility");'
+            'assert(greeting == "नमस्ते 👋", "alpha.15 UTF-8 equality");'
+            'print("Studio alpha.15 CLI OK");'
+          ) -join [Environment]::NewLine
+          $valid | Set-Content -Path scarp-alpha15-valid.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha15-valid.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.15 source verification failed" }
+          $output = & $binary.FullName exec --diagnostic-format=json -- scarp-alpha15-valid.srp
+          $exit = $LASTEXITCODE
+          if ($exit -ne 0 -or ($output -join [Environment]::NewLine).Trim() -ne "Studio alpha.15 CLI OK") {
+            throw "Scarp alpha.15 execution compatibility failed"
+          }
+          'print(unknown_identifier);' | Set-Content -Path scarp-alpha15-invalid.srp -Encoding utf8
+          $errors = @(& $binary.FullName verify --diagnostic-format=json -- scarp-alpha15-invalid.srp 2>&1)
+          $invalidExit = $LASTEXITCODE
+          if ($invalidExit -eq 0 -or $errors.Count -lt 1) {
+            throw "Scarp alpha.15 failed to reject invalid source"
+          }
+          try {
+            $diagnostic = ($errors[0].ToString() | ConvertFrom-Json -ErrorAction Stop)
+          } catch {
+            throw "Scarp alpha.15 did not return structured JSON"
+          }
+          if ($diagnostic.schema_version -ne 1 -or $diagnostic.severity -ne "error" -or
+              $diagnostic.span_encoding -ne "utf-8-bytes" -or
+              $diagnostic.column_encoding -ne "unicode-scalar" -or
+              $diagnostic.position_base -ne 1) {
+            throw "Scarp alpha.15 diagnostic location contract changed"
+          }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.15"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native process integration rejected Scarp alpha.15" }
 
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
