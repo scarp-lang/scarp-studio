@@ -40,6 +40,7 @@ import { parseScarpTestReportForAction, type ScarpTestReport } from './model/pro
 import { resolveListedTestSource } from './model/projectTestNavigation';
 import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/projectSourceState';
 import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
+import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -612,7 +613,8 @@ export default function App() {
   }
 
   async function saveFile(forceSaveAs = false): Promise<void> {
-    const document = currentActiveDocument(liveEditor.current);
+    const editorAtStart = liveEditor.current;
+    const document = currentActiveDocument(editorAtStart);
     if (!document || saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current || nativeDialogGate.current.isActive) return;
     // Project actions execute disk-backed sources. Do not rewrite their files
@@ -632,11 +634,19 @@ export default function App() {
         () => liveEditor.current.documents
           .filter((item) => item.id !== document.id && item.path !== null)
           .map((item) => item.path as string),
+        // A stale native Save As result cannot write an older buffer after an
+        // edit, tab switch A→B→A or close/reopen—even if bytes look identical.
+        () => isCurrentSingleSaveRequest(editorAtStart, liveEditor.current, document),
       );
       if (!path) return;
-      // Preserve edits made during the asynchronous native save operation.
+      // A new edit may arrive WHILE the file write/read-back is pending.
+      // Record only the snapshot actually verified on disk, preserving later
+      // changes as dirty rather than claiming that they were saved.
       dispatch({ type: 'saved', id: document.id, path, savedContent: document.content });
-      setNotice('Saved ' + fileName(path));
+      const current = liveEditor.current.documents.find((item) => item.id === document.id);
+      setNotice(current && isDirty(current)
+        ? 'Saved ' + fileName(path) + ' snapshot; newer edits remain unsaved'
+        : 'Saved ' + fileName(path));
     } catch (caught) {
       setError('Could not save source: ' + toMessage(caught));
     } finally {
