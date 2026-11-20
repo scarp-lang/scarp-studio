@@ -164,4 +164,54 @@ describe('sequential Save All safety', () => {
     expect(save).toHaveBeenCalledTimes(1);
   });
 
+  it('stops before writing if the current Save All tab changes inside its own chooser', async () => {
+    const first = unsaved(41, 'captured early bytes');
+    const next = unsaved(42, 'next source');
+    const sources = new Map([[first.id, first], [next.id, next]]);
+    vi.mocked(save).mockImplementationOnce(async () => {
+      sources.set(first.id, { ...first, content: 'newer edit', revision: first.revision + 1 });
+      return 'C:/work/stale-save.srp';
+    });
+    const onSaved = vi.fn();
+    await expect(saveAllModifiedSources(
+      [first.id, next.id],
+      (id) => sources.get(id),
+      () => [],
+      onSaved,
+    )).rejects.toThrow('No file was written');
+    expect(writeTextFile).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it('rejects A→B→A same-byte edits during a Save All picker by revision', async () => {
+    const source = unsaved(43, 'original text');
+    const sources = new Map([[source.id, source]]);
+    vi.mocked(save).mockImplementationOnce(async () => {
+      // A restored visible string is not the same edit revision.
+      sources.set(source.id, { ...source, revision: source.revision + 2 });
+      return 'C:/work/reverted.srp';
+    });
+    await expect(saveAllModifiedSources(
+      [source.id], (id) => sources.get(id), () => [], vi.fn(),
+    )).rejects.toThrow('No file was written');
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('accepts unrelated tab edits while the pending Save All source stays unchanged', async () => {
+    const first = unsaved(44, 'first content');
+    const next = unsaved(45, 'next initial');
+    const sources = new Map([[first.id, first], [next.id, next]]);
+    vi.mocked(save).mockImplementationOnce(async () => {
+      sources.set(next.id, { ...next, content: 'next latest', revision: next.revision + 1 });
+      return 'C:/work/first.srp';
+    }).mockResolvedValueOnce('C:/work/next.srp');
+    const marked = vi.fn();
+    await expect(saveAllModifiedSources(
+      [first.id, next.id], (id) => sources.get(id), () => [], marked,
+    )).resolves.toEqual({ saved: 2, cancelled: false });
+    expect(writeTextFile).toHaveBeenNthCalledWith(1, 'C:/work/first.srp', 'first content');
+    expect(writeTextFile).toHaveBeenNthCalledWith(2, 'C:/work/next.srp', 'next latest');
+  });
+
 });
