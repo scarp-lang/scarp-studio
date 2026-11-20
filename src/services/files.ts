@@ -4,6 +4,7 @@ import { assertScarpSourceText } from '../model/sourceLimits';
 import { readScarpSource } from './sourceRead';
 import type { StudioDocument } from '../model/documents';
 import { isDirty, isScarpPath, sameFilePath } from '../model/documents';
+import { isCurrentSaveAllSource } from '../model/saveSnapshotGuard';
 
 const scarpFilter = [{ name: 'Scarp source', extensions: ['srp'] }];
 
@@ -23,8 +24,20 @@ export async function writeSourceFile(
   document: StudioDocument,
   forceSaveAs: boolean,
   otherOpenPaths: readonly string[] | (() => readonly string[]),
+  isSnapshotCurrent?: () => boolean,
 ): Promise<string | null> {
   assertScarpSourceText(document.content);
+  // Native Save As dialogs and preflight disk reads yield control to the UI.
+  // Abort if the original editor snapshot is no longer the user's current
+  // save intent. A later edit must not trigger an older write.
+  const requireCurrentSnapshot = () => {
+    if (isSnapshotCurrent && !isSnapshotCurrent()) {
+      throw new Error(
+        'The Scarp tab or source changed while preparing Save. No file was written. ' +
+        'Review your latest edits and retry Save or Save As.',
+      );
+    }
+  };
   let path = forceSaveAs ? null : document.path;
   if (!path) {
     path = await save({
@@ -35,6 +48,7 @@ export async function writeSourceFile(
   }
   if (!path) return null;
   if (!isScarpPath(path)) throw new Error('Scarp source files must end in .srp.');
+  requireCurrentSnapshot();
   // Save As is asynchronous: another file may have opened while the native
   // chooser was on screen. Resolve occupied paths only after it closes.
   const occupiedPaths = typeof otherOpenPaths === 'function'
@@ -56,6 +70,9 @@ export async function writeSourceFile(
       );
     }
   }
+  // The previous on-disk snapshot check is asynchronous too. Keystrokes or
+  // another tab activation during its read must not race an old save to disk.
+  requireCurrentSnapshot();
   await writeTextFile(path, document.content);
   // A successful write call does not prove that the file still contains this
   // snapshot: an external editor, sync client or filesystem race can alter
@@ -107,7 +124,10 @@ export async function saveAllModifiedSources(
     let path: string | null;
     try {
       // Even after the chooser returns, resolve currently occupied paths.
-      path = await writeSourceFile(document, false, () => getOtherOpenPaths(id));
+      path = await writeSourceFile(
+        document, false, () => getOtherOpenPaths(id),
+        () => isCurrentSaveAllSource(document, getDocument(id)),
+      );
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw new Error(

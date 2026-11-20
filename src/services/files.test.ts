@@ -215,4 +215,57 @@ describe('safe .srp file writes', () => {
     )).rejects.toThrow('could not be verified on disk');
   });
 
+  it('does not write the older snapshot when its tab changes during Save As', async () => {
+    const original = { ...createUntitled(31), content: 'original snapshot' };
+    let current = true;
+    vi.mocked(save).mockImplementation(async () => {
+      // A user keystroke lands while the OS chooser is still outstanding.
+      current = false;
+      return 'C:/project/from-dialog.srp';
+    });
+    const isCurrent = vi.fn(() => current);
+    await expect(writeSourceFile(original, true, [], isCurrent))
+      .rejects.toThrow('No file was written');
+    expect(isCurrent).toHaveBeenCalledTimes(1);
+    expect(readScarpSource).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the source after asynchronous pre-save disk validation', async () => {
+    const original = { ...createUntitled(32), path: 'C:/project/live.srp',
+      content: 'my new edit', savedContent: 'prior saved bytes' };
+    let current = true;
+    vi.mocked(readScarpSource).mockImplementation(async () => {
+      // A competing user edit occurs after the original disk bytes matched.
+      current = false;
+      return 'prior saved bytes';
+    });
+    const isCurrent = vi.fn(() => current);
+    await expect(writeSourceFile(original, false, [], isCurrent))
+      .rejects.toThrow('No file was written');
+    expect(isCurrent).toHaveBeenCalledTimes(2);
+    expect(readScarpSource).toHaveBeenCalledTimes(1);
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('does not query session freshness after cancelling the Save As chooser', async () => {
+    vi.mocked(save).mockResolvedValue(null);
+    const isCurrent = vi.fn(() => false);
+    await expect(writeSourceFile(
+      { ...createUntitled(33), content: 'edited' }, true, [], isCurrent,
+    )).resolves.toBeNull();
+    expect(isCurrent).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
+  it('continues to save an unchanged request with an active snapshot guard', async () => {
+    const original = { ...createUntitled(34), content: 'print("आनंद");' };
+    vi.mocked(save).mockResolvedValue('C:/project/stable.srp');
+    const isCurrent = vi.fn(() => true);
+    await expect(writeSourceFile(original, true, [], isCurrent))
+      .resolves.toBe('C:/project/stable.srp');
+    expect(writeTextFile).toHaveBeenCalledWith('C:/project/stable.srp', original.content);
+    expect(isCurrent).toHaveBeenCalledTimes(2);
+  });
+
 });
