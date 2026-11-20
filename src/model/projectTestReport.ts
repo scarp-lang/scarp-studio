@@ -1,3 +1,5 @@
+import type { ScarpProjectAction } from '../services/project';
+
 /** Strict interpretation of Scarp's published project-test report schema v2.
  * Never parse arbitrary stdout or guess a test location from free-form text.
  */
@@ -86,4 +88,22 @@ export function parseScarpTestReport(json: string | null): ScarpTestReport | nul
       (root.mode === 'run' && passed + failed !== root.discovered) ||
       (root.mode === 'list' && (passed !== 0 || failed !== 0))) return null;
   return { mode: root.mode, discovered: root.discovered, passed, failed, tests: cases };
+}
+
+/** Tie the structured report to the EXACT command the user requested.
+ * Schema validity alone is insufficient: otherwise an unexpected 'list'
+ * payload from Run Tests could be presented as if tests actually ran.
+ * Unknown/non-test actions never acquire structured test results.
+ * Keep raw compiler output available as the UI fallback.
+ */
+export function parseScarpTestReportForAction(
+  json: string | null,
+  action: ScarpProjectAction,
+): ScarpTestReport | null {
+  const expectedMode = action === 'list-tests'
+    ? 'list'
+    : action === 'run-tests' ? 'run' : null;
+  if (!expectedMode) return null;
+  const report = parseScarpTestReport(json);
+  return report?.mode === expectedMode ? report : null;
 }

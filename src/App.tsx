@@ -36,7 +36,7 @@ import {
   type VerifiedSourceSnapshot,
 } from './model/verifiedSource';
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
-import { parseScarpTestReport, type ScarpTestReport } from './model/projectTestReport';
+import { parseScarpTestReportForAction, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource } from './model/projectTestNavigation';
 import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/projectSourceState';
 import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
@@ -923,8 +923,12 @@ export default function App() {
       setCompilerOutput(freshness.warning
         ? freshness.warning + '\n\n' + output.output
         : output.output);
-      const structured = parseScarpTestReport(output.testReportJson);
-      if (structured && freshness.allowStructuredTests) {
+      // Trust the schema AND the requested command, not an arbitrary test
+      // report mode returned by a changed or incompatible compiler.
+      const structured = freshness.allowStructuredTests
+        ? parseScarpTestReportForAction(output.testReportJson, action)
+        : null;
+      if (structured) {
         setProjectTestResult({ folder: folderPath, report: structured });
       }
       setNotice(freshness.stale

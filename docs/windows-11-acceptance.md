@@ -78,6 +78,7 @@ This is a **manual verification worksheet** for the consolidated development can
 | P29 | After Run/List Tests, reselect the same project folder, refresh Explorer, then switch project A→B→A | Any successful new folder listing clears the old report; a cancelled chooser or failed refresh does not silently replace the listing | NOT RUN |
 | P30 | Start Run Tests on a disposable Scarp project and edit an open source before the compiler exits | Raw output remains visible with an explicit stale-results warning; no old PASS/FAIL structured report is presented until another run | NOT RUN |
 | P31 | While Project Info, Verify Project or Run Project is in progress, edit and restore the same project source (A→B→A); repeat with an unrelated tab edit only | Relevant in-project edits mark the completed command output stale and preserve raw output; an unrelated edit does not produce a false stale warning | NOT RUN |
+| P32 | In an instrumented disposable build, supply a schema-valid `mode=list` report in response to **Run Tests**, and a schema-valid `mode=run` report in response to **List Tests** | The raw compiler output stays visible but neither mismatched response creates structured test statuses or clickable test-source navigation; matching reports continue to work normally | NOT RUN |
 
 ## Official compiler alpha.15 candidate (interpreter CLI; older Scarp sources remain supported)
 
