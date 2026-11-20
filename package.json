@@ -11,7 +11,7 @@
     "test": "vitest run",
     "tauri": "tauri",
     "check:release-candidate": "node scripts/check-release-candidate.mjs",
-    "test:release-candidate": "node --test scripts/check-release-candidate.test.mjs"
+    "test:release-candidate": "node --test scripts/check-release-candidate.node-tests.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
