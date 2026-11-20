@@ -57,6 +57,29 @@ export async function writeSourceFile(
     }
   }
   await writeTextFile(path, document.content);
+  // A successful write call does not prove that the file still contains this
+  // snapshot: an external editor, sync client or filesystem race can alter
+  // the path before Studio records it as clean. This read is bounded, validates
+  // UTF-8, and uses a single native file handle (see readScarpSource).
+  // Never mark the tab saved if the resulting bytes cannot be verified.
+  let diskAfterWrite: string;
+  try {
+    diskAfterWrite = await readScarpSource(path);
+  } catch (caught) {
+    const detail = caught instanceof Error ? caught.message : String(caught);
+    throw new Error(
+      'The write returned but the saved Scarp file could not be verified on disk. ' +
+      'Keep the source open and inspect the destination before retrying or using Save As. ' +
+      'Reason: ' + detail,
+    );
+  }
+  if (diskAfterWrite !== document.content) {
+    throw new Error(
+      'The destination changed during or immediately after saving: its disk contents ' +
+      'do not match the source snapshot Studio wrote. The source was NOT marked saved; ' +
+      'inspect the destination and use Save As to preserve your edits.',
+    );
+  }
   return path;
 }
 
