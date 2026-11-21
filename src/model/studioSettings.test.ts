@@ -22,7 +22,7 @@ describe('Studio settings', () => {
       fontSize: 18, wordWrap: false, minimap: true,
     })).toEqual({
       theme: 'light', autoSave: true, autoSaveDelay: 1000,
-      fontSize: 18, wordWrap: false, minimap: true,
+      fontSize: 18, tabSize: 4, wordWrap: false, minimap: true,
     });
     expect(normalizeStudioSettings({ autoSave: true, autoSaveDelay: 0 }).autoSaveDelay)
       .toBe(3000);
@@ -32,6 +32,54 @@ describe('Studio settings', () => {
     const getItem = vi.fn((key: string) => key === 'studio.theme' ? 'light' : null);
     vi.stubGlobal('localStorage', { getItem, setItem: vi.fn() });
     expect(loadStudioSettings()).toMatchObject({ theme: 'light', autoSave: false });
+  });
+
+  it('migrates font size, tab width and wrapping from shipped editor preferences', () => {
+    const getItem = (key: string) => {
+      if (key === 'studio.theme') return 'light';
+      if (key === 'studio.editorPreferences') {
+        return JSON.stringify({ fontSize: 22, tabSize: 8, wordWrap: false });
+      }
+      return null;
+    };
+    vi.stubGlobal('localStorage', { getItem, setItem: vi.fn() });
+    expect(loadStudioSettings()).toMatchObject({
+      theme: 'light', fontSize: 22, tabSize: 8, wordWrap: false, autoSave: false,
+    });
+  });
+
+  it('does not overwrite new preferences with stale legacy preferences', () => {
+    const next = {
+      ...defaultStudioSettings, autoSave: true, fontSize: 16,
+      tabSize: 2, wordWrap: true,
+    };
+    const getItem = (key: string) => {
+      if (key === SETTINGS_STORAGE_KEY) return JSON.stringify(next);
+      if (key === 'studio.editorPreferences') {
+        return JSON.stringify({ fontSize: 24, tabSize: 8, wordWrap: false });
+      }
+      return null;
+    };
+    vi.stubGlobal('localStorage', { getItem, setItem: vi.fn() });
+    expect(loadStudioSettings()).toEqual(next);
+  });
+
+  it('migrates tab width when a previous settings version omitted it', () => {
+    const getItem = (key: string) => {
+      if (key === SETTINGS_STORAGE_KEY) {
+        return JSON.stringify({ theme: 'dark', autoSave: true, fontSize: 16 });
+      }
+      if (key === 'studio.editorPreferences') return JSON.stringify({ tabSize: 8 });
+      return null;
+    };
+    vi.stubGlobal('localStorage', { getItem, setItem: vi.fn() });
+    expect(loadStudioSettings()).toMatchObject({
+      theme: 'dark', autoSave: true, fontSize: 16, tabSize: 8,
+    });
+  });
+
+  it('rejects unsupported stored tab widths', () => {
+    expect(normalizeStudioSettings({ tabSize: 3 })).toMatchObject({ tabSize: 4 });
   });
 
   it('handles corrupt saved preferences and blocked browser storage', () => {
