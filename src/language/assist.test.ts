@@ -99,6 +99,30 @@ describe('published Scarp alpha.12 aggregate and match assistance', () => {
   });
 });
 
+describe('published Scarp alpha.17 fixed arrays and boolean input', () => {
+  it('suggests versioned array_len and array_get_or with safe typed fallback guidance', () => {
+    const length = scarpTokenHelp('array_len');
+    const fallback = scarpTokenHelp('array_get_or');
+    expect(length?.kind).toBe('function');
+    expect(length?.insertText).toBe('array_len(${1:values})');
+    expect(length?.documentation).toContain('alpha.17');
+    expect(fallback?.insertText).toBe('array_get_or(${1:values}, ${2:index}, ${3:fallback})');
+    expect(fallback?.documentation).toContain('negative or out-of-bounds');
+    expect(fallback?.documentation).toContain('evaluated exactly once');
+  });
+
+  it('explains input_boolean preloaded interactive mode, not a live terminal', () => {
+    const input = scarpCompletions('input_boolean').find((entry) => entry.label === 'input_boolean');
+    expect(input?.kind).toBe('function');
+    expect(input?.insertText).toContain('input_boolean("');
+    expect(input?.documentation).toContain('alpha.17');
+    expect(input?.documentation).toContain('lowercase true or false');
+    expect(input?.documentation).toContain('not a live interactive terminal');
+    expect(scarpCompletions('ARRAY_GET_OR').some((entry) => entry.label === 'array_get_or')).toBe(true);
+    expect(scarpCompletions('input_boolean_invalid')).toEqual([]);
+  });
+});
+
 describe('lexical completion safety', () => {
   it('suppresses suggestions inside comments and quoted strings', () => {
     const line = 'print("https://test"); // trailing comment';

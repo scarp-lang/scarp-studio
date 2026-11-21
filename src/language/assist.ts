@@ -342,6 +342,23 @@ const templates: readonly ScarpCompletion[] = [
       ' The compiler enforces bounded allocation and type checks; native aggregate backends are not yet supported.',
     insertText,
   })),
+  // Published alpha.17 interpreter operations. These are callable built-ins,
+  // not reserved keywords; the selected compiler must support this release.
+  {
+    label: 'array_len', kind: 'function', detail: 'Fixed array length (alpha.17+)',
+    documentation: 'Since alpha.17 (interpreter): return the size of a fixed array, including an empty array. Useful as a repeat count. Requires an alpha.17+ compiler.',
+    insertText: 'array_len(${1:values})',
+  },
+  {
+    label: 'array_get_or', kind: 'function', detail: 'Safe fixed-array lookup (alpha.17+)',
+    documentation: 'Since alpha.17 (interpreter): return a fixed-array element or the typed fallback for a negative or out-of-bounds index. The fallback expression is evaluated exactly once even for a valid index.',
+    insertText: 'array_get_or(${1:values}, ${2:index}, ${3:fallback})',
+  },
+  {
+    label: 'input_boolean', kind: 'function', detail: 'Boolean prompt (alpha.17+)',
+    documentation: 'Since alpha.17 (interpreter): read exactly lowercase true or false. Requires interactive mode and a preloaded Program Input line in Studio. This is not a live interactive terminal; malformed or missing input reports a compiler diagnostic.',
+    insertText: 'input_boolean("${1:Continue (true/false)? }")',
+  },
 ];
 
 export function scarpCompletions(prefix: string): ScarpCompletion[] {
