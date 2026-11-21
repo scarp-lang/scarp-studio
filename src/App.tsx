@@ -63,6 +63,8 @@ export default function App() {
   const [compilerScanning, setCompilerScanning] = useState(false);
   const [detectedCompilers, setDetectedCompilers] = useState<string[]>([]);
   const [preferredDetectedCompiler, setPreferredDetectedCompiler] = useState<string | null>(null);
+  // A newer manual scan or first-Run scan invalidates an older startup/focus result.
+  const compilerScanRevision = useRef(0);
 
   const active = documents.find((document) => document.id === activeId) || null;
   const automaticCompiler = detectedCompilers.includes(preferredDetectedCompiler ?? '')
@@ -77,8 +79,11 @@ export default function App() {
     const refresh = () => {
       if (pending || commandInProgress.current || selectionInProgress.current) return;
       pending = true;
+      const revision = ++compilerScanRevision.current;
       void detectScarp().then((found) => {
-        if (!disposed) setDetectedCompilers(found);
+        if (!disposed && revision === compilerScanRevision.current) {
+          setDetectedCompilers(found);
+        }
       }).catch(() => {
         // The manual selection and Scan action remain available.
       }).finally(() => { pending = false; });
@@ -220,15 +225,19 @@ export default function App() {
     selectionInProgress.current = true;
     setCompilerScanning(true);
     setError(null);
+    const revision = ++compilerScanRevision.current;
     try {
       const found = await detectScarp();
+      if (revision !== compilerScanRevision.current) return;
       setDetectedCompilers(found);
       setPreferredDetectedCompiler(null);
       setNotice(found.length
         ? 'Found ' + found.length + ' Scarp compiler candidate(s); approval required before use.'
         : 'No extracted Scarp compiler found in standard install locations.');
     } catch (caught) {
-      setError('Compiler search failed: ' + toMessage(caught));
+      if (revision === compilerScanRevision.current) {
+        setError('Compiler search failed: ' + toMessage(caught));
+      }
     } finally {
       selectionInProgress.current = false;
       setCompilerScanning(false);
@@ -301,12 +310,15 @@ export default function App() {
       selectionInProgress.current = true;
       setCompilerSelecting(true);
       try {
+        const revision = ++compilerScanRevision.current;
         const available = detectedCompilers.length ? detectedCompilers : await detectScarp();
-        setDetectedCompilers(available);
+        if (revision === compilerScanRevision.current) setDetectedCompilers(available);
         const chosen = (automaticCompiler && available.includes(automaticCompiler))
           ? automaticCompiler : available[0];
         if (!chosen) {
-          setError('Scarp was not found. Use Download Compiler, extract the ZIP, then Scan.');
+          const message = 'Scarp was not found. Download the official compiler ZIP, extract it into Downloads/Scarp, and click Run again.';
+          setCompilerOutput(message);
+          setError(message);
           return;
         }
         const approved = await ask(
@@ -605,6 +617,9 @@ export default function App() {
       <footer className="status-bar">
         <span>{busy ? 'Working…' : notice}</span>
         <span>{active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}</span>
+        <span title={compilerPath || automaticCompiler || 'No Scarp compiler detected'}>
+          {compilerPath ? 'Compiler ready' : automaticCompiler ? 'Compiler detected · approval needed' : 'Compiler not found'}
+        </span>
         <span>Scarp · .srp</span>
         <span>v0.0.2-alpha.1</span>
       </footer>
