@@ -1255,7 +1255,7 @@ export default function App() {
         'Replace ' + plan.totalReplacements + ' occurrence(s) in ' + plan.changes.length +
           ' open Scarp source(s)? The replacements stay in editor buffers until you explicitly Save or Save All. ' +
           'Auto Save will NOT write these replacement snapshots, even if enabled. ' +
-          'Review or Undo before saving.',
+          'Save or Undo now; further typing resumes Auto Save for that edited file.',
         { title: 'Confirm open-buffer replacements', kind: 'warning' },
       );
       if (!approved) return;
@@ -1273,7 +1273,7 @@ export default function App() {
       setReplaceUndo(createOpenFileReplaceUndo(plan.sourceSnapshots, liveEditor.current.documents));
       setReplacePreview(null);
       setNotice('Replaced ' + plan.totalReplacements + ' occurrence(s) in ' +
-        plan.changes.length + ' editor buffer(s). Auto Save is paused for these replacement snapshots; review or Undo, then Save manually.');
+        plan.changes.length + ' editor buffer(s). Review or Undo, then Save manually; further editing resumes Auto Save.');
     } catch (caught) {
       setError('Could not confirm replacements: ' + toMessage(caught));
     } finally {
@@ -1605,7 +1605,7 @@ export default function App() {
                 <span aria-hidden="true" className="file-glyph">S</span>
                 <span className="file-name">{document.name}</span>
                 {autoSaveReview.current.isHeld(document) && (
-                  <span className="review-indicator" title="Replace All changes require manual Save or Undo">
+                  <span className="review-indicator" title="Review or Save these replacements; further editing resumes Auto Save">
                     Review
                   </span>
                 )}
@@ -1653,7 +1653,7 @@ export default function App() {
                 <span>{document.name}</span>
                 {autoSaveReview.current.isHeld(document) && (
                   <span className="review-indicator" aria-label="Manual Save required after Replace All"
-                    title="Replace All changes are held from Auto Save until reviewed or explicitly saved">
+                    title="Replace All changes are held from Auto Save until manual Save, Undo or further editing">
                     Review
                   </span>
                 )}
