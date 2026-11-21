@@ -390,7 +390,9 @@ export default function App() {
     }).catch(() => { /* Manual scan exposes any discovery error explicitly. */ });
     return () => {
       mounted = false;
-      if (requests.isCurrent(request)) requests.invalidate();
+      // Also invalidate a manual or first-Run scan still outstanding at
+      // unmount. It must not later show UI or continue into execution.
+      requests.invalidate();
     };
   }, []);
 
@@ -404,7 +406,7 @@ export default function App() {
     const scheduler = new AutoSaveScheduler((document) => autoSaveAction.current(document));
     autoSaveScheduler.current = scheduler;
     scheduler.reconcile(liveEditor.current.documents, autoSavePreferences.enabled && isTauri(),
-      autoSavePreferences.delay, compilerBusy || compilerSelecting || busy);
+      autoSavePreferences.delay, compilerBusy || compilerSelecting || compilerScanning || busy);
     return () => {
       scheduler.dispose();
       if (autoSaveScheduler.current === scheduler) autoSaveScheduler.current = null;
@@ -415,8 +417,8 @@ export default function App() {
 
   useEffect(() => {
     autoSaveScheduler.current?.reconcile(documents, autoSavePreferences.enabled && isTauri(),
-      autoSavePreferences.delay, compilerBusy || compilerSelecting || busy);
-  }, [documents, autoSavePreferences, compilerBusy, compilerSelecting, busy]);
+      autoSavePreferences.delay, compilerBusy || compilerSelecting || compilerScanning || busy);
+  }, [documents, autoSavePreferences, compilerBusy, compilerSelecting, compilerScanning, busy]);
 
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
@@ -996,9 +998,12 @@ export default function App() {
         const requests = compilerDiscoveryRequests.current;
         const request = detectedCompilers.length ? null : requests.begin();
         const available = detectedCompilers.length ? detectedCompilers : await detectScarp();
-        if (request === null || requests.isCurrent(request)) {
-          setDetectedCompilers(available);
+        if (request !== null && !requests.isCurrent(request)) {
+          // A superseded or unmounted first-Run scan cannot cause a trust
+          // prompt, let alone launch a compiler.
+          return;
         }
+        setDetectedCompilers(available);
         const chosen = automaticCompiler && available.includes(automaticCompiler)
           ? automaticCompiler : available[0];
         if (!chosen) {
