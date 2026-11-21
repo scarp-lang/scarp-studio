@@ -1681,23 +1681,53 @@ export default function App() {
             <div className="compiler-heading">
               <strong>SCARP OUTPUT</strong>
               <div className="compiler-actions">
-                <button onClick={() => void selectCompiler()} disabled={compilerBusy || compilerSelecting}
-                  title="Choose a trusted Scarp executable; Studio will execute it to verify its version">
-                  {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Select Compiler'}
+                <button type="button" onClick={() => void rescanCompilers()}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
+                  title="Scan PATH, standard installed locations and extracted Scarp Downloads folders without executing software">
+                  {compilerScanning ? 'Scanning…' : 'Scan Compiler'}
+                </button>
+                <button type="button" onClick={() => void downloadCompiler()}
+                  title="Open the official SHA-256-pinned Scarp alpha.17 Windows compiler ZIP">Download Compiler</button>
+                <button onClick={() => void selectCompiler()} disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
+                  title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
+                  {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}
                 </button>
                 <button onClick={() => void runCompiler('exec')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
                   title="Execute the saved Scarp source using the official compiler">Run</button>
                 <button onClick={() => void runCompiler('verify')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
                   title="Statically verify saved Scarp source without runtime execution">Verify</button>
                 <button onClick={() => void stopCompiler()} disabled={!compilerBusy && !compilerSelecting}
                   title="Stop a running Scarp process or compiler capability probe">Stop</button>
               </div>
             </div>
-            <div className="compiler-meta">{compilerInfo || (compilerPath
-              ? 'Compiler configured; version checked on the next Run/Verify.'
-              : 'No compiler selected')}</div>
+            <div className="compiler-meta">
+              {compilerInfo || (compilerPath
+                ? 'Compiler configured; version checked on the next Run/Verify.'
+                : automaticCompiler
+                  ? 'Detected (not yet trusted): ' + automaticCompiler
+                  : 'No compiler detected. Download the official ZIP, extract it, then click Scan Compiler.')}
+              {automaticCompiler && !compilerPath && (
+                <div className="compiler-location-approval">
+                  <span>Is your Scarp compiler at <code>{automaticCompiler}</code>?</span>
+                  <button type="button" onClick={() => void confirmDetectedCompiler()}
+                    disabled={compilerSelecting || compilerScanning || compilerBusy}>
+                    Yes, confirm this location
+                  </button>
+                </div>
+              )}
+              {detectedCompilers.length > 1 && !compilerPath && (
+                <label className="compiler-candidate-select">Detected candidate:
+                  <select aria-label="Detected compiler to trust and use on Run"
+                    value={automaticCompiler ?? ''}
+                    onChange={(event) => setPreferredDetectedCompiler(event.target.value)}>
+                    {detectedCompilers.map((candidate) =>
+                      <option key={candidate} value={candidate}>{candidate}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
             <div className="project-actions" aria-label="Selected Scarp project commands">
               <span>PROJECT</span>
               <button type="button" onClick={() => void runProjectAction('info')}
@@ -1865,6 +1895,10 @@ export default function App() {
           title="Go to Line (Ctrl+G)">
           {active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}
         </button>
+        <span title={compilerPath || automaticCompiler || 'No compiler detected'}>
+          {compilerPath ? 'Scarp compiler ready' :
+            automaticCompiler ? 'Compiler detected · approval required' : 'Compiler not detected'}
+        </span>
         <span>Scarp · .srp</span>
         <span>0.0.2-alpha.1 · development candidate</span>
       </footer>
