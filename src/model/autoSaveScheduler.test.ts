@@ -90,6 +90,77 @@ describe('per-file Auto Save scheduler', () => {
     scheduler.dispose();
   });
 
+  it('backs off blocked saves to a capped interval and resumes promptly', () => {
+    let busy = true;
+    const writes = vi.fn(() => busy ? false : undefined);
+    const scheduler = new AutoSaveScheduler(writes);
+    const doc = savedDirty('backoff');
+    scheduler.reconcile([doc], true, 1000, false);
+
+    vi.advanceTimersByTime(1000);
+    expect(writes).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(249);
+    expect(writes).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(writes).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(500);
+    expect(writes).toHaveBeenCalledTimes(3);
+    vi.advanceTimersByTime(1000);
+    expect(writes).toHaveBeenCalledTimes(4);
+    vi.advanceTimersByTime(2000);
+    expect(writes).toHaveBeenCalledTimes(5);
+
+    busy = false;
+    vi.advanceTimersByTime(2000);
+    expect(writes).toHaveBeenCalledTimes(6);
+    vi.advanceTimersByTime(10000);
+    expect(writes).toHaveBeenCalledTimes(6);
+    scheduler.dispose();
+  });
+
+  it('never resurrects a blocked retry after synchronous close or dispose', () => {
+    const doc = savedDirty('closed');
+    let scheduler!: AutoSaveScheduler;
+    const save = vi.fn(() => {
+      scheduler.reconcile([], true, 1000, false);
+      return false;
+    });
+    scheduler = new AutoSaveScheduler(save);
+    scheduler.reconcile([doc], true, 1000, false);
+    vi.advanceTimersByTime(11000);
+    expect(save).toHaveBeenCalledOnce();
+    scheduler.dispose();
+
+    const disposeSave = vi.fn(() => {
+      scheduler.dispose();
+      return false;
+    });
+    scheduler = new AutoSaveScheduler(disposeSave);
+    scheduler.reconcile([doc], true, 1000, false);
+    vi.advanceTimersByTime(11000);
+    expect(disposeSave).toHaveBeenCalledOnce();
+  });
+
+  it('does not duplicate a new timer after reentrant reconciliation', () => {
+    const doc = savedDirty('reentrant');
+    let scheduler!: AutoSaveScheduler;
+    let count = 0;
+    const onSave = vi.fn(() => {
+      count++;
+      if (count === 1) scheduler.reconcile([doc], true, 1000, false);
+      return false;
+    });
+    scheduler = new AutoSaveScheduler(onSave);
+    scheduler.reconcile([doc], true, 1000, false);
+    vi.advanceTimersByTime(1000);
+    expect(onSave).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(250);
+    expect(onSave).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(750);
+    expect(onSave).toHaveBeenCalledTimes(2);
+    scheduler.dispose();
+  });
+
   it('cancels a busy retry if the user edits, closes or disables Auto Save', () => {
     const save = vi.fn(() => false);
     const scheduler = new AutoSaveScheduler(save);
