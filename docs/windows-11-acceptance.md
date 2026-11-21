@@ -14,6 +14,13 @@ This is a **manual verification worksheet** for the full IDE development candida
 - Check `scarp.exe --version` reports `scarp 0.0.6-alpha.17`. Scarp Studio may automatically **detect** the compiler, but must require explicit trust confirmation of its **exact path** before executing even a version probe; the Download action opens the official ZIP **only on click**, without installing or launching any found executable automatically. Automated CI also checks alpha.10–alpha.15 backwards compatibility, but this manual pass is against alpha.17.
 - Use only disposable `.srp` files in a test directory, e.g. `C:\\ScarpStudioAcceptance`; keep backups of any data you care about. Never test overwrite handling using real projects.
 
+A ready-to-run [Windows GUI smoke suite](../qa/windows/README.md) contains
+real `.srp` files for Run/Verify, fixed arrays, preloaded boolean input and
+an intentionally invalid diagnostic. The same source examples are executed
+by exact-head Windows CI against the SHA-pinned official alpha.17 compiler.
+**CI only establishes CLI compatibility; mark GUI cases PASS only after
+actually testing the Studio desktop build.**
+
 ## Core editor and saved file behavior
 
 | ID | Action | Required outcome | Result / evidence |
