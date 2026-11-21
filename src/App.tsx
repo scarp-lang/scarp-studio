@@ -42,9 +42,10 @@ import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/pr
 import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
+import { AutoSaveReviewGate } from './model/autoSaveReviewGate';
 import { CompilerDiscoveryRequests } from './model/compilerDiscoveryRequests';
 import {
-  canAutoSave, loadAutoSavePreferences, persistAutoSavePreferences,
+  loadAutoSavePreferences, persistAutoSavePreferences,
   type AutoSaveDelay,
 } from './model/autoSaveSettings';
 
@@ -141,6 +142,9 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
   const [autoSavePreferences, setAutoSavePreferences] = useState(loadAutoSavePreferences);
+  const autoSaveEnabledRef = useRef(autoSavePreferences.enabled);
+  autoSaveEnabledRef.current = autoSavePreferences.enabled;
+  const autoSaveReview = useRef(new AutoSaveReviewGate());
   const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
   const autoSaveAction = useRef<(document: StudioDocument) => boolean | void>(() => true);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
@@ -416,6 +420,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    autoSaveReview.current.reconcile(documents);
     autoSaveScheduler.current?.reconcile(documents, autoSavePreferences.enabled && isTauri(),
       autoSavePreferences.delay, compilerBusy || compilerSelecting || compilerScanning || busy);
   }, [documents, autoSavePreferences, compilerBusy, compilerSelecting, compilerScanning, busy]);
@@ -759,7 +764,9 @@ export default function App() {
   }
 
   async function saveDocumentAutomatically(document: StudioDocument): Promise<void> {
-    if (!canAutoSave(document) || saveInProgress.current ||
+    const live = liveEditor.current.documents.find((item) => item.id === document.id);
+    if (!autoSaveReview.current.canWrite(document, live, autoSaveEnabledRef.current) ||
+        saveInProgress.current ||
         commandInProgress.current || selectionInProgress.current ||
         filePickerInProgress.current || nativeDialogGate.current.isActive) return;
     // A native lock covers the entire preflight, write and verified read-back.
@@ -776,7 +783,8 @@ export default function App() {
         // revisions that return to identical bytes (A→B→A).
         () => {
           const current = liveEditor.current.documents.find((item) => item.id === document.id);
-          return current !== undefined && isUnchangedSnapshot(current, document) &&
+          return autoSaveReview.current.canWrite(document, current, autoSaveEnabledRef.current) &&
+            isUnchangedSnapshot(current!, document) &&
             !commandInProgress.current && !selectionInProgress.current &&
             !filePickerInProgress.current && !nativeDialogGate.current.isActive;
         },
@@ -798,7 +806,7 @@ export default function App() {
 
   autoSaveAction.current = (document) => {
     const current = liveEditor.current.documents.find((item) => item.id === document.id);
-    if (!autoSavePreferences.enabled || current !== document || !canAutoSave(document)) {
+    if (!autoSaveReview.current.canWrite(document, current, autoSaveEnabledRef.current)) {
       return true;
     }
     if (saveInProgress.current || commandInProgress.current || selectionInProgress.current ||
@@ -1245,7 +1253,9 @@ export default function App() {
     try {
       const approved = await ask(
         'Replace ' + plan.totalReplacements + ' occurrence(s) in ' + plan.changes.length +
-          ' open Scarp source(s)? This changes editor buffers only; save each file separately.',
+          ' open Scarp source(s)? The replacements stay in editor buffers until you explicitly Save or Save All. ' +
+          'Auto Save will NOT write these replacement snapshots, even if enabled. ' +
+          'Save or Undo now; further typing resumes Auto Save for that edited file.',
         { title: 'Confirm open-buffer replacements', kind: 'warning' },
       );
       if (!approved) return;
@@ -1257,10 +1267,13 @@ export default function App() {
         return;
       }
       dispatch({ type: 'replace-open-files', changes: plan.changes, allSnapshots: plan.sourceSnapshots });
+      autoSaveReview.current.holdReplacements(
+        liveEditor.current.documents, plan.changes.map((change) => change.id),
+      );
       setReplaceUndo(createOpenFileReplaceUndo(plan.sourceSnapshots, liveEditor.current.documents));
       setReplacePreview(null);
       setNotice('Replaced ' + plan.totalReplacements + ' occurrence(s) in ' +
-        plan.changes.length + ' editor buffer(s). Save modified tabs to write to disk.');
+        plan.changes.length + ' editor buffer(s). Review or Undo, then Save manually; further editing resumes Auto Save.');
     } catch (caught) {
       setError('Could not confirm replacements: ' + toMessage(caught));
     } finally {
@@ -1484,9 +1497,14 @@ export default function App() {
           <label className="editor-setting-checkbox" htmlFor="studio-auto-save">
             <input id="studio-auto-save" type="checkbox"
               checked={autoSavePreferences.enabled}
-              onChange={(event) => setAutoSavePreferences((current) => ({
-                ...current, enabled: event.target.checked,
-              }))} />
+              onChange={(event) => {
+                // Synchronously revoke queued writes before React commits the
+                // settings update. Async pre-write guards read this ref.
+                autoSaveEnabledRef.current = event.target.checked;
+                setAutoSavePreferences((current) => ({
+                  ...current, enabled: event.target.checked,
+                }));
+              }} />
             Auto Save (named .srp files only; off by default)
           </label>
           <label htmlFor="studio-auto-save-delay">Save after inactivity</label>
@@ -1586,6 +1604,11 @@ export default function App() {
               >
                 <span aria-hidden="true" className="file-glyph">S</span>
                 <span className="file-name">{document.name}</span>
+                {autoSaveReview.current.isHeld(document) && (
+                  <span className="review-indicator" title="Review or Save these replacements; further editing resumes Auto Save">
+                    Review
+                  </span>
+                )}
                 {isDirty(document) && <span aria-label="unsaved changes">●</span>}
               </button>
             ))}
@@ -1628,6 +1651,12 @@ export default function App() {
                 title={document.path || document.name}
               >
                 <span>{document.name}</span>
+                {autoSaveReview.current.isHeld(document) && (
+                  <span className="review-indicator" aria-label="Manual Save required after Replace All"
+                    title="Replace All changes are held from Auto Save until manual Save, Undo or further editing">
+                    Review
+                  </span>
+                )}
                 {isDirty(document) && <span className="dirty-indicator" aria-label="unsaved changes">●</span>}
                 <button
                   className="tab-close"
@@ -2033,6 +2062,8 @@ export default function App() {
         <button type="button" className="status-nav"
           onClick={() => setEditorSettingsOpen(true)} title="Configure Auto Save (Ctrl+,)">
           Auto Save: {autoSavePreferences.enabled ? 'On' : 'Off'}
+          {autoSaveReview.current.reviewCount(documents) > 0 &&
+            ' · Review ' + autoSaveReview.current.reviewCount(documents)}
         </button>
         <span>Scarp · .srp</span>
         <span>0.0.2-alpha.1 · development candidate</span>
