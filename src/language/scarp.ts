@@ -1,6 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.8.
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.17.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco): void {
@@ -24,6 +24,8 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       'print', 'println', 'write', 'eprint', 'ewrite',
     ],
     typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple'],
+    // Published alpha.17 functions: builtins are callable identifiers, not reserved keywords.
+    builtinFunctions: ['array_len', 'array_get_or', 'input_boolean'],
     // Old declaration spellings are reserved but rejected by the current compiler.
     legacyKeywords: ['let', 'mut'],
     tokenizer: {
@@ -39,7 +41,7 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         [/\b(?:0[xX][A-Za-z0-9_]*|0[bB][A-Za-z0-9_]*|[0-9]+_[A-Za-z0-9_]*)\b/, 'number.invalid'],
         [/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b/, 'number'],
         [/[a-zA-Z_][\w]*/, {
-          cases: { '@keywords': 'keyword', '@typeKeywords': 'type', '@legacyKeywords': 'invalid', '@default': 'identifier' },
+          cases: { '@keywords': 'keyword', '@typeKeywords': 'type', '@builtinFunctions': 'predefined', '@legacyKeywords': 'invalid', '@default': 'identifier' },
         }],
         [/[{}()[\]]/, '@brackets'],
         [/[+\-*\/%&|^~!=<>?:;,.]+/, 'operator'],
