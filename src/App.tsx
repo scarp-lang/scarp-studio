@@ -204,7 +204,8 @@ export default function App() {
   ): Promise<void> {
     const document = liveEditor.current.documents.find((item) => item.id === id);
     if (!document || saveInProgress.current) return;
-    if (automatic && (!settings.autoSave || !canAutoSave(document) || document !== expected)) return;
+    if (automatic && (!settings.autoSave || !canAutoSave(document) || document !== expected ||
+        commandInProgress.current || selectionInProgress.current)) return;
     saveInProgress.current = true;
     if (!automatic) {
       setError(null);
@@ -244,13 +245,14 @@ export default function App() {
     const timers = autoSaveTimers.current;
     for (const [id, pending] of timers) {
       const current = documents.find((doc) => doc.id === id);
-      if (!settings.autoSave || !isTauri() || compilerBusy || !current || !canAutoSave(current) ||
+      if (!settings.autoSave || !isTauri() || compilerBusy || compilerSelecting ||
+          !current || !canAutoSave(current) ||
           current !== pending.document || pending.delay !== settings.autoSaveDelay) {
         window.clearTimeout(pending.timeout);
         timers.delete(id);
       }
     }
-    if (!settings.autoSave || !isTauri() || compilerBusy) return;
+    if (!settings.autoSave || !isTauri() || compilerBusy || compilerSelecting) return;
     for (const document of documents) {
       if (!canAutoSave(document) || timers.has(document.id)) continue;
       const timeout = window.setTimeout(() => {
@@ -260,7 +262,7 @@ export default function App() {
       }, settings.autoSaveDelay);
       timers.set(document.id, { document, delay: settings.autoSaveDelay, timeout });
     }
-  }, [documents, settings.autoSave, settings.autoSaveDelay, compilerBusy]);
+  }, [documents, settings.autoSave, settings.autoSaveDelay, compilerBusy, compilerSelecting]);
 
   useEffect(() => () => {
     for (const timer of autoSaveTimers.current.values()) {
