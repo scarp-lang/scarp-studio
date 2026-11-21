@@ -9,7 +9,7 @@ import {
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
-import { runnableSource } from './model/compilerReadiness';
+import { captureRunSnapshot, validateRunSnapshot, type ScarpRunSnapshot } from './model/compilerReadiness';
 import { exitBlockReason } from './model/exitGuards';
 import { detectScarp, executeScarp, openScarpDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
@@ -56,7 +56,7 @@ export default function App() {
   const [compilerPath, setCompilerPath] = useState<string | null>(null);
   const [compilerInfo, setCompilerInfo] = useState<string | null>(null);
   const [compilerOutput, setCompilerOutput] = useState(
-    'Select a trusted official Scarp executable to enable Run and Verify.\n' +
+    'Scarp Studio scans common compiler locations automatically.\n' +
     'Source files are never executed automatically.',
   );
   const [compilerBusy, setCompilerBusy] = useState(false);
@@ -284,14 +284,12 @@ export default function App() {
       setError('Finish saving before running the compiler.');
       return;
     }
-    let source: string;
-    let expectedContent: string;
+    let snapshot: ScarpRunSnapshot;
     try {
       const selected = liveEditor.current.documents.find(
         (item) => item.id === liveEditor.current.activeId,
       ) ?? null;
-      source = runnableSource(selected);
-      expectedContent = selected!.savedContent;
+      snapshot = captureRunSnapshot(selected);
     } catch (caught) {
       setError(toMessage(caught));
       return;
@@ -330,12 +328,24 @@ export default function App() {
         setCompilerSelecting(false);
       }
     }
+    // A tab, source buffer or saved file can change while discovery, a native
+    // trust dialog, and compiler probing are awaited. Never run stale code.
+    try {
+      if (saveInProgress.current) throw new Error('Finish saving before running the compiler.');
+      const selected = liveEditor.current.documents.find(
+        (item) => item.id === liveEditor.current.activeId,
+      ) ?? null;
+      validateRunSnapshot(snapshot, selected);
+    } catch (caught) {
+      setError(toMessage(caught));
+      return;
+    }
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
-    setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
+    setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(snapshot.path) + '…');
     try {
-      const result = await executeScarp(binary, source, mode, expectedContent);
+      const result = await executeScarp(binary, snapshot.path, mode, snapshot.savedContent);
       setCompilerOutput(result);
       setNotice('Scarp ' + mode + ' finished; see output');
     } catch (caught) {
@@ -403,6 +413,9 @@ export default function App() {
       } else if (key === 'w' && activeId) {
         event.preventDefault();
         void closeFile(activeId);
+      } else if (key === 'f5') {
+        event.preventDefault();
+        void runCompiler(event.shiftKey ? 'verify' : 'exec');
       }
     };
     window.addEventListener('keydown', handleKey, true);
@@ -558,11 +571,11 @@ export default function App() {
                   {compilerSelecting ? 'Checking…' : 'Choose Manually'}
                 </button>
                 <button onClick={() => void runCompiler('exec')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || (!compilerPath && !automaticCompiler) || !active || !active.path || isDirty(active)}
-                  title="Execute the saved Scarp source using the official compiler">Run</button>
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !active || !active.path || isDirty(active)}
+                  title="Run saved Scarp source (Ctrl+F5); detect the compiler on demand">Run</button>
                 <button onClick={() => void runCompiler('verify')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || (!compilerPath && !automaticCompiler) || !active || !active.path || isDirty(active)}
-                  title="Statically verify saved Scarp source without runtime execution">Verify</button>
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !active || !active.path || isDirty(active)}
+                  title="Verify saved Scarp source without executing it (Ctrl+Shift+F5)">Verify</button>
                 <button onClick={() => void stopCompiler()} disabled={!compilerBusy}
                   title="Stop the active compiler process">Stop</button>
               </div>
