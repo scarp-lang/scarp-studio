@@ -9,9 +9,9 @@ This is a **manual verification worksheet** for the consolidated development can
   `pwsh -File scripts/verify-windows-artifacts.ps1 -ArtifactDirectory 'C:\\ScarpStudioAcceptance\\artifacts' -SourceCommit '<exact 40-digit commit SHA>' -RunUrl 'https://github.com/scarp-lang/scarp-studio/actions/runs/<exact run ID>'`.
   This checks for missing, duplicate and modified artifacts, but **cannot prove** that a manually supplied run URL or manifest is genuine; verify provenance in GitHub first. Record the exact run URL, commit and results.
 - Record: Scarp Studio source commit, CI run URL, candidate exe SHA-256, installer SHA-256, Windows build, and any code signing information. An unsigned installer is **not** a stable release. Respect Windows security warnings; investigate them rather than bypassing device protection.
-- Obtain the official Scarp `v0.0.6-alpha.14` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.14) and verify the Windows ZIP archive SHA-256 against its published GitHub release-asset digest:
-  `d6c523ba4a5bef283a6ce8065ecb05262d07d90e0cb8c8414a3edfa84ee72138`. The installer and compiler archives are distinct files; never compare their hashes interchangeably.
-- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.14`. Scarp Studio must require explicit selection and trust confirmation of that compiler; it must not download or run one automatically. Automated CI also checks alpha.10–alpha.13 backwards compatibility, but this manual pass is against alpha.14.
+- Obtain the official Scarp `v0.0.6-alpha.17` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.17) and verify the Windows ZIP archive SHA-256 against its published GitHub release-asset digest:
+  `fa05e57675799d881ebe33ccd54f6eb769825632904adf99cd08c940383134b5`. The installer and compiler archives are distinct files; never compare their hashes interchangeably.
+- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.17`. Scarp Studio must require explicit selection and trust confirmation of that compiler; it must not download or run one automatically. Automated CI also checks alpha.10–alpha.15 backwards compatibility, but this manual pass is against alpha.17.
 - Use only disposable `.srp` files in a test directory, e.g. `C:\\ScarpStudioAcceptance`; keep backups of any data you care about. Never test overwrite handling using real projects.
 
 ## Core editor and saved file behavior
@@ -83,23 +83,24 @@ This is a **manual verification worksheet** for the consolidated development can
 | P32 | In an instrumented disposable build, supply a schema-valid `mode=list` report in response to **Run Tests**, and a schema-valid `mode=run` report in response to **List Tests** | The raw compiler output stays visible but neither mismatched response creates structured test statuses or clickable test-source navigation; matching reports continue to work normally | NOT RUN |
 | P33 | In an instrumented disposable compiler bridge, return a valid all-PASS `mode=run` test report with exit code 1, a valid failing run report with exit code 0, and a valid List Tests discovery report with exit code 1; compare with real successful/failing suites | Inconsistent or abnormal exits preserve raw output but never create a structured PASS/FAIL report or Open Source navigation; genuine exit-0 successes and exit-1 failing test suites render matching structured results | NOT RUN |
 
-## Official compiler alpha.15 candidate (interpreter CLI; older Scarp sources remain supported)
+## Official compiler alpha.17 candidate (interpreter CLI; older Scarp sources remain supported)
 
 | ID | Action | Required outcome | Result / evidence |
 | --- | --- | --- | --- |
-| C01 | Explicitly select verified official alpha.14 `scarp.exe`, accept trust prompt | Studio reports version; remains idle until explicit Run or Verify | NOT RUN |
+| C01 | Explicitly select verified official alpha.17 `scarp.exe`, accept trust prompt | Studio reports version; remains idle until explicit Run or Verify | NOT RUN |
 | C02 | Create **Typed Records** starter; save, Verify, Run | Record syntax verified; result prints `Review` | NOT RUN |
 | C03 | Create **Tagged Variants** starter; save, Verify, Run | Exhaustive case match executes; output contains `42` | NOT RUN |
 | C04 | Create **Typed Lists and Maps** starter; save, Verify, Run | Interpreter evaluates immutable snapshots and typed map lookup | NOT RUN |
 | C05 | Create **Option Propagation** starter; save, Verify, Run | Checked optional early return works; result displays `true` | NOT RUN |
-| C06 | Open alpha.11 exact decimal starter with alpha.14, Verify/Run; test decimal prompt with preloaded input | Exact decimal and prompted input work in supported mode | NOT RUN |
+| C06 | Open alpha.11 exact decimal starter with alpha.17, Verify/Run; test decimal prompt with preloaded input | Exact decimal and prompted input work in supported mode | NOT RUN |
 | C07 | Try to Run an unsaved/dirty source | Studio does not execute a misleading saved-on-disk snapshot | NOT RUN |
 | C08 | Stop a long-running disposable Scarp program | Native process terminates without hanging or losing source edits | NOT RUN |
 | C12 | Select a trusted but deliberately slow disposable test compiler probe, then click Stop during version or capability checking; also Stop after a completed probe before Run | Only that subprocess terminates; no later capability check or Run starts from its cancelled reservation, no stale success is shown, and a fresh compiler selection/Run can start afterward | NOT RUN |
 | C13 | Select the separately verified official Scarp alpha.15 Windows executable and explicitly approve its use; Verify and Run a saved disposable Unicode greeting/equality source, then Verify an undefined identifier | Studio reports alpha.15, correct output and structured JSON v1 error location; no automatic compiler installation, execution or false success. Recheck work-limit behavior against alpha.15 for long string comparisons | NOT RUN |
+| C14 | Verify and Run a saved alpha.17 source using `array_len` and `array_get_or`; separately check official alpha.17 `input_boolean` through the CLI's explicit preloaded-input mode | Studio runs/diagnoses the saved array source correctly; standalone CLI reads the preloaded boolean; **do not claim Studio GUI interactive boolean support from the CLI-only test** | NOT RUN |
 | C09 | Project Info, Verify Project, Run Project, List Tests, Run Tests in disposable project | Compiler output and structured test report match actual CLI support | NOT RUN |
 | C10 | Choose an older official compiler and attempt an alpha.12-only program | Unsupported syntax is reported; Studio does not claim that old CLI executed alpha.12 | NOT RUN |
-| C11 | With official alpha.14, Verify/Run a result-propagation example that prints a value on Ok and forwards an Err unchanged | Exactly the expected output, no automatic execution; native Stop still available | NOT RUN |
+| C11 | With official alpha.17, Verify/Run a result-propagation example that prints a value on Ok and forwards an Err unchanged | Exactly the expected output, no automatic execution; native Stop still available | NOT RUN |
 
 ## Diagnostics, packaging and release gate
 
