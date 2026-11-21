@@ -43,6 +43,7 @@ import { projectResultFreshness, sourceResultIsStale } from './model/resultFresh
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
 import { AutoSaveReviewGate } from './model/autoSaveReviewGate';
+import { restoreStudioDefaults } from './model/studioDefaults';
 import { CompilerDiscoveryRequests } from './model/compilerDiscoveryRequests';
 import {
   loadAutoSavePreferences, persistAutoSavePreferences,
@@ -1555,8 +1556,17 @@ export default function App() {
           <button
             className="settings-reset"
             type="button"
-            onClick={() => setEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES })}
-          >Restore defaults</button>
+            onClick={() => {
+              // Revocation is synchronous: an in-flight Auto Save preflight
+              // cannot write old content while the UI state is still batching.
+              const restored = restoreStudioDefaults();
+              autoSaveEnabledRef.current = false;
+              setAutoSavePreferences(restored.autoSave);
+              setEditorPreferences(restored.editor);
+              setNotice('Restored Studio Settings defaults; Auto Save is off.');
+            }}
+            title="Reset editor appearance and disable Auto Save"
+          >Restore all defaults</button>
         </section>
       )}
       <div className="studio-main">
