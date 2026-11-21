@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { AutoSaveReviewGate } from './autoSaveReviewGate';
 import type { StudioDocument } from './documents';
+import { editorReducer, initialEditorState } from './editorState';
+import { planOpenFileReplacement } from './openFileReplace';
+import { canUndoOpenFileReplace, createOpenFileReplaceUndo } from './openFileReplaceUndo';
 
 function source(id: string): StudioDocument {
   return {
@@ -76,4 +79,53 @@ describe('Replace All Auto Save review gate', () => {
     gate.holdReplacements([untitled, clean], [untitled.id, clean.id]);
     expect(gate.reviewCount([untitled, clean])).toBe(0);
   });
+  it('protects real reducer Replace All, preserves unrelated Auto Save, and permits explicit Save', () => {
+    const original = editorReducer(initialEditorState, {
+      type: 'open', path: '/project/first.srp', content: 'print("old");',
+    });
+    const both = editorReducer(original, {
+      type: 'open', path: '/project/second.srp', content: 'print("unrelated");',
+    });
+    const query = planOpenFileReplacement(
+      both.documents, 'old', 'new', { caseSensitive: false, wholeWord: false },
+    );
+    expect(query.changes).toHaveLength(1);
+    const replaced = editorReducer(both, {
+      type: 'replace-open-files', changes: query.changes, allSnapshots: query.sourceSnapshots,
+    });
+    const gate = new AutoSaveReviewGate();
+    gate.holdReplacements(replaced.documents, query.changes.map((change) => change.id));
+    const changed = replaced.documents.find((doc) => doc.id === query.changes[0].id)!;
+    expect(changed.content).toContain('new');
+    expect(changed.savedContent).toContain('old');
+    expect(gate.canWrite(changed, changed, true)).toBe(false);
+
+    // A regular subsequent edit to an unrelated tab is still eligible.
+    const editedOther = editorReducer(replaced, {
+      type: 'edit', id: both.activeId!, content: 'print("unrelated but now dirty");',
+    });
+    gate.reconcile(editedOther.documents);
+    expect(gate.isHeld(editedOther.documents.find((doc) => doc.id === changed.id)!))
+      .toBe(true);
+    const other = editedOther.documents.find((doc) => doc.id === both.activeId)!;
+    expect(gate.canWrite(other, other, true)).toBe(true);
+
+    const undo = createOpenFileReplaceUndo(query.sourceSnapshots, replaced.documents)!;
+    expect(canUndoOpenFileReplace(undo, replaced)).toBe(true);
+    const undone = editorReducer(replaced, {
+      type: 'replace-open-files', changes: undo.changes, allSnapshots: undo.after,
+    });
+    gate.reconcile(undone.documents);
+    expect(gate.reviewCount(undone.documents)).toBe(0);
+    expect(undone.documents.find((doc) => doc.id === changed.id)!.content)
+      .toBe('print("old");');
+
+    const explicitlySaved = editorReducer(replaced, {
+      type: 'saved', id: changed.id, path: changed.path!, savedContent: changed.content,
+    });
+    gate.reconcile(explicitlySaved.documents);
+    expect(gate.reviewCount(explicitlySaved.documents)).toBe(0);
+    expect(canUndoOpenFileReplace(undo, explicitlySaved)).toBe(false);
+  });
+
 });
