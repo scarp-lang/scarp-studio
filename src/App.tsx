@@ -242,7 +242,7 @@ export default function App() {
     }
     try {
       await openScarpDownloads();
-      setNotice('Download the official Scarp ZIP, extract it to Downloads/Scarp, then click Scan.');
+      setNotice('Download the official Scarp ZIP, extract it to Downloads/Scarp, then return to Studio (or click Scan).');
     } catch (caught) {
       setError('Could not open compiler downloads: ' + toMessage(caught));
     }
@@ -550,7 +550,7 @@ export default function App() {
                   {compilerScanning ? 'Scanning…' : 'Scan Compiler'}
                 </button>
                 <button onClick={() => void openCompilerDownloads()}
-                  title="Open the official Scarp compiler releases in your browser">
+                  title="Download the SHA-256-pinned Windows compiler ZIP from official GitHub releases">
                   Download Compiler
                 </button>
                 <button onClick={() => void selectCompiler()} disabled={compilerBusy || compilerSelecting || compilerScanning}
