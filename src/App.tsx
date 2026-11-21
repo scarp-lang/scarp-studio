@@ -919,6 +919,9 @@ export default function App() {
   }
 
   async function downloadCompiler(): Promise<void> {
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || saveInProgress.current ||
+        nativeDialogGate.current.isActive) return;
     try {
       await openCompilerDownloads();
       setNotice('Opened the official Scarp alpha.17 download; extract it and scan for the compiler.');
@@ -1847,7 +1850,8 @@ export default function App() {
                   {compilerScanning ? 'Scanning…' : 'Scan Compiler'}
                 </button>
                 <button type="button" onClick={() => void downloadCompiler()}
-                  title="Open the official SHA-256-pinned Scarp alpha.17 Windows compiler ZIP">Download Compiler</button>
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
+                  title="Open the official Scarp alpha.17 ZIP. Verify its published SHA-256 before trusting the extracted executable.">Download Compiler</button>
                 <button onClick={() => void selectCompiler()} disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
                   title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
                   {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}
