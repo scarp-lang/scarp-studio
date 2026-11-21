@@ -138,6 +138,16 @@ fn standard_roots() -> Vec<(PathBuf, u8, bool)> {
             roots.push((PathBuf::from(program_files).join("Scarp"), 2, true));
         }
     }
+    // Downloads can contain thousands of unrelated files, so scan installed
+    // locations first. But reserve a bounded slot for the official extracted
+    // ZIP BEFORE PATH: a large PATH could otherwise exhaust MAX_ROOTS or the
+    // global entry budget and silently hide a freshly downloaded compiler.
+    if let Some(index) = roots.iter().position(|(p, depth, _)| {
+        *depth == 3 && p.file_name().is_some_and(|name| name == "Downloads")
+    }) {
+        let downloads = roots.remove(index);
+        roots.push(downloads);
+    }
     // Search each PATH directory directly; never run an untrusted 'where' command.
     if let Some(path) = env::var_os("PATH") {
         roots.extend(
@@ -145,14 +155,6 @@ fn standard_roots() -> Vec<(PathBuf, u8, bool)> {
                 .filter(|p| p.is_absolute())
                 .map(|p| (p, 0, false)),
         );
-    }
-    // Downloads can contain thousands of unrelated files. Scan installed
-    // compiler locations and PATH first so an entry budget cannot hide them.
-    if let Some(index) = roots.iter().position(|(p, depth, _)| {
-        *depth == 3 && p.file_name().is_some_and(|name| name == "Downloads")
-    }) {
-        let downloads = roots.remove(index);
-        roots.push(downloads);
     }
     roots
 }
