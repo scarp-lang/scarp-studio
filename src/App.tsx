@@ -28,7 +28,7 @@ import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterT
 import { runnableSource } from './model/compilerReadiness';
 import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
 import { exitBlockReason, sameExitEditorState } from './model/exitGuards';
-import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
+import { detectScarp, executeScarp, openCompilerDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
 import {
@@ -73,6 +73,8 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
   { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
+  { id: 'scan-compiler', label: 'Scan for Installed Scarp Compiler', detail: 'Non-executing discovery' },
+  { id: 'download-compiler', label: 'Download Official Scarp Compiler', detail: 'Official alpha.17 Windows ZIP' },
   { id: 'run-scarp', label: 'Run Current Scarp Source', detail: 'F5 · saved .srp only' },
   { id: 'verify-scarp', label: 'Verify Current Scarp Source', detail: 'Ctrl+F5 · static analysis' },
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
@@ -164,6 +166,12 @@ export default function App() {
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
   const [compilerSelecting, setCompilerSelecting] = useState(false);
+  const [compilerScanning, setCompilerScanning] = useState(false);
+  const [detectedCompilers, setDetectedCompilers] = useState<string[]>([]);
+  const [preferredDetectedCompiler, setPreferredDetectedCompiler] = useState<string | null>(null);
+  const compilerScanRevision = useRef(0);
+  const automaticCompiler = preferredDetectedCompiler && detectedCompilers.includes(preferredDetectedCompiler)
+    ? preferredDetectedCompiler : detectedCompilers[0] ?? null;
   // Never silently trust a stored compiler path across sessions: an executable
   // may be replaced after the user previously approved it.
   const [compilerPath, setCompilerPath] = useState<string | null>(null);
@@ -338,6 +346,8 @@ export default function App() {
       case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
       case 'explorer': setExplorerVisible((visible) => !visible); break;
       case 'select-compiler': void selectCompiler(); break;
+      case 'scan-compiler': void rescanCompilers(); break;
+      case 'download-compiler': void downloadCompiler(); break;
       case 'run-scarp': void runCompiler('exec'); break;
       case 'verify-scarp': void runCompiler('verify'); break;
       case 'stop-scarp': void stopCompiler(); break;
@@ -355,6 +365,17 @@ export default function App() {
       localStorage.setItem('studio.editorPreferences', JSON.stringify(editorPreferences));
     } catch { /* Continue with in-memory settings when storage is unavailable. */ }
   }, [editorPreferences]);
+
+  // This operation only inspects bounded local directories. It never runs
+  // candidate executables and does not grant trust, even after a prior session.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let mounted = true;
+    void detectScarp().then((found) => {
+      if (mounted) setDetectedCompilers(found);
+    }).catch(() => { /* Manual scan exposes any discovery error explicitly. */ });
+    return () => { mounted = false; };
+  }, []);
 
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
