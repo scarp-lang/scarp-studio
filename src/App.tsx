@@ -885,10 +885,49 @@ export default function App() {
       const captured = captureVerifiedSource(selected);
       if (!captured) throw new Error('Save the Scarp source before Run or Verify.');
       verifiedSnapshot = captured;
-      if (!compilerPath) throw new Error('Select the trusted Scarp compiler first.');
+      // First Run can locate an installed compiler; the user must approve its
+      // exact path before we launch even a version probe.
       if (mode === 'exec') validateProgramInput(stdinText);
     } catch (caught) {
       setError(toMessage(caught));
+      return;
+    }
+    let binary = compilerPath;
+    if (!binary) {
+      // A first Run is one explicit user action, but it never implicitly
+      // grants trust to discovered executables. The OS approval prompt names
+      // the exact candidate and no source code runs before acceptance.
+      selectionInProgress.current = true;
+      setCompilerSelecting(true);
+      try {
+        const available = detectedCompilers.length ? detectedCompilers : await detectScarp();
+        setDetectedCompilers(available);
+        const chosen = automaticCompiler && available.includes(automaticCompiler)
+          ? automaticCompiler : available[0];
+        if (!chosen) {
+          setError('Scarp was not found. Download the official compiler ZIP, extract it and scan again.');
+          return;
+        }
+        if (!await approveCompilerLocation(chosen)) return;
+        binary = chosen;
+      } catch (caught) {
+        setError('Automatic compiler setup failed: ' + toMessage(caught));
+        return;
+      } finally {
+        selectionInProgress.current = false;
+        setCompilerSelecting(false);
+      }
+    }
+    // Compiler scanning, trust confirmation and native probing are async.
+    // Never run the older snapshot if a user typed, saved, switched the active
+    // tab, or closed and reopened the source while answering the prompt.
+    const current = liveEditor.current.documents.find(
+      (item) => item.id === liveEditor.current.activeId,
+    ) ?? null;
+    if (liveEditor.current.activeId !== verifiedSnapshot.documentId ||
+        !isCurrentVerifiedSource(verifiedSnapshot, current) ||
+        saveInProgress.current) {
+      setError('The Scarp source changed during compiler setup. Review and click Run or Verify again.');
       return;
     }
     commandInProgress.current = true;
@@ -900,7 +939,7 @@ export default function App() {
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(
-        compilerPath, source, mode, expectedContent,
+        binary, source, mode, expectedContent,
         mode === 'exec' ? stdinText : '',
         mode === 'exec' && promptInputMode,
       );
