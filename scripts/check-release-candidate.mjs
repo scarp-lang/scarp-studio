@@ -45,8 +45,8 @@ export function checkReleaseCandidate(root = defaultRoot) {
       candidate.target !== 'windows-x64' ||
       candidate.manualWindowsAcceptanceRequired !== true ||
       candidate.publicationAuthorized !== false ||
-      candidate.compilerCompatibilityVersion !== '0.0.6-alpha.15' ||
-      !/^[a-f0-9]{64}$/.test(candidate.compilerWindowsZipSha256 ?? '')) {
+      candidate.compilerCompatibilityVersion !== '0.0.6-alpha.17' ||
+      candidate.compilerWindowsZipSha256 !== 'fa05e57675799d881ebe33ccd54f6eb769825632904adf99cd08c940383134b5') {
     throw new Error('Invalid or publication-enabled alpha.1 release-candidate descriptor.');
   }
 
