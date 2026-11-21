@@ -272,6 +272,25 @@ mod tests {
         );
         fs::remove_dir_all(root).unwrap();
     }
+
+    /// CI installs only the published SHA-256-verified Scarp archive and sets
+    /// SCARP_TEST_BIN explicitly. This test never launches the executable.
+    #[test]
+    #[ignore = "requires pinned official Scarp executable from Windows CI"]
+    fn discovers_pinned_official_compiler_from_extracted_archive() {
+        let path = PathBuf::from(
+            env::var_os("SCARP_TEST_BIN").expect("CI must provide the official Scarp binary"),
+        );
+        let canonical = fs::canonicalize(&path).expect("official binary must exist");
+        let parent = path.parent().expect("official compiler must have a parent");
+        let found = scan_directories(&[(parent.to_path_buf(), 0, false)]);
+        assert!(
+            found.iter().any(|candidate| Path::new(candidate) == canonical),
+            "Native discovery did not find the pinned official compiler: {}",
+            canonical.display()
+        );
+    }
+
     #[test]
     fn one_crowded_root_does_not_starve_other_compiler_locations() {
         let unique = SystemTime::now()
