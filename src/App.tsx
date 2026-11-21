@@ -747,6 +747,55 @@ export default function App() {
     }
   }
 
+  async function saveDocumentAutomatically(document: StudioDocument): Promise<void> {
+    if (!canAutoSave(document) || saveInProgress.current ||
+        commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || nativeDialogGate.current.isActive) return;
+    // A native lock covers the entire preflight, write and verified read-back.
+    // No file-picker is permitted here: unnamed source files are ineligible.
+    saveInProgress.current = true;
+    try {
+      const path = await writeSourceFile(
+        document,
+        false,
+        () => liveEditor.current.documents
+          .filter((item) => item.id !== document.id && item.path !== null)
+          .map((item) => item.path as string),
+        // Reject changed or closed source *before writing*, including source
+        // revisions that return to identical bytes (A→B→A).
+        () => {
+          const current = liveEditor.current.documents.find((item) => item.id === document.id);
+          return current !== undefined && isUnchangedSnapshot(current, document) &&
+            !commandInProgress.current && !selectionInProgress.current &&
+            !filePickerInProgress.current && !nativeDialogGate.current.isActive;
+        },
+      );
+      if (!path) return;
+      dispatch({ type: 'saved', id: document.id, path, savedContent: document.content });
+      const current = liveEditor.current.documents.find((item) => item.id === document.id);
+      setNotice(current && isDirty(current)
+        ? 'Auto saved older ' + fileName(path) + ' snapshot; newer edits remain unsaved'
+        : 'Auto saved ' + fileName(path));
+      setError((previous) =>
+        previous?.startsWith('Auto Save failed for ') ? null : previous);
+    } catch (caught) {
+      setError('Auto Save failed for ' + document.name + ': ' + toMessage(caught));
+    } finally {
+      saveInProgress.current = false;
+    }
+  }
+
+  autoSaveAction.current = (document) => {
+    const current = liveEditor.current.documents.find((item) => item.id === document.id);
+    if (!autoSavePreferences.enabled || current !== document || !canAutoSave(document)) {
+      return true;
+    }
+    if (saveInProgress.current || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || nativeDialogGate.current.isActive) return false;
+    void saveDocumentAutomatically(document);
+    return true;
+  };
+
   async function reloadFile(): Promise<void> {
     if (!isTauri()) {
       setError('Reload from Disk is available only in the desktop app.');
