@@ -111,7 +111,16 @@ export function openedDocument(
   const existing = documents.find((document) => document.path !== null && sameFilePath(document.path, path));
   if (existing) return { documents, id: existing.id };
 
-  const id = 'file-' + path;
+  // Save As deliberately preserves an open tab's identity. If A.srp was
+  // moved to B.srp, its old "file-A.srp" ID can remain in use while the
+  // original A.srp is reopened. Allocate a distinct ID for the new tab
+  // rather than letting editor actions, React keys and Save/Close collide.
+  const baseId = 'file-' + path;
+  const occupied = new Set(documents.map((document) => document.id));
+  let id = baseId;
+  for (let suffix = 2; occupied.has(id); suffix++) {
+    id = baseId + '#' + suffix;
+  }
   return {
     id,
     documents: [
