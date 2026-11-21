@@ -16,3 +16,13 @@ export function executeScarp(
 export function stopScarp(): Promise<boolean> {
   return invoke<boolean>('scarp_cancel');
 }
+
+/** Discovery reads bounded install locations and does not execute candidates. */
+export function detectScarp(): Promise<string[]> {
+  return invoke<string[]>('scarp_detect');
+}
+
+/** Opens the official compiler release listing; users choose and extract a build. */
+export function openScarpDownloads(): Promise<void> {
+  return invoke<void>('scarp_download_page');
+}

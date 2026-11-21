@@ -18,6 +18,27 @@ Scarp Studio is an Apache-2.0 desktop IDE **exclusively for the Scarp programmin
 - User-selected filesystem scopes only. No shell access and **no fake compiler execution**.
 - Experimental compiler selection, version/capability checks, Run, Verify, Stop and bounded output are implemented on the draft compiler branch (PR #5), not in the published alpha.
 
+## Compiler auto-discovery (additional unmerged draft)
+
+An experimental stacked branch adds **Scan Compiler** and **Download Compiler** controls.
+At startup Studio searches standard Scarp installation folders, PATH entries and a bounded
+shallow scan of `Downloads/Scarp*` extracted folders. It does **not** recursively scan
+the entire drive. Automatic discovery does not execute any found file.
+
+On Windows, **Download Compiler** opens the official alpha.16 ZIP used in CI
+(the action does not install or execute it). After downloading, extract it
+into a `Scarp`-named folder in Downloads (or install in a standard location), then
+return to Studio; it rescans on focus, and **Scan Compiler** is always available.
+**Run** (Ctrl+F5) or **Verify** (Ctrl+Shift+F5) can also start a new scan if
+no compiler was detected at startup. The first Run or Verify asks for explicit
+executable trust confirmation and checks the compiler's version and supported
+commands; further runs in that session need no file picker. Studio rechecks
+the current saved file after the consent dialog, so an edit, Save As, or tab
+switch during setup cannot silently execute stale source. The optional manual
+compiler selection fallback remains.
+There is no unattended installer, no automatic code execution and no trust
+carried across restarts. This feature is **not in the published alpha.2**.
+
 ## Development (Windows 11)
 
 Install Node.js 22+, Rust stable with MSVC build tools, the Tauri 2 Windows requirements (WebView2), and run:
@@ -45,9 +66,9 @@ CI builds an **experimental NSIS installer candidate**. Both `package-lock.json`
 
 ## Experimental compiler integration (development branches only)
 
-The `feat/scarp-compiler-run-verify` branch (PR #5) requires an explicitly selected trusted official `scarp.exe` on Windows. Studio launches the compiler directly without a shell and limits execution time and captured output. Run and Verify require saved, unchanged `.srp` sources. Stop applies to the Studio-launched execution process; probing cannot yet be stopped through the same control.
+The `feat/scarp-compiler-run-verify` parent branch (PR #5) requires an explicitly selected trusted official `scarp.exe` on Windows, whereas this stacked draft adds opt-in automatic discovery and a direct official download link. Studio launches the compiler directly without a shell and limits execution time and captured output. Run and Verify require saved, unchanged `.srp` sources. Stop applies to the Studio-launched execution process; probing cannot yet be stopped through the same control.
 
-The draft CI suite pins and hashes the official Scarp `v0.0.6-alpha.8` Windows compiler archive, tests the actual `exec`/`verify` CLI surface, and checks that `assert(false)` verifies statically but fails at runtime with `E0065`. This **does not** bundle Scarp with Studio or automatically authorize another compiler binary; selection and trust confirmation remain session-specific. The editor still runs only saved standalone `.srp` files, not `scarp.project` commands or `scarp test`.
+The parent PR #5 CI pins Scarp `v0.0.6-alpha.8`, while this stacked draft CI pins and hashes the official Scarp `v0.0.6-alpha.16` Windows compiler archive, tests the actual `exec`/`verify` CLI surface, and checks that `assert(false)` verifies statically but fails at runtime with `E0065`. This **does not** bundle Scarp with Studio or automatically authorize another compiler binary; selection and trust confirmation remain session-specific. The editor still runs only saved standalone `.srp` files, not `scarp.project` commands or `scarp test`.
 
 PR #5 shows compiler output as plain text. The stacked draft PR #6 adds structured JSON diagnostic navigation, guarded against stale edits and unrelated module paths. Interactive stdin (`read_line`), language-server features, and debugging remain unsupported. Do not run untrusted binaries or source.
 
