@@ -76,6 +76,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
   { id: 'previous-tab', label: 'Previous Open Tab', detail: 'Ctrl+Shift+Tab' },
   { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
+  { id: 'settings', label: 'Open Editor and Auto Save Settings', detail: 'Ctrl+,' },
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
   { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
   { id: 'scan-compiler', label: 'Scan for Installed Scarp Compiler', detail: 'Non-executing discovery' },
@@ -352,6 +353,7 @@ export default function App() {
       case 'next-tab': cycleTab(1); break;
       case 'previous-tab': cycleTab(-1); break;
       case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
+      case 'settings': setEditorSettingsOpen(true); break;
       case 'explorer': setExplorerVisible((visible) => !visible); break;
       case 'select-compiler': void selectCompiler(); break;
       case 'scan-compiler': void rescanCompilers(); break;
@@ -1335,6 +1337,11 @@ export default function App() {
         hidePalette();
         return;
       }
+      if (paletteMode === null && event.key === 'Escape' && editorSettingsOpen) {
+        event.preventDefault();
+        setEditorSettingsOpen(false);
+        return;
+      }
       if (paletteMode === null && event.key === 'Escape' && searchOpen) {
         event.preventDefault();
         setSearchOpen(false);
@@ -1361,6 +1368,11 @@ export default function App() {
       }
       if (!modifier || event.altKey) return;
       const key = event.key.toLowerCase();
+      if (key === ',') {
+        event.preventDefault();
+        setEditorSettingsOpen((open) => !open);
+        return;
+      }
       if (key === 'p') {
         event.preventDefault();
         showPalette(event.shiftKey ? 'commands' : 'files');
@@ -1438,7 +1450,7 @@ export default function App() {
           onClick={() => setEditorSettingsOpen((isOpen) => !isOpen)}
           aria-expanded={editorSettingsOpen}
           aria-controls="editor-settings"
-        >Editor settings</button>
+        >⚙ Settings</button>
         <button
           className="theme-button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -1450,6 +1462,25 @@ export default function App() {
 
       {editorSettingsOpen && (
         <section id="editor-settings" className="editor-settings" aria-label="Scarp editor settings">
+          <label className="editor-setting-checkbox" htmlFor="studio-auto-save">
+            <input id="studio-auto-save" type="checkbox"
+              checked={autoSavePreferences.enabled}
+              onChange={(event) => setAutoSavePreferences((current) => ({
+                ...current, enabled: event.target.checked,
+              }))} />
+            Auto Save (named .srp files only; off by default)
+          </label>
+          <label htmlFor="studio-auto-save-delay">Save after inactivity</label>
+          <select id="studio-auto-save-delay" aria-label="Auto Save delay"
+            value={autoSavePreferences.delay} disabled={!autoSavePreferences.enabled}
+            onChange={(event) => setAutoSavePreferences((current) => ({
+              ...current, delay: Number(event.target.value) as AutoSaveDelay,
+            }))}>
+            <option value={1000}>1 second</option>
+            <option value={3000}>3 seconds (recommended)</option>
+            <option value={5000}>5 seconds</option>
+          </select>
+          <span className="editor-settings-hint">Auto Save never opens Save As, pauses during compiler commands and rejects external disk changes.</span>
           <label htmlFor="editor-font-size">Font size</label>
           <select
             id="editor-font-size"
@@ -1980,6 +2011,10 @@ export default function App() {
           {compilerPath ? 'Scarp compiler ready' :
             automaticCompiler ? 'Compiler detected · approval required' : 'Compiler not detected'}
         </span>
+        <button type="button" className="status-nav"
+          onClick={() => setEditorSettingsOpen(true)} title="Configure Auto Save (Ctrl+,)">
+          Auto Save: {autoSavePreferences.enabled ? 'On' : 'Off'}
+        </button>
         <span>Scarp · .srp</span>
         <span>0.0.2-alpha.1 · development candidate</span>
       </footer>
