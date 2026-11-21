@@ -154,6 +154,8 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .tab.active { background: var(--bg); color: var(--text); border-top: 2px solid var(--accent); }
 .tab > span:first-child { overflow: hidden; text-overflow: ellipsis; }
 .dirty-indicator { font-size: 11px; color: var(--accent); }
+.review-indicator { flex: 0 0 auto; display: inline-block; border: 1px solid var(--accent); border-radius: 3px; padding: 1px 4px; color: var(--text); font-size: 9px; line-height: 1.4; letter-spacing: .02em; }
+.file-row .review-indicator { margin-left: auto; }
 .tab-close { color: var(--muted); border: 0; background: transparent; border-radius: 4px; font-size: 16px; padding: 0 5px; }
 .tab-close:hover { color: var(--text); background: var(--raised); }
 .editor-panel { flex: 1; min-height: 0; overflow: hidden; }
