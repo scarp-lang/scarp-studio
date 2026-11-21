@@ -772,6 +772,78 @@ export default function App() {
     }
   }
 
+  async function approveCompilerLocation(chosen: string): Promise<boolean> {
+    // Approval is per session and includes the exact resolved candidate path.
+    // Scanning never grants permission to execute an arbitrary binary.
+    const approved = await ask(
+      'Is your trusted official Scarp compiler located at:\\n' + chosen +
+      '\\n\\nStudio will launch this executable to check its version and supported commands. Continue?',
+      { title: 'Confirm Scarp compiler location', kind: 'warning' },
+    );
+    if (!approved) return false;
+    const info = await probeScarp(chosen);
+    setCompilerPath(chosen);
+    setCompilerInfo(info);
+    setCompilerOutputSource(null);
+    setCompilerDiagnosticStderr(null);
+    setProjectTestResult(null);
+    setCompilerOutput(info + '\\nCompiler is ready. Run operates on the saved file on disk.');
+    setNotice('Scarp compiler approved for this session');
+    return true;
+  }
+
+  async function rescanCompilers(): Promise<void> {
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || saveInProgress.current ||
+        nativeDialogGate.current.isActive) return;
+    selectionInProgress.current = true;
+    setCompilerScanning(true);
+    const revision = ++compilerScanRevision.current;
+    try {
+      const found = await detectScarp();
+      if (revision !== compilerScanRevision.current) return;
+      setDetectedCompilers(found);
+      setPreferredDetectedCompiler(null);
+      setNotice(found.length
+        ? 'Found ' + found.length + ' Scarp compiler candidate(s); approval required before use.'
+        : 'No Scarp executable found. Download the official ZIP, extract it, then scan again.');
+    } catch (caught) {
+      if (revision === compilerScanRevision.current) {
+        setError('Compiler search failed: ' + toMessage(caught));
+      }
+    } finally {
+      selectionInProgress.current = false;
+      setCompilerScanning(false);
+    }
+  }
+
+  async function downloadCompiler(): Promise<void> {
+    try {
+      await openCompilerDownloads();
+      setNotice('Opened the official Scarp alpha.17 download; extract it and scan for the compiler.');
+    } catch (caught) {
+      setError('Could not open official compiler download: ' + toMessage(caught));
+    }
+  }
+
+  async function confirmDetectedCompiler(): Promise<void> {
+    const chosen = automaticCompiler;
+    if (!chosen || !isTauri() || selectionInProgress.current ||
+        commandInProgress.current || filePickerInProgress.current ||
+        saveInProgress.current || nativeDialogGate.current.isActive) return;
+    selectionInProgress.current = true;
+    setCompilerSelecting(true);
+    setError(null);
+    try {
+      await approveCompilerLocation(chosen);
+    } catch (caught) {
+      setError('Compiler approval failed: ' + toMessage(caught));
+    } finally {
+      selectionInProgress.current = false;
+      setCompilerSelecting(false);
+    }
+  }
+
   async function selectCompiler(): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
         filePickerInProgress.current || saveInProgress.current ||
@@ -785,20 +857,7 @@ export default function App() {
         multiple: false,
       });
       if (typeof chosen !== 'string') return;
-      const approved = await ask(
-        'Scarp Studio will launch the selected executable to check its version and supported commands. ' +
-        'Only continue if you trust this file. Do you want to continue?',
-        { title: 'Trust the selected Scarp compiler?', kind: 'warning' },
-      );
-      if (!approved) return;
-      const info = await probeScarp(chosen);
-      setCompilerPath(chosen);
-      setCompilerInfo(info);
-      setCompilerOutputSource(null);
-      setCompilerDiagnosticStderr(null);
-      setProjectTestResult(null);
-      setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
-      setNotice('Scarp compiler configured');
+      await approveCompilerLocation(chosen);
     } catch (caught) {
       setError('Compiler selection failed: ' + toMessage(caught));
     } finally {
