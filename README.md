@@ -39,6 +39,34 @@ compiler selection fallback remains.
 There is no unattended installer, no automatic code execution and no trust
 carried across restarts. This feature is **not in the published alpha.2**.
 
+## Settings and Auto Save (additional unreleased draft)
+
+Open **Settings** from the top toolbar or use **Ctrl+,**. Press Escape or
+**Close** to return to your open source file. Preferences are local to this
+device and are validated before loading; compiler executable paths are **never
+stored or trusted across application restarts**.
+
+- **Auto Save** is opt-in and **off by default**. Choose an idle delay of 1,
+  3 (default) or 5 seconds. It saves *only already-saved, dirty* `.srp` files
+  without opening OS dialogs, including dirty files in background tabs.
+  Untitled files still require an initial manual **Save** or **Save As**.
+- Auto Save uses the same on-disk comparison as manual saving: if another
+  application changes a file, Studio refuses to overwrite it and reports the
+  conflict. Edits made while a write completes remain dirty. Timers are
+  cancelled while Run/Verify is executing to avoid changing compiler inputs.
+- **Editor settings:** dark/light theme, font size (12–20 px), word wrap and
+  minimap. Settings persist as local non-sensitive preferences; unavailable
+  or corrupted local storage falls back to safe defaults.
+- **Compiler settings:** show the full detected path, review and explicitly
+  **Confirm this compiler location**, rescan, manually choose a compiler or
+  open the official release download. The same path confirmation is shown on
+  the first Run/Verify, before the executable is probed. No binary is executed
+  on discovery, and compiler approval is session-only.
+
+This is stacked on the **unreleased compiler discovery draft**, which itself
+depends on the **unreleased Run/Verify/Stop PR #5**. No new pre-release is
+approved. Windows 11 GUI/manual testing and full CI are required before merge.
+
 ## Development (Windows 11)
 
 Install Node.js 22+, Rust stable with MSVC build tools, the Tauri 2 Windows requirements (WebView2), and run:
