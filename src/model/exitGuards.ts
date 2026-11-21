@@ -9,3 +9,20 @@ export function exitBlockReason(
   if (choosingCompiler) return 'Finish selecting the Scarp compiler before exiting.';
   return null;
 }
+
+/**
+ * Manual saves must not change compiler inputs while Run/Verify is active
+ * or while a compiler setup dialog/probe could immediately launch it.
+ * The caller checks this before opening Save As and before writing.
+ */
+export function saveBlockReason(
+  executing: boolean, choosingCompiler: boolean,
+): string | null {
+  if (executing) {
+    return 'Scarp is running or verifying. Stop it or finish execution before saving.';
+  }
+  if (choosingCompiler) {
+    return 'Finish the compiler selection or verification setup before saving.';
+  }
+  return null;
+}

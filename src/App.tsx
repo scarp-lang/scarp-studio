@@ -11,7 +11,7 @@ import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocume
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { captureRunSnapshot, validateRunSnapshot, type ScarpRunSnapshot } from './model/compilerReadiness';
-import { exitBlockReason } from './model/exitGuards';
+import { exitBlockReason, saveBlockReason } from './model/exitGuards';
 import { NativeDialogGate } from './model/dialogGate';
 import { canAutoSave, loadStudioSettings, storeStudioSettings, type StudioSettings } from './model/studioSettings';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
@@ -219,6 +219,17 @@ export default function App() {
   ): Promise<void> {
     const document = liveEditor.current.documents.find((item) => item.id === id);
     if (!document || saveInProgress.current) return;
+    if (!automatic) {
+      // A keyboard shortcut can fire before React re-renders disabled buttons.
+      // Check synchronous refs before even opening a native Save As dialog.
+      const blocked = saveBlockReason(
+        commandInProgress.current, selectionInProgress.current,
+      );
+      if (blocked) {
+        setError(blocked);
+        return;
+      }
+    }
     if (automatic && (!settings.autoSave || !canAutoSave(document) || document !== expected ||
         commandInProgress.current || selectionInProgress.current)) return;
     saveInProgress.current = true;
@@ -553,8 +564,8 @@ export default function App() {
           <button onClick={newFile} title="New (Ctrl+N)">New</button>
           <button onClick={() => void openFile()} title="Open (Ctrl+O)">Open</button>
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
-          <button onClick={() => void saveFile()} disabled={!active || busy} title="Save (Ctrl+S)">Save</button>
-          <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
+          <button onClick={() => void saveFile()} disabled={!active || busy || compilerBusy || compilerSelecting || compilerScanning} title="Save (Ctrl+S)">Save</button>
+          <button onClick={() => void saveFile(true)} disabled={!active || busy || compilerBusy || compilerSelecting || compilerScanning} title="Save As (Ctrl+Shift+S)">Save As</button>
         </nav>
         <button
           className="theme-button"
