@@ -6,7 +6,7 @@
 
 ## 1. Review the candidate stack
 
-The integrated Windows IDE is currently reviewed in PR #55, with additional safeguards stacked through PRs #56, #57, #58 and the release-preparation PR. The **topmost PR** should contain the exact combined source changes. Review its entire diff against the protected `main` branch; avoid merging the older overlapping feature drafts independently.
+The integrated Windows IDE began in [PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), with additional safety changes stacked through #64. The current review-only release candidate extends that stack with alpha.17 release validation [#74](https://github.com/scarp-lang/scarp-studio/pull/74), IntelliSense [#75](https://github.com/scarp-lang/scarp-studio/pull/75), explicit-trust compiler discovery [#76](https://github.com/scarp-lang/scarp-studio/pull/76), and guarded Auto Save [#77](https://github.com/scarp-lang/scarp-studio/pull/77). **Use the exact topmost PR #77 head for all pre-release candidate builds and acceptance**, not an ancestor PR or already-published editor-only build. Review the complete combined diff against protected `main`; do not blindly merge the older overlapping #5/#65/#66/#71/#72/#73 drafts.
 
 Do not create a release tag until the owner has explicitly reviewed and authorized both the source merge and the separate release publication. The old `publish-editor-alpha2.yml` workflow is restricted to `0.0.1-alpha.2` and **must not** be reused for `0.0.2-alpha.1`.
 
@@ -48,7 +48,7 @@ The verifier rejects missing, extra, hidden, linked, mismatched or tampered cand
 
 Use a disposable Scarp project and a separately installed official compiler you independently trust. Capture **actual** results, screenshots/logs and the exact tested Studio commit in `docs/windows-11-acceptance.md`.
 
-Test at least: editor launch/WebView2 and installer/uninstaller; file Open/Save/Reload/conflicts and UTF-8; project Explorer permissions, symlinks and dirty buffers; in-memory Replace All/Undo; real Run, static Verify, structured diagnostics, Stop during *both* capability probes and active execution; bounded prompt input; Project Info/Run/Verify/List Tests/Run Tests; and **P28–P30** stale result invalidation. Never infer these pass from CI.
+Test at least: editor launch/WebView2 and installer/uninstaller; file Open/Save/Reload/conflicts and UTF-8; project Explorer permissions, symlinks and dirty buffers; in-memory Replace All/Undo; real Run, static Verify, structured diagnostics, Stop during *both* capability probes and active execution; bounded prompt input; Project Info/Run/Verify/List Tests/Run Tests; **P28–P30** stale result invalidation; **C15–C18** bounded compiler discovery, first-Run per-session trust and stale snapshot cancellation; and **E27–E31** opt-in Auto Save including background tabs and external-change rejection. Never infer these pass from CI.
 
 If the candidate fails, record reproducible steps, fix the source on a review branch, and repeat the **exact-head** automated and affected manual checks.
 
@@ -66,7 +66,9 @@ Until then, share only GitHub Actions development artifacts as **unsigned test c
 
 ## References
 
-- Consolidated integration PR: https://github.com/scarp-lang/scarp-studio/pull/55
+- Current complete candidate draft PR: https://github.com/scarp-lang/scarp-studio/pull/77
+- Compiler discovery draft PR: https://github.com/scarp-lang/scarp-studio/pull/76
+- Consolidated historic integration PR: https://github.com/scarp-lang/scarp-studio/pull/55
 - Compiler probe safety PR: https://github.com/scarp-lang/scarp-studio/pull/57
 - Test report freshness PR: https://github.com/scarp-lang/scarp-studio/pull/58
 - Windows acceptance worksheet: `docs/windows-11-acceptance.md`
