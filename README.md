@@ -18,6 +18,21 @@ Scarp Studio is an Apache-2.0 desktop IDE **exclusively for the Scarp programmin
 - User-selected filesystem scopes only. No shell access and **no fake compiler execution**.
 - Experimental compiler selection, version/capability checks, Run, Verify, Stop and bounded output are implemented on the draft compiler branch (PR #5), not in the published alpha.
 
+## Compiler auto-discovery (additional unmerged draft)
+
+An experimental stacked branch adds **Scan Compiler** and **Download Compiler** controls.
+At startup Studio searches standard Scarp installation folders, PATH entries and a bounded
+shallow scan of `Downloads/Scarp*` extracted folders. It does **not** recursively scan
+the entire drive. Automatic discovery does not execute any found file.
+
+After downloading the official Windows ZIP from the Scarp releases page, extract it
+into a `Scarp`-named folder in Downloads (or install in a standard location), then
+press **Scan Compiler**. The first **Run** or **Verify** asks for explicit executable
+trust confirmation and checks the compiler's version and command support; further
+runs in that session need no file picker. The manual selection fallback remains.
+There is no unattended installer, no automatic code execution and no trust
+carried across restarts. This feature is **not in the published alpha.2**.
+
 ## Development (Windows 11)
 
 Install Node.js 22+, Rust stable with MSVC build tools, the Tauri 2 Windows requirements (WebView2), and run:
