@@ -11,7 +11,8 @@ describe('Scarp native invoke input contract', () => {
     const paths = ['C:\\Program Files\\Scarp\\scarp.exe', 'C:\\Users\\test\\Downloads\\Scarp\\scarp.exe'];
     vi.mocked(invoke).mockResolvedValue(paths);
     await expect(detectScarp()).resolves.toEqual(paths);
-    expect(invoke).toHaveBeenCalledExactlyOnceWith('scarp_detect');
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith('scarp_detect');
     expect(invoke).not.toHaveBeenCalledWith('scarp_probe', expect.anything());
     expect(invoke).not.toHaveBeenCalledWith('scarp_execute', expect.anything());
   });
@@ -19,7 +20,8 @@ describe('Scarp native invoke input contract', () => {
   it('opens the official download only in response to its distinct native command', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
     await expect(openCompilerDownloads()).resolves.toBeUndefined();
-    expect(invoke).toHaveBeenCalledExactlyOnceWith('scarp_download_page');
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith('scarp_download_page');
   });
 
   it('passes exact UTF-8 source and explicit stdin to Run without writing to disk', async () => {
