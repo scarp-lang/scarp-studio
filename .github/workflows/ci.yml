@@ -69,6 +69,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Scarp static verification failed" }
           $execution = & $binary.FullName exec --max-steps 200000 --max-prints 1000 --diagnostic-format=json -- scarp-smoke.srp
           if ($LASTEXITCODE -ne 0 -or $execution -notmatch "Studio CLI smoke") { throw "Scarp execution smoke failed" }
+          # Exercise the new published alpha.17 builtins, not just the CLI version.
+          'bind values = [array: 10, 20, 30]; assert(array_len(values) == 3, "array length"); assert(array_get_or(values, 3, 42) == 42, "fallback"); print("Studio alpha17 collection smoke");' | Set-Content -Path scarp-alpha17-collections.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha17-collections.srp
+          if ($LASTEXITCODE -ne 0) { throw "Alpha.17 array intrinsics verification failed" }
+          $collections = & $binary.FullName exec --max-steps 200000 --max-prints 1000 --diagnostic-format=json -- scarp-alpha17-collections.srp
+          if ($LASTEXITCODE -ne 0 -or $collections -notmatch "Studio alpha17 collection smoke") {
+            throw "Alpha.17 array_len/array_get_or execution failed"
+          }
+          'bind confirmed: boolean = input_boolean("Continue? "); assert(confirmed, "boolean input"); print("Studio alpha17 boolean smoke");' | Set-Content -Path scarp-alpha17-boolean.srp -Encoding utf8
+          'true' | Set-Content -Path scarp-alpha17-boolean.stdin -Encoding utf8
+          $booleanOutput = & $binary.FullName exec --interactive --input-file scarp-alpha17-boolean.stdin -- scarp-alpha17-boolean.srp
+          if ($LASTEXITCODE -ne 0 -or $booleanOutput -notmatch "Studio alpha17 boolean smoke") {
+            throw "Alpha.17 interactive input_boolean execution failed"
+          }
 
       - name: Test Studio native process service against pinned Scarp compiler
         shell: pwsh
