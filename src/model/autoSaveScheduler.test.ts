@@ -47,7 +47,8 @@ describe('per-file Auto Save scheduler', () => {
     vi.advanceTimersByTime(800);
     scheduler.reconcile([first, { ...second, content: 'latest' }], true, 1000, false);
     vi.advanceTimersByTime(200);
-    expect(save).toHaveBeenCalledExactlyOnceWith(first);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(first);
     vi.advanceTimersByTime(800);
     expect(save).toHaveBeenCalledTimes(2);
     expect(save).toHaveBeenLastCalledWith({ ...second, content: 'latest' });
