@@ -176,7 +176,7 @@ pub fn scarp_download_page() -> Result<(), String> {
     // The Windows button points directly to the SHA-256-pinned compiler used in CI.
     // Other platforms use the official releases page until platform-specific flows are tested.
     #[cfg(windows)]
-    const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.16/scarp-0.0.6-alpha.16-x86_64-pc-windows-msvc.zip";
+    const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.17/scarp-0.0.6-alpha.17-x86_64-pc-windows-msvc.zip";
     #[cfg(not(windows))]
     const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases";
     #[cfg(windows)]
@@ -224,7 +224,7 @@ mod tests {
             .unwrap()
             .as_nanos();
         let root = env::temp_dir().join(format!("studio-detect-{}-{unique}", std::process::id()));
-        let versioned = root.join("scarp-0.0.6-alpha.16").join("bin");
+        let versioned = root.join("scarp-0.0.6-alpha.17").join("bin");
         fs::create_dir_all(&versioned).unwrap();
         fs::write(
             versioned.join(expected_file_name()),
