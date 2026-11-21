@@ -45,7 +45,7 @@ import { AutoSaveScheduler } from './model/autoSaveScheduler';
 import { AutoSaveReviewGate } from './model/autoSaveReviewGate';
 import { CompilerDiscoveryRequests } from './model/compilerDiscoveryRequests';
 import {
-  canAutoSave, loadAutoSavePreferences, persistAutoSavePreferences,
+  loadAutoSavePreferences, persistAutoSavePreferences,
   type AutoSaveDelay,
 } from './model/autoSaveSettings';
 
