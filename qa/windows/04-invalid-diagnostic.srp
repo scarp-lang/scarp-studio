@@ -1,0 +1,2 @@
+// Intentionally invalid: Verify must show an error; never expected to pass.
+print(unknown_identifier);

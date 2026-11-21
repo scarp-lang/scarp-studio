@@ -1,0 +1,5 @@
+// Scarp Studio alpha.17: fixed-array intrinsics and explicit fallback.
+bind values = [array: 10, 20, 30];
+assert(array_len(values) == 3, "array length");
+assert(array_get_or(values, 3, 42) == 42, "out-of-range fallback");
+print("SCARP_STUDIO_GUI_ARRAY_OK");
