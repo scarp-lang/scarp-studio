@@ -97,4 +97,9 @@ if ($parsedDiagnostic.schema_version -ne 1 -or $parsedDiagnostic.severity -ne 'e
   throw "Scarp QA invalid-source diagnostic was not a JSON v1 error: $($diagnostics[0])"
 }
 Write-Host 'SCARP QA PASS: Expected JSON diagnostic on invalid source'
+# GitHub Actions pwsh invokes this script inside a wrapper that exits with
+# LASTEXITCODE. Our last native command is *intentionally* a failing Verify.
+# Clear only that expected status after its JSON error has been validated;
+# unexpected failure above still throws and fails the workflow.
+$global:LASTEXITCODE = 0
 Write-Host 'All checked-in Scarp alpha.17 CLI smoke fixtures passed. Windows GUI acceptance is still required.'
