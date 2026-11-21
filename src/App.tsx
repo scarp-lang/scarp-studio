@@ -1604,6 +1604,11 @@ export default function App() {
               >
                 <span aria-hidden="true" className="file-glyph">S</span>
                 <span className="file-name">{document.name}</span>
+                {autoSaveReview.current.isHeld(document) && (
+                  <span className="review-indicator" title="Replace All changes require manual Save or Undo">
+                    Review
+                  </span>
+                )}
                 {isDirty(document) && <span aria-label="unsaved changes">●</span>}
               </button>
             ))}
@@ -1646,6 +1651,12 @@ export default function App() {
                 title={document.path || document.name}
               >
                 <span>{document.name}</span>
+                {autoSaveReview.current.isHeld(document) && (
+                  <span className="review-indicator" aria-label="Manual Save required after Replace All"
+                    title="Replace All changes are held from Auto Save until reviewed or explicitly saved">
+                    Review
+                  </span>
+                )}
                 {isDirty(document) && <span className="dirty-indicator" aria-label="unsaved changes">●</span>}
                 <button
                   className="tab-close"
