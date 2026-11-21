@@ -646,7 +646,7 @@ export default function App() {
                 options={{
                   automaticLayout: true, fontSize: settings.fontSize, fontFamily: 'Consolas, monospace',
                   minimap: { enabled: settings.minimap }, scrollBeyondLastLine: false,
-                  tabSize: 4, wordWrap: settings.wordWrap ? 'on' : 'off', detectIndentation: false,
+                  tabSize: settings.tabSize, wordWrap: settings.wordWrap ? 'on' : 'off', detectIndentation: false,
                 }}
               />
             ) : (
