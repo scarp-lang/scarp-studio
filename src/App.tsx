@@ -5,7 +5,7 @@ import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  fileName, isDirty, sameFilePath,
+  fileName, isDirty, sameFilePath, type StudioDocument,
 } from './model/documents';
 import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameOpenDocumentSnapshots, hasUnchangedEditorSession, type EditorAction } from './model/editorState';
 import { pickSourcePath, saveAllModifiedSources, writeSourceFile } from './services/files';
@@ -41,6 +41,11 @@ import { resolveListedTestSource } from './model/projectTestNavigation';
 import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/projectSourceState';
 import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
+import { AutoSaveScheduler } from './model/autoSaveScheduler';
+import {
+  canAutoSave, loadAutoSavePreferences, persistAutoSavePreferences,
+  type AutoSaveDelay,
+} from './model/autoSaveSettings';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -133,6 +138,9 @@ export default function App() {
   }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
+  const [autoSavePreferences, setAutoSavePreferences] = useState(loadAutoSavePreferences);
+  const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
+  const autoSaveAction = useRef<(document: StudioDocument) => boolean | void>(() => true);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
@@ -376,6 +384,30 @@ export default function App() {
     }).catch(() => { /* Manual scan exposes any discovery error explicitly. */ });
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    persistAutoSavePreferences(autoSavePreferences);
+  }, [autoSavePreferences]);
+
+  // Own the scheduler for each React effect lifetime, including Strict Mode
+  // cleanup/replay. A disposed scheduler must never be reused.
+  useEffect(() => {
+    const scheduler = new AutoSaveScheduler((document) => autoSaveAction.current(document));
+    autoSaveScheduler.current = scheduler;
+    scheduler.reconcile(liveEditor.current.documents, autoSavePreferences.enabled && isTauri(),
+      autoSavePreferences.delay, compilerBusy || compilerSelecting || busy);
+    return () => {
+      scheduler.dispose();
+      if (autoSaveScheduler.current === scheduler) autoSaveScheduler.current = null;
+    };
+    // The next effect reconciles all live source and preference changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    autoSaveScheduler.current?.reconcile(documents, autoSavePreferences.enabled && isTauri(),
+      autoSavePreferences.delay, compilerBusy || compilerSelecting || busy);
+  }, [documents, autoSavePreferences, compilerBusy, compilerSelecting, busy]);
 
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
