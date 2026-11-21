@@ -79,3 +79,8 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .compiler-meta { color: var(--muted); font-size: 10px; padding: 0 12px 6px; }
 .compiler-output { font: 12px/1.5 Consolas, "Cascadia Code", monospace; margin: 0; padding: 8px 12px; color: var(--text); background: var(--bg); flex: 1; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-height: 660px) { .compiler-panel { flex-basis: 140px; } }
+
+.compiler-choice { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+.compiler-choice select { max-width: min(520px, 90vw); color: var(--text); background: var(--raised); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; }
+.compiler-meta { overflow-wrap: anywhere; }
+.compiler-actions button:focus-visible, .compiler-choice select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
