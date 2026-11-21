@@ -27,7 +27,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 
 The offline candidate checker validates versions in `package.json`, `package-lock.json` (top level and root package), Tauri, Cargo and Cargo.lock. Its manifest explicitly requires **manual Windows acceptance and no publication authorization**. Neither check command creates a tag, upload or release.
 
-GitHub Actions must additionally show a successful exact-head Windows run with the SHA-pinned **official Scarp alpha.15 Windows CLI** (plus alpha.10–alpha.14), frontend tests, native service tests, build, installer, SHA-256 and deliberate tamper rejection.
+GitHub Actions must additionally show a successful exact-head Windows run with the SHA-pinned **official Scarp alpha.17 Windows CLI** (while retaining alpha.10–alpha.15 backwards-compatibility checks), frontend tests, native service tests, build, installer, SHA-256 and deliberate tamper rejection. The alpha.17 gate also checks real fixed-array intrinsics, preloaded boolean input and JSON v1 diagnostics; this does not imply Studio GUI prompt support.
 
 ## 3. Verify CI artifacts from the same run
 
@@ -70,4 +70,4 @@ Until then, share only GitHub Actions development artifacts as **unsigned test c
 - Compiler probe safety PR: https://github.com/scarp-lang/scarp-studio/pull/57
 - Test report freshness PR: https://github.com/scarp-lang/scarp-studio/pull/58
 - Windows acceptance worksheet: `docs/windows-11-acceptance.md`
-- Official compiler release: https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.15
+- Official compiler release: https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.17

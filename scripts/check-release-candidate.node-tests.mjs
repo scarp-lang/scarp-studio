@@ -19,8 +19,8 @@ function fixture() {
   const json = (path, value) => write(path, JSON.stringify(value));
   const candidate = {
     version: '0.0.2-alpha.1', tag: 'v0.0.2-alpha.1', channel: 'prerelease',
-    target: 'windows-x64', compilerCompatibilityVersion: '0.0.6-alpha.15',
-    compilerWindowsZipSha256: 'a'.repeat(64),
+    target: 'windows-x64', compilerCompatibilityVersion: '0.0.6-alpha.17',
+    compilerWindowsZipSha256: 'fa05e57675799d881ebe33ccd54f6eb769825632904adf99cd08c940383134b5',
     manualWindowsAcceptanceRequired: true, publicationAuthorized: false,
   };
   json(candidatePath, candidate);
@@ -45,7 +45,7 @@ describe('read-only Scarp Studio prerelease gate', () => {
     assert.deepEqual(checkReleaseCandidate(root), {
       version: '0.0.2-alpha.1',
       tag: 'v0.0.2-alpha.1',
-      compilerVersion: '0.0.6-alpha.15',
+      compilerVersion: '0.0.6-alpha.17',
     });
   });
 
@@ -81,6 +81,8 @@ describe('read-only Scarp Studio prerelease gate', () => {
       { tag: 'v0.0.2-alpha.2' },
       { manualWindowsAcceptanceRequired: false },
       { compilerWindowsZipSha256: 'not-a-sha256' },
+      { compilerWindowsZipSha256: 'b'.repeat(64) },
+      { compilerCompatibilityVersion: '0.0.6-alpha.15' },
     ]) {
       const f = fixture();
       f.json(candidatePath, { ...f.candidate, ...patch });

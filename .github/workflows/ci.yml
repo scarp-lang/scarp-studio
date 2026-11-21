@@ -414,8 +414,8 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile scarp-alpha15.zip
           $actual = (Get-FileHash scarp-alpha15.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           # Exact official release asset SHA-256 (published November 19, 2026).
-          $pin = (Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json).compilerWindowsZipSha256
-          if ($actual -ne $pin -or $pin -ne "49d67aaf2b2ba52f6c3086188ebd3961929f5db9c09bf44ed22c029a4cdff302") {
+          $pin = "49d67aaf2b2ba52f6c3086188ebd3961929f5db9c09bf44ed22c029a4cdff302"
+          if ($actual -ne $pin) {
             throw "Official Scarp alpha.15 Windows CLI archive digest mismatch"
           }
           Expand-Archive -Path scarp-alpha15.zip -DestinationPath scarp-alpha15
@@ -464,6 +464,78 @@ jobs:
           $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.15"
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Studio native process integration rejected Scarp alpha.15" }
+
+      # Published alpha.17 adds bounded fixed-array and interactive boolean
+      # input intrinsics. This validates the external CLI, not Studio GUI input.
+      # Only this step uses the current candidate descriptor's pinned archive.
+      - name: Verify SHA-pinned Scarp alpha.17 CLI and native Studio integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $candidate = Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json
+          if ($candidate.compilerCompatibilityVersion -ne "0.0.6-alpha.17" -or
+              $candidate.publicationAuthorized -ne $false -or
+              $candidate.manualWindowsAcceptanceRequired -ne $true) {
+            throw "Alpha.17 candidate must be review-only and require Windows acceptance"
+          }
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.17/scarp-0.0.6-alpha.17-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha17.zip
+          $actual = (Get-FileHash scarp-alpha17.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $official = "fa05e57675799d881ebe33ccd54f6eb769825632904adf99cd08c940383134b5"
+          if ($actual -ne $official -or $candidate.compilerWindowsZipSha256 -ne $official) {
+            throw "Official Scarp alpha.17 archive digest mismatch"
+          }
+          Expand-Archive -Path scarp-alpha17.zip -DestinationPath scarp-alpha17
+          $binaries = @(Get-ChildItem scarp-alpha17 -File -Recurse -Filter "scarp.exe")
+          if ($binaries.Count -ne 1) { throw "Expected exactly one Scarp alpha.17 executable" }
+          $binary = $binaries[0]
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.17") {
+            throw "Unexpected official Scarp alpha.17 version"
+          }
+          & $binary.FullName guide exec
+          if ($LASTEXITCODE -ne 0) { throw "Alpha.17 exec capability missing" }
+          & $binary.FullName guide verify
+          if ($LASTEXITCODE -ne 0) { throw "Alpha.17 verify capability missing" }
+          $valid = @(
+            'bind values = [array: 10, 20, 30];'
+            'assert(array_len(values) == 3, "alpha.17 array length");'
+            'assert(array_get_or(values, 3, 42) == 42, "alpha.17 fallback");'
+            'print("Studio alpha.17 CLI OK");'
+          ) -join [Environment]::NewLine
+          $valid | Set-Content -Path scarp-alpha17-valid.srp -Encoding utf8
+          & $binary.FullName verify --diagnostic-format=json -- scarp-alpha17-valid.srp
+          if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.17 source verification failed" }
+          $output = & $binary.FullName exec --diagnostic-format=json -- scarp-alpha17-valid.srp
+          if ($LASTEXITCODE -ne 0 -or ($output -join [Environment]::NewLine).Trim() -ne "Studio alpha.17 CLI OK") {
+            throw "Scarp alpha.17 array execution compatibility failed"
+          }
+          'bind approved: boolean = input_boolean("Approve? "); assert(approved, "alpha.17 prompt"); print("Studio boolean input OK");' | Set-Content -Path scarp-alpha17-input.srp -Encoding utf8
+          'true' | Set-Content -Path scarp-alpha17-input.stdin -Encoding utf8
+          $prompt = & $binary.FullName exec --interactive --input-file scarp-alpha17-input.stdin -- scarp-alpha17-input.srp
+          if ($LASTEXITCODE -ne 0 -or $prompt -notmatch "Studio boolean input OK") {
+            throw "Scarp alpha.17 input_boolean execution failed"
+          }
+          'print(unknown_identifier);' | Set-Content -Path scarp-alpha17-invalid.srp -Encoding utf8
+          $errors = @(& $binary.FullName verify --diagnostic-format=json -- scarp-alpha17-invalid.srp 2>&1)
+          if ($LASTEXITCODE -eq 0 -or $errors.Count -lt 1) {
+            throw "Scarp alpha.17 failed to reject invalid source"
+          }
+          try {
+            $diagnostic = $errors[0].ToString() | ConvertFrom-Json -ErrorAction Stop
+          } catch {
+            throw "Scarp alpha.17 did not return JSON v1 diagnostics"
+          }
+          if ($diagnostic.schema_version -ne 1 -or $diagnostic.severity -ne "error" -or
+              $diagnostic.span_encoding -ne "utf-8-bytes" -or
+              $diagnostic.column_encoding -ne "unicode-scalar" -or
+              $diagnostic.position_base -ne 1) {
+            throw "Scarp alpha.17 diagnostic coordinate contract changed"
+          }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.17"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Native Studio service rejected Scarp alpha.17" }
 
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
