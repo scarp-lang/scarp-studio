@@ -42,6 +42,7 @@ import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/pr
 import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
+import { CompilerDiscoveryRequests } from './model/compilerDiscoveryRequests';
 import {
   canAutoSave, loadAutoSavePreferences, persistAutoSavePreferences,
   type AutoSaveDelay,
@@ -178,7 +179,7 @@ export default function App() {
   const [compilerScanning, setCompilerScanning] = useState(false);
   const [detectedCompilers, setDetectedCompilers] = useState<string[]>([]);
   const [preferredDetectedCompiler, setPreferredDetectedCompiler] = useState<string | null>(null);
-  const compilerScanRevision = useRef(0);
+  const compilerDiscoveryRequests = useRef(new CompilerDiscoveryRequests());
   const automaticCompiler = preferredDetectedCompiler && detectedCompilers.includes(preferredDetectedCompiler)
     ? preferredDetectedCompiler : detectedCompilers[0] ?? null;
   // Never silently trust a stored compiler path across sessions: an executable
@@ -381,10 +382,16 @@ export default function App() {
   useEffect(() => {
     if (!isTauri()) return;
     let mounted = true;
+    const requests = compilerDiscoveryRequests.current;
+    const request = requests.begin();
     void detectScarp().then((found) => {
-      if (mounted) setDetectedCompilers(found);
+      // React Strict Mode and manual Scan can both supersede startup.
+      if (mounted && requests.isCurrent(request)) setDetectedCompilers(found);
     }).catch(() => { /* Manual scan exposes any discovery error explicitly. */ });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      if (requests.isCurrent(request)) requests.invalidate();
+    };
   }, []);
 
   useEffect(() => {
@@ -881,17 +888,18 @@ export default function App() {
         nativeDialogGate.current.isActive) return;
     selectionInProgress.current = true;
     setCompilerScanning(true);
-    const revision = ++compilerScanRevision.current;
+    const requests = compilerDiscoveryRequests.current;
+    const revision = requests.begin();
     try {
       const found = await detectScarp();
-      if (revision !== compilerScanRevision.current) return;
+      if (!requests.isCurrent(revision)) return;
       setDetectedCompilers(found);
       setPreferredDetectedCompiler(null);
       setNotice(found.length
         ? 'Found ' + found.length + ' Scarp compiler candidate(s); approval required before use.'
         : 'No Scarp executable found. Download the official ZIP, extract it, then scan again.');
     } catch (caught) {
-      if (revision === compilerScanRevision.current) {
+      if (requests.isCurrent(revision)) {
         setError('Compiler search failed: ' + toMessage(caught));
       }
     } finally {
@@ -983,8 +991,14 @@ export default function App() {
       selectionInProgress.current = true;
       setCompilerSelecting(true);
       try {
+        // First Run may overlap the effect-owned startup scan. Its newer
+        // results must win regardless of completion order.
+        const requests = compilerDiscoveryRequests.current;
+        const request = detectedCompilers.length ? null : requests.begin();
         const available = detectedCompilers.length ? detectedCompilers : await detectScarp();
-        setDetectedCompilers(available);
+        if (request === null || requests.isCurrent(request)) {
+          setDetectedCompilers(available);
+        }
         const chosen = automaticCompiler && available.includes(automaticCompiler)
           ? automaticCompiler : available[0];
         if (!chosen) {
