@@ -6,7 +6,7 @@
 
 ## 1. Review the candidate stack
 
-The integrated Windows IDE began in [PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), with additional safety changes stacked through #64. The current review-only release candidate extends that stack with alpha.17 release validation [#74](https://github.com/scarp-lang/scarp-studio/pull/74), IntelliSense [#75](https://github.com/scarp-lang/scarp-studio/pull/75), explicit-trust compiler discovery [#76](https://github.com/scarp-lang/scarp-studio/pull/76), guarded Auto Save [#77](https://github.com/scarp-lang/scarp-studio/pull/77), independent Save As/reopen tab identities [#78](https://github.com/scarp-lang/scarp-studio/pull/78), Replace All Auto Save review gating [#79](https://github.com/scarp-lang/scarp-studio/pull/79), bounded Downloads compiler-discovery priority [#80](https://github.com/scarp-lang/scarp-studio/pull/80), and full Settings defaults reset [#81](https://github.com/scarp-lang/scarp-studio/pull/81). **Use the exact topmost PR #81 head for all pre-release candidate builds and acceptance**, not an ancestor PR or already-published editor-only build. Review the complete combined diff against protected `main`; do not blindly merge the older overlapping #5/#65/#66/#71/#72/#73 drafts.
+The integrated Windows IDE began in [PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), extended through release hardening #64, Scarp alpha.17 support #74/#75, compiler discovery #76, guarded Auto Save #77, unique tab identities #78, Replace All review #79, Downloads-priority scan #80 and Settings reset #81. The complete reviewed source is now grouped in a **single [draft PR #82 targeting protected main](https://github.com/scarp-lang/scarp-studio/pull/82)**. **Use the exact PR #82 head and its own successful Windows Actions run for testing and any eventual approved merge.** The older nested drafts remain historical code review surfaces; do not merge overlapping chains independently or use an ancestor build to claim acceptance of this complete candidate.
 
 Do not create a release tag until the owner has explicitly reviewed and authorized both the source merge and the separate release publication. The old `publish-editor-alpha2.yml` workflow is restricted to `0.0.1-alpha.2` and **must not** be reused for `0.0.2-alpha.1`.
 
@@ -72,7 +72,8 @@ Until then, share only GitHub Actions development artifacts as **unsigned test c
 
 ## References
 
-- Current complete candidate draft PR: https://github.com/scarp-lang/scarp-studio/pull/81
+- Single main-targeted complete candidate PR: https://github.com/scarp-lang/scarp-studio/pull/82
+- Latest feature stack (reference only): https://github.com/scarp-lang/scarp-studio/pull/81
 - Prior compiler Downloads priority draft: https://github.com/scarp-lang/scarp-studio/pull/80
 - Prior Replace All and Auto Save safety draft: https://github.com/scarp-lang/scarp-studio/pull/79
 - Previous tab-identity draft PR: https://github.com/scarp-lang/scarp-studio/pull/78
