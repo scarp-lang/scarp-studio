@@ -50,6 +50,12 @@ Use a disposable Scarp project and a separately installed official compiler you 
 
 Test at least: editor launch/WebView2 and installer/uninstaller; file Open/Save/Reload/conflicts and UTF-8; project Explorer permissions, symlinks and dirty buffers; in-memory Replace All/Undo; real Run, static Verify, structured diagnostics, Stop during *both* capability probes and active execution; bounded prompt input; Project Info/Run/Verify/List Tests/Run Tests; **P28–P30** stale result invalidation; **C15–C18** bounded compiler discovery, first-Run per-session trust and stale snapshot cancellation; and **E27–E31** opt-in Auto Save including background tabs and external-change rejection. Never infer these pass from CI.
 
+Use the checked-in [Windows GUI smoke examples](../qa/windows/README.md)
+for an independently reproducible Run, Verify, array, preloaded boolean-input
+and invalid-diagnostic check. They are checked by CI against the published
+alpha.17 CLI, but they do **not** substitute for running the actual Windows
+Studio application with its exact-head build.
+
 If the candidate fails, record reproducible steps, fix the source on a review branch, and repeat the **exact-head** automated and affected manual checks.
 
 ## 5. Decide whether to publish
