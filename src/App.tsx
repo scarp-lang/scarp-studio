@@ -28,7 +28,7 @@ import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterT
 import { runnableSource } from './model/compilerReadiness';
 import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
 import { exitBlockReason, sameExitEditorState } from './model/exitGuards';
-import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
+import { detectScarp, executeScarp, openCompilerDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
 import {
@@ -73,6 +73,8 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
   { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
+  { id: 'scan-compiler', label: 'Scan for Installed Scarp Compiler', detail: 'Non-executing discovery' },
+  { id: 'download-compiler', label: 'Download Official Scarp Compiler', detail: 'Official alpha.17 Windows ZIP' },
   { id: 'run-scarp', label: 'Run Current Scarp Source', detail: 'F5 · saved .srp only' },
   { id: 'verify-scarp', label: 'Verify Current Scarp Source', detail: 'Ctrl+F5 · static analysis' },
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
@@ -164,6 +166,12 @@ export default function App() {
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
   const [compilerSelecting, setCompilerSelecting] = useState(false);
+  const [compilerScanning, setCompilerScanning] = useState(false);
+  const [detectedCompilers, setDetectedCompilers] = useState<string[]>([]);
+  const [preferredDetectedCompiler, setPreferredDetectedCompiler] = useState<string | null>(null);
+  const compilerScanRevision = useRef(0);
+  const automaticCompiler = preferredDetectedCompiler && detectedCompilers.includes(preferredDetectedCompiler)
+    ? preferredDetectedCompiler : detectedCompilers[0] ?? null;
   // Never silently trust a stored compiler path across sessions: an executable
   // may be replaced after the user previously approved it.
   const [compilerPath, setCompilerPath] = useState<string | null>(null);
@@ -338,6 +346,8 @@ export default function App() {
       case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
       case 'explorer': setExplorerVisible((visible) => !visible); break;
       case 'select-compiler': void selectCompiler(); break;
+      case 'scan-compiler': void rescanCompilers(); break;
+      case 'download-compiler': void downloadCompiler(); break;
       case 'run-scarp': void runCompiler('exec'); break;
       case 'verify-scarp': void runCompiler('verify'); break;
       case 'stop-scarp': void stopCompiler(); break;
@@ -355,6 +365,17 @@ export default function App() {
       localStorage.setItem('studio.editorPreferences', JSON.stringify(editorPreferences));
     } catch { /* Continue with in-memory settings when storage is unavailable. */ }
   }, [editorPreferences]);
+
+  // This operation only inspects bounded local directories. It never runs
+  // candidate executables and does not grant trust, even after a prior session.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let mounted = true;
+    void detectScarp().then((found) => {
+      if (mounted) setDetectedCompilers(found);
+    }).catch(() => { /* Manual scan exposes any discovery error explicitly. */ });
+    return () => { mounted = false; };
+  }, []);
 
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
@@ -751,6 +772,78 @@ export default function App() {
     }
   }
 
+  async function approveCompilerLocation(chosen: string): Promise<boolean> {
+    // Approval is per session and includes the exact resolved candidate path.
+    // Scanning never grants permission to execute an arbitrary binary.
+    const approved = await ask(
+      'Is your trusted official Scarp compiler located at:\n' + chosen +
+      '\n\nStudio will launch this executable to check its version and supported commands. Continue?',
+      { title: 'Confirm Scarp compiler location', kind: 'warning' },
+    );
+    if (!approved) return false;
+    const info = await probeScarp(chosen);
+    setCompilerPath(chosen);
+    setCompilerInfo(info);
+    setCompilerOutputSource(null);
+    setCompilerDiagnosticStderr(null);
+    setProjectTestResult(null);
+    setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
+    setNotice('Scarp compiler approved for this session');
+    return true;
+  }
+
+  async function rescanCompilers(): Promise<void> {
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || saveInProgress.current ||
+        nativeDialogGate.current.isActive) return;
+    selectionInProgress.current = true;
+    setCompilerScanning(true);
+    const revision = ++compilerScanRevision.current;
+    try {
+      const found = await detectScarp();
+      if (revision !== compilerScanRevision.current) return;
+      setDetectedCompilers(found);
+      setPreferredDetectedCompiler(null);
+      setNotice(found.length
+        ? 'Found ' + found.length + ' Scarp compiler candidate(s); approval required before use.'
+        : 'No Scarp executable found. Download the official ZIP, extract it, then scan again.');
+    } catch (caught) {
+      if (revision === compilerScanRevision.current) {
+        setError('Compiler search failed: ' + toMessage(caught));
+      }
+    } finally {
+      selectionInProgress.current = false;
+      setCompilerScanning(false);
+    }
+  }
+
+  async function downloadCompiler(): Promise<void> {
+    try {
+      await openCompilerDownloads();
+      setNotice('Opened the official Scarp alpha.17 download; extract it and scan for the compiler.');
+    } catch (caught) {
+      setError('Could not open official compiler download: ' + toMessage(caught));
+    }
+  }
+
+  async function confirmDetectedCompiler(): Promise<void> {
+    const chosen = automaticCompiler;
+    if (!chosen || !isTauri() || selectionInProgress.current ||
+        commandInProgress.current || filePickerInProgress.current ||
+        saveInProgress.current || nativeDialogGate.current.isActive) return;
+    selectionInProgress.current = true;
+    setCompilerSelecting(true);
+    setError(null);
+    try {
+      await approveCompilerLocation(chosen);
+    } catch (caught) {
+      setError('Compiler approval failed: ' + toMessage(caught));
+    } finally {
+      selectionInProgress.current = false;
+      setCompilerSelecting(false);
+    }
+  }
+
   async function selectCompiler(): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
         filePickerInProgress.current || saveInProgress.current ||
@@ -764,20 +857,7 @@ export default function App() {
         multiple: false,
       });
       if (typeof chosen !== 'string') return;
-      const approved = await ask(
-        'Scarp Studio will launch the selected executable to check its version and supported commands. ' +
-        'Only continue if you trust this file. Do you want to continue?',
-        { title: 'Trust the selected Scarp compiler?', kind: 'warning' },
-      );
-      if (!approved) return;
-      const info = await probeScarp(chosen);
-      setCompilerPath(chosen);
-      setCompilerInfo(info);
-      setCompilerOutputSource(null);
-      setCompilerDiagnosticStderr(null);
-      setProjectTestResult(null);
-      setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
-      setNotice('Scarp compiler configured');
+      await approveCompilerLocation(chosen);
     } catch (caught) {
       setError('Compiler selection failed: ' + toMessage(caught));
     } finally {
@@ -805,10 +885,49 @@ export default function App() {
       const captured = captureVerifiedSource(selected);
       if (!captured) throw new Error('Save the Scarp source before Run or Verify.');
       verifiedSnapshot = captured;
-      if (!compilerPath) throw new Error('Select the trusted Scarp compiler first.');
+      // First Run can locate an installed compiler; the user must approve its
+      // exact path before we launch even a version probe.
       if (mode === 'exec') validateProgramInput(stdinText);
     } catch (caught) {
       setError(toMessage(caught));
+      return;
+    }
+    let binary = compilerPath;
+    if (!binary) {
+      // A first Run is one explicit user action, but it never implicitly
+      // grants trust to discovered executables. The OS approval prompt names
+      // the exact candidate and no source code runs before acceptance.
+      selectionInProgress.current = true;
+      setCompilerSelecting(true);
+      try {
+        const available = detectedCompilers.length ? detectedCompilers : await detectScarp();
+        setDetectedCompilers(available);
+        const chosen = automaticCompiler && available.includes(automaticCompiler)
+          ? automaticCompiler : available[0];
+        if (!chosen) {
+          setError('Scarp was not found. Download the official compiler ZIP, extract it and scan again.');
+          return;
+        }
+        if (!await approveCompilerLocation(chosen)) return;
+        binary = chosen;
+      } catch (caught) {
+        setError('Automatic compiler setup failed: ' + toMessage(caught));
+        return;
+      } finally {
+        selectionInProgress.current = false;
+        setCompilerSelecting(false);
+      }
+    }
+    // Compiler scanning, trust confirmation and native probing are async.
+    // Never run the older snapshot if a user typed, saved, switched the active
+    // tab, or closed and reopened the source while answering the prompt.
+    const current = liveEditor.current.documents.find(
+      (item) => item.id === liveEditor.current.activeId,
+    ) ?? null;
+    if (liveEditor.current.activeId !== verifiedSnapshot.documentId ||
+        !isCurrentVerifiedSource(verifiedSnapshot, current) ||
+        saveInProgress.current) {
+      setError('The Scarp source changed during compiler setup. Review and click Run or Verify again.');
       return;
     }
     commandInProgress.current = true;
@@ -820,7 +939,7 @@ export default function App() {
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(
-        compilerPath, source, mode, expectedContent,
+        binary, source, mode, expectedContent,
         mode === 'exec' ? stdinText : '',
         mode === 'exec' && promptInputMode,
       );
@@ -1562,23 +1681,53 @@ export default function App() {
             <div className="compiler-heading">
               <strong>SCARP OUTPUT</strong>
               <div className="compiler-actions">
-                <button onClick={() => void selectCompiler()} disabled={compilerBusy || compilerSelecting}
-                  title="Choose a trusted Scarp executable; Studio will execute it to verify its version">
-                  {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Select Compiler'}
+                <button type="button" onClick={() => void rescanCompilers()}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
+                  title="Scan PATH, standard installed locations and extracted Scarp Downloads folders without executing software">
+                  {compilerScanning ? 'Scanning…' : 'Scan Compiler'}
+                </button>
+                <button type="button" onClick={() => void downloadCompiler()}
+                  title="Open the official SHA-256-pinned Scarp alpha.17 Windows compiler ZIP">Download Compiler</button>
+                <button onClick={() => void selectCompiler()} disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
+                  title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
+                  {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}
                 </button>
                 <button onClick={() => void runCompiler('exec')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
                   title="Execute the saved Scarp source using the official compiler">Run</button>
                 <button onClick={() => void runCompiler('verify')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !active || !active.path || isDirty(active)}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
                   title="Statically verify saved Scarp source without runtime execution">Verify</button>
                 <button onClick={() => void stopCompiler()} disabled={!compilerBusy && !compilerSelecting}
                   title="Stop a running Scarp process or compiler capability probe">Stop</button>
               </div>
             </div>
-            <div className="compiler-meta">{compilerInfo || (compilerPath
-              ? 'Compiler configured; version checked on the next Run/Verify.'
-              : 'No compiler selected')}</div>
+            <div className="compiler-meta">
+              {compilerInfo || (compilerPath
+                ? 'Compiler configured; version checked on the next Run/Verify.'
+                : automaticCompiler
+                  ? 'Detected (not yet trusted): ' + automaticCompiler
+                  : 'No compiler detected. Download the official ZIP, extract it, then click Scan Compiler.')}
+              {automaticCompiler && !compilerPath && (
+                <div className="compiler-location-approval">
+                  <span>Is your Scarp compiler at <code>{automaticCompiler}</code>?</span>
+                  <button type="button" onClick={() => void confirmDetectedCompiler()}
+                    disabled={compilerSelecting || compilerScanning || compilerBusy}>
+                    Yes, confirm this location
+                  </button>
+                </div>
+              )}
+              {detectedCompilers.length > 1 && !compilerPath && (
+                <label className="compiler-candidate-select">Detected candidate:
+                  <select aria-label="Detected compiler to trust and use on Run"
+                    value={automaticCompiler ?? ''}
+                    onChange={(event) => setPreferredDetectedCompiler(event.target.value)}>
+                    {detectedCompilers.map((candidate) =>
+                      <option key={candidate} value={candidate}>{candidate}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
             <div className="project-actions" aria-label="Selected Scarp project commands">
               <span>PROJECT</span>
               <button type="button" onClick={() => void runProjectAction('info')}
@@ -1746,6 +1895,10 @@ export default function App() {
           title="Go to Line (Ctrl+G)">
           {active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}
         </button>
+        <span title={compilerPath || automaticCompiler || 'No compiler detected'}>
+          {compilerPath ? 'Scarp compiler ready' :
+            automaticCompiler ? 'Compiler detected · approval required' : 'Compiler not detected'}
+        </span>
         <span>Scarp · .srp</span>
         <span>0.0.2-alpha.1 · development candidate</span>
       </footer>

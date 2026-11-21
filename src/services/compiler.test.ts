@@ -1,11 +1,28 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
-import { executeScarp } from './compiler';
+import { detectScarp, executeScarp, openCompilerDownloads } from './compiler';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 
 describe('Scarp native invoke input contract', () => {
   beforeEach(() => { vi.resetAllMocks(); });
+
+  it('detects Scarp candidates through a bounded non-executing native command', async () => {
+    const paths = ['C:\\Program Files\\Scarp\\scarp.exe', 'C:\\Users\\test\\Downloads\\Scarp\\scarp.exe'];
+    vi.mocked(invoke).mockResolvedValue(paths);
+    await expect(detectScarp()).resolves.toEqual(paths);
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith('scarp_detect');
+    expect(invoke).not.toHaveBeenCalledWith('scarp_probe', expect.anything());
+    expect(invoke).not.toHaveBeenCalledWith('scarp_execute', expect.anything());
+  });
+
+  it('opens the official download only in response to its distinct native command', async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await expect(openCompilerDownloads()).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke).toHaveBeenCalledWith('scarp_download_page');
+  });
 
   it('passes exact UTF-8 source and explicit stdin to Run without writing to disk', async () => {
     vi.mocked(invoke).mockResolvedValue(['Hello नमस्ते 👋', null]);

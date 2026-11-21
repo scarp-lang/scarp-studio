@@ -1,4 +1,5 @@
 mod compiler;
+mod compiler_discovery;
 
 /// Native Scarp compiler operations are limited to explicit user actions.
 /// No automatic execution, shell plugin or unrestricted filesystem scopes.
@@ -12,7 +13,9 @@ pub fn run() {
             compiler::scarp_probe,
             compiler::scarp_execute,
             compiler::scarp_project_action,
-            compiler::scarp_cancel
+            compiler::scarp_cancel,
+            compiler_discovery::scarp_detect,
+            compiler_discovery::scarp_download_page
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Scarp Studio");
