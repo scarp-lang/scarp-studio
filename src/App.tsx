@@ -68,16 +68,27 @@ export default function App() {
   const automaticCompiler = detectedCompilers.includes(preferredDetectedCompiler ?? '')
     ? preferredDetectedCompiler : detectedCompilers[0] ?? null;
 
-  // Detect paths on startup without executing any discovered program.
+  // Discover on startup and again when Studio regains focus after a download.
+  // Detection reads filenames only; no discovered executable is launched.
   useEffect(() => {
     if (!isTauri()) return;
     let disposed = false;
-    void detectScarp().then((found) => {
-      if (!disposed) setDetectedCompilers(found);
-    }).catch(() => {
-      // The manual selection and rescan actions remain available.
-    });
-    return () => { disposed = true; };
+    let pending = false;
+    const refresh = () => {
+      if (pending || commandInProgress.current || selectionInProgress.current) return;
+      pending = true;
+      void detectScarp().then((found) => {
+        if (!disposed) setDetectedCompilers(found);
+      }).catch(() => {
+        // The manual selection and Scan action remain available.
+      }).finally(() => { pending = false; });
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    return () => {
+      disposed = true;
+      window.removeEventListener('focus', refresh);
+    };
   }, []);
 
   useEffect(() => {
