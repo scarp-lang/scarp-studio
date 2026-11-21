@@ -1,28 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import StudioSettingsPanel from './components/StudioSettingsPanel';
 import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  fileName, isDirty,
+  fileName, isDirty, type StudioDocument,
 } from './model/documents';
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { captureRunSnapshot, validateRunSnapshot, type ScarpRunSnapshot } from './model/compilerReadiness';
 import { exitBlockReason } from './model/exitGuards';
+import { canAutoSave, loadStudioSettings, storeStudioSettings, type StudioSettings } from './model/studioSettings';
 import { detectScarp, executeScarp, openScarpDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
-type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
-
-function getInitialTheme(): Theme {
-  try {
-    return localStorage.getItem('studio.theme') === 'light' ? 'light' : 'dark';
-  } catch {
-    return 'dark';
-  }
-}
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -39,7 +32,12 @@ export default function App() {
     liveEditor.current = next;
     setEditorState(next);
   }
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [settings, setSettings] = useState<StudioSettings>(loadStudioSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const theme = settings.theme;
+  function changeSettings(patch: Partial<StudioSettings>): void {
+    setSettings((current) => ({ ...current, ...patch }));
+  }
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +45,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
+  const autoSaveTimers = useRef(new Map<string, {
+    document: StudioDocument; delay: number; timeout: number;
+  }>());
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
   const exitConfirmationInProgress = useRef(false);
@@ -98,8 +99,8 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem('studio.theme', theme); } catch { /* storage unavailable */ }
-  }, [theme]);
+    storeStudioSettings(settings);
+  }, [settings, theme]);
 
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
@@ -194,12 +195,21 @@ export default function App() {
     }
   }
 
-  async function saveFile(forceSaveAs = false): Promise<void> {
-    const document = liveEditor.current.documents.find((item) => item.id === activeId);
+  /**
+   * Save a snapshot of the correct document even when the active tab changes
+   * while an OS dialog or write is pending. Writes re-check external changes.
+   */
+  async function saveDocument(
+    id: string, forceSaveAs = false, automatic = false, expected?: StudioDocument,
+  ): Promise<void> {
+    const document = liveEditor.current.documents.find((item) => item.id === id);
     if (!document || saveInProgress.current) return;
+    if (automatic && (!settings.autoSave || !canAutoSave(document) || document !== expected)) return;
     saveInProgress.current = true;
-    setError(null);
-    setBusy(true);
+    if (!automatic) {
+      setError(null);
+      setBusy(true);
+    }
     try {
       const path = await writeSourceFile(
         document,
@@ -209,16 +219,55 @@ export default function App() {
           .map((item) => item.path as string),
       );
       if (!path) return;
-      // Preserve edits made during the asynchronous native save operation.
+      // Record the exact bytes written; newer keystrokes remain visibly dirty.
       dispatch({ type: 'saved', id: document.id, path, savedContent: document.content });
-      setNotice('Saved ' + fileName(path));
+      setNotice((automatic ? 'Auto saved ' : 'Saved ') + fileName(path));
+      if (automatic) setError((current) =>
+        current?.startsWith('Auto Save failed for ') ? null : current);
     } catch (caught) {
-      setError('Could not save source: ' + toMessage(caught));
+      setError((automatic ? 'Auto Save failed for ' + document.name + ': '
+        : 'Could not save source: ') + toMessage(caught));
     } finally {
       saveInProgress.current = false;
-      setBusy(false);
+      if (!automatic) setBusy(false);
     }
   }
+
+  async function saveFile(forceSaveAs = false): Promise<void> {
+    const id = liveEditor.current.activeId;
+    if (id) await saveDocument(id, forceSaveAs);
+  }
+
+  // Per-document debounce: switching tabs or editing another document does
+  // not postpone an unrelated file's pending save. No Save As prompts here.
+  useEffect(() => {
+    const timers = autoSaveTimers.current;
+    for (const [id, pending] of timers) {
+      const current = documents.find((doc) => doc.id === id);
+      if (!settings.autoSave || !isTauri() || !current || !canAutoSave(current) ||
+          current !== pending.document || pending.delay !== settings.autoSaveDelay) {
+        window.clearTimeout(pending.timeout);
+        timers.delete(id);
+      }
+    }
+    if (!settings.autoSave || !isTauri()) return;
+    for (const document of documents) {
+      if (!canAutoSave(document) || timers.has(document.id)) continue;
+      const timeout = window.setTimeout(() => {
+        if (timers.get(document.id)?.timeout !== timeout) return;
+        timers.delete(document.id);
+        void saveDocument(document.id, false, true, document);
+      }, settings.autoSaveDelay);
+      timers.set(document.id, { document, delay: settings.autoSaveDelay, timeout });
+    }
+  }, [documents, settings.autoSave, settings.autoSaveDelay]);
+
+  useEffect(() => () => {
+    for (const timer of autoSaveTimers.current.values()) {
+      window.clearTimeout(timer.timeout);
+    }
+    autoSaveTimers.current.clear();
+  }, []);
 
   async function rescanCompilers(): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
