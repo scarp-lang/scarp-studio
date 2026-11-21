@@ -10,16 +10,25 @@ const MAX_ENTRIES: usize = 4096;
 const MAX_CANDIDATES: usize = 24;
 
 fn expected_file_name() -> &'static str {
-    if cfg!(windows) { "scarp.exe" } else { "scarp" }
+    if cfg!(windows) {
+        "scarp.exe"
+    } else {
+        "scarp"
+    }
 }
 
 fn record_binary(path: &Path, found: &mut Vec<String>, seen: &mut HashSet<PathBuf>) {
     if found.len() >= MAX_CANDIDATES
-        || !path.file_name().is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case(expected_file_name()))
+        || !path.file_name().is_some_and(|name| {
+            name.to_string_lossy()
+                .eq_ignore_ascii_case(expected_file_name())
+        })
     {
         return;
     }
-    let Ok(canonical) = fs::canonicalize(path) else { return };
+    let Ok(canonical) = fs::canonicalize(path) else {
+        return;
+    };
     if canonical.is_file() && seen.insert(canonical.clone()) {
         // A path is only a candidate, not evidence of a trusted Scarp build.
         found.push(canonical.to_string_lossy().into_owned());
@@ -36,17 +45,29 @@ fn scan_directory(
     found: &mut Vec<String>,
     seen: &mut HashSet<PathBuf>,
 ) {
-    if *budget == 0 || found.len() >= MAX_CANDIDATES { return; }
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    if *budget == 0 || found.len() >= MAX_CANDIDATES {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
-        if *budget == 0 || found.len() >= MAX_CANDIDATES { break; }
+        if *budget == 0 || found.len() >= MAX_CANDIDATES {
+            break;
+        }
         *budget -= 1;
         let path = entry.path();
-        let Ok(kind) = entry.file_type() else { continue };
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
         if kind.is_file() || kind.is_symlink() {
             record_binary(&path, found, seen);
         } else if depth > 0 && kind.is_dir() {
-            let scarp_named = entry.file_name().to_string_lossy().to_ascii_lowercase().contains("scarp");
+            let scarp_named = entry
+                .file_name()
+                .to_string_lossy()
+                .to_ascii_lowercase()
+                .contains("scarp");
             if descend_all || scarp_named {
                 scan_directory(&path, depth - 1, true, budget, found, seen);
             }
@@ -60,7 +81,9 @@ fn scan_directories(roots: &[(PathBuf, u8, bool)]) -> Vec<String> {
     let mut budget = MAX_ENTRIES;
     for (root, depth, all) in roots {
         scan_directory(root, *depth, *all, &mut budget, &mut found, &mut seen);
-        if budget == 0 || found.len() >= MAX_CANDIDATES { break; }
+        if budget == 0 || found.len() >= MAX_CANDIDATES {
+            break;
+        }
     }
     found
 }
@@ -78,7 +101,14 @@ fn standard_roots() -> Vec<(PathBuf, u8, bool)> {
             let local = PathBuf::from(local);
             roots.insert(0, (local.join("Programs").join("Scarp"), 2, true));
             roots.insert(1, (local.join("Scarp"), 2, true));
-            roots.insert(2, (local.join("Microsoft").join("WinGet").join("Links"), 0, false));
+            roots.insert(
+                2,
+                (
+                    local.join("Microsoft").join("WinGet").join("Links"),
+                    0,
+                    false,
+                ),
+            );
         }
         if let Some(program_files) = env::var_os("ProgramFiles") {
             roots.push((PathBuf::from(program_files).join("Scarp"), 2, true));
@@ -86,7 +116,11 @@ fn standard_roots() -> Vec<(PathBuf, u8, bool)> {
     }
     // Search each PATH directory directly; never run an untrusted 'where' command.
     if let Some(path) = env::var_os("PATH") {
-        roots.extend(env::split_paths(&path).filter(|p| p.is_absolute()).map(|p| (p, 0, false)));
+        roots.extend(
+            env::split_paths(&path)
+                .filter(|p| p.is_absolute())
+                .map(|p| (p, 0, false)),
+        );
     }
     // Downloads can contain thousands of unrelated files. Scan installed
     // compiler locations and PATH first so an entry budget cannot hide them.
@@ -123,23 +157,32 @@ pub fn scarp_download_page() -> Result<(), String> {
     const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases";
     #[cfg(windows)]
     {
-        let root = env::var_os("SystemRoot").or_else(|| env::var_os("WINDIR"))
+        let root = env::var_os("SystemRoot")
+            .or_else(|| env::var_os("WINDIR"))
             .ok_or("Windows system directory is unavailable")?;
         let explorer = PathBuf::from(root).join("explorer.exe");
-        if !explorer.is_file() { return Err("Windows Explorer executable was not found".into()); }
-        std::process::Command::new(explorer).arg(RELEASES).spawn()
+        if !explorer.is_file() {
+            return Err("Windows Explorer executable was not found".into());
+        }
+        std::process::Command::new(explorer)
+            .arg(RELEASES)
+            .spawn()
             .map_err(|e| format!("Could not open the official Scarp downloads: {e}"))?;
         Ok(())
     }
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("/usr/bin/open").arg(RELEASES).spawn()
+        std::process::Command::new("/usr/bin/open")
+            .arg(RELEASES)
+            .spawn()
             .map_err(|e| format!("Could not open the official Scarp downloads: {e}"))?;
         Ok(())
     }
     #[cfg(all(not(windows), not(target_os = "macos")))]
     {
-        std::process::Command::new("xdg-open").arg(RELEASES).spawn()
+        std::process::Command::new("xdg-open")
+            .arg(RELEASES)
+            .spawn()
             .map_err(|e| format!("Could not open the official Scarp downloads: {e}"))?;
         Ok(())
     }
@@ -152,11 +195,18 @@ mod tests {
 
     #[test]
     fn detects_extracted_archive_without_running_it() {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let root = env::temp_dir().join(format!("studio-detect-{}-{unique}", std::process::id()));
         let versioned = root.join("scarp-0.0.6-alpha.16").join("bin");
         fs::create_dir_all(&versioned).unwrap();
-        fs::write(versioned.join(expected_file_name()), b"not actually executable").unwrap();
+        fs::write(
+            versioned.join(expected_file_name()),
+            b"not actually executable",
+        )
+        .unwrap();
         fs::write(versioned.join("unrelated.exe"), b"ignored").unwrap();
 
         let found = scan_directories(&[(root.clone(), 3, false)]);
@@ -168,8 +218,12 @@ mod tests {
 
     #[test]
     fn does_not_descend_into_unrelated_download_folders() {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = env::temp_dir().join(format!("studio-unrelated-{}-{unique}", std::process::id()));
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            env::temp_dir().join(format!("studio-unrelated-{}-{unique}", std::process::id()));
         let unrelated = root.join("random-folder");
         fs::create_dir_all(&unrelated).unwrap();
         fs::write(unrelated.join(expected_file_name()), b"untrusted").unwrap();
@@ -179,12 +233,19 @@ mod tests {
 
     #[test]
     fn rejects_non_scarp_name_and_duplicate_paths() {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = env::temp_dir().join(format!("studio-duplicates-{}-{unique}", std::process::id()));
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            env::temp_dir().join(format!("studio-duplicates-{}-{unique}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join(expected_file_name()), b"candidate").unwrap();
         fs::write(root.join("scarp-helper.exe"), b"ignored").unwrap();
-        assert_eq!(scan_directories(&[(root.clone(), 0, false), (root.clone(), 0, false)]).len(), 1);
+        assert_eq!(
+            scan_directories(&[(root.clone(), 0, false), (root.clone(), 0, false)]).len(),
+            1
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }
