@@ -183,6 +183,24 @@ describe('per-file Auto Save scheduler', () => {
     scheduler.dispose();
   });
 
+  it('supports a fresh effect-owned scheduler after Strict Mode cleanup', () => {
+    const write = vi.fn();
+    const document = savedDirty('remount');
+    const firstMount = new AutoSaveScheduler(write);
+    firstMount.reconcile([document], true, 1000, false);
+    firstMount.dispose();
+    vi.advanceTimersByTime(3000);
+    expect(write).not.toHaveBeenCalled();
+
+    // Strict Mode re-runs effect setup: it must receive a new scheduler,
+    // never the disposed instance held by a render-lifetime ref.
+    const secondMount = new AutoSaveScheduler(write);
+    secondMount.reconcile([document], true, 1000, false);
+    vi.advanceTimersByTime(1000);
+    expect(write).toHaveBeenCalledOnce();
+    secondMount.dispose();
+  });
+
   it('cancels old delays, closed tabs, cleaned files and disposed timers', () => {
     const save = vi.fn();
     const scheduler = new AutoSaveScheduler(save);
