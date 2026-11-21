@@ -536,6 +536,8 @@ jobs:
           $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.17"
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Native Studio service rejected Scarp alpha.17" }
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler_discovery::tests::discovers_pinned_official_compiler_from_extracted_archive --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio failed to discover official alpha.17 extracted compiler" }
 
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
