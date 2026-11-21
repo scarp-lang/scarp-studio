@@ -42,10 +42,10 @@ function Assert-ScarpCommand {
   $exitCode = $LASTEXITCODE
   $output = ($captured -join [Environment]::NewLine).Trim()
   if ($exitCode -ne $ExpectedExitCode) {
-    throw "Scarp QA $Name: expected exit $ExpectedExitCode, got $exitCode. Output: $output"
+    throw "Scarp QA ${Name}: expected exit $ExpectedExitCode, got $exitCode. Output: $output"
   }
   if ($ExpectedMarker -and $output -notmatch [regex]::Escape($ExpectedMarker)) {
-    throw "Scarp QA $Name: expected output marker '$ExpectedMarker', got: $output"
+    throw "Scarp QA ${Name}: expected output marker '$ExpectedMarker', got: $output"
   }
   Write-Host "SCARP QA PASS: $Name"
   return $output
