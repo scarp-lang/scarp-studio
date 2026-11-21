@@ -309,14 +309,10 @@ mod tests {
             fs::write(crowded.join(format!("other-{i}.txt")), b"not a compiler").unwrap();
         }
         fs::write(installed.join(expected_file_name()), b"candidate").unwrap();
-        let candidates = scan_directories_with_budgets(
-            &[(crowded, 0, false), (installed, 0, false)],
-            32,
-            16,
-        );
+        let candidates =
+            scan_directories_with_budgets(&[(crowded, 0, false), (installed, 0, false)], 32, 16);
         assert_eq!(candidates.len(), 1);
         assert!(candidates[0].ends_with(expected_file_name()));
         fs::remove_dir_all(base).unwrap();
     }
-
 }
