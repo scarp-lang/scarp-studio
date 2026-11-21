@@ -79,6 +79,8 @@ jobs:
           $env:SCARP_TEST_BIN = $binary.FullName
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Native Scarp process integration failed" }
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler_discovery::tests::discovers_pinned_official_compiler_from_extracted_archive --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Automatic detection of the pinned Scarp binary failed" }
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate
