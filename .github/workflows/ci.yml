@@ -547,38 +547,10 @@ jobs:
           $ErrorActionPreference = "Stop"
           $binaries = @(Get-ChildItem scarp-alpha17 -File -Recurse -Filter "scarp.exe")
           if ($binaries.Count -ne 1) { throw "Verified official alpha.17 compiler binary missing" }
-          $compiler = $binaries[0].FullName
-          foreach ($case in @(
-            @{ File = "qa/windows/01-run-square.srp"; Marker = "SCARP_STUDIO_GUI_RUN_OK" },
-            @{ File = "qa/windows/02-fixed-array.srp"; Marker = "SCARP_STUDIO_GUI_ARRAY_OK" }
-          )) {
-            & $compiler verify --diagnostic-format=json -- $case.File
-            if ($LASTEXITCODE -ne 0) { throw "GUI fixture Verify rejected $($case.File)" }
-            $output = @(& $compiler exec --diagnostic-format=json -- $case.File)
-            if ($LASTEXITCODE -ne 0 -or
-                ($output -join [Environment]::NewLine).Trim() -ne $case.Marker) {
-              throw "GUI fixture Run output mismatch for $($case.File)"
-            }
-          }
-          & $compiler verify --diagnostic-format=json -- qa/windows/03-boolean-input.srp
-          if ($LASTEXITCODE -ne 0) { throw "Boolean fixture static Verify failed" }
-          $boolean = @(& $compiler exec --interactive --input-file qa/windows/03-boolean-input.stdin -- qa/windows/03-boolean-input.srp)
-          if ($LASTEXITCODE -ne 0 -or
-              ($boolean -join [Environment]::NewLine) -notmatch "SCARP_STUDIO_GUI_BOOLEAN_OK") {
-            throw "Boolean fixture preloaded-input Run failed"
-          }
-          $invalid = @(& $compiler verify --diagnostic-format=json -- qa/windows/04-invalid-diagnostic.srp 2>&1)
-          if ($LASTEXITCODE -eq 0 -or $invalid.Count -lt 1) {
-            throw "Intentionally invalid GUI fixture was not rejected"
-          }
-          try {
-            $errorRecord = $invalid[0].ToString() | ConvertFrom-Json -ErrorAction Stop
-          } catch {
-            throw "GUI fixture's expected Verify diagnostic is not structured JSON"
-          }
-          if ($errorRecord.schema_version -ne 1 -or $errorRecord.severity -ne "error") {
-            throw "GUI fixture emitted incompatible error diagnostic JSON"
-          }
+          # The previous step independently verifies the official ZIP SHA-256
+          # and the exact CLI version. This runner reports which fixture fails.
+          & ./scripts/verify-windows-qa.ps1 -CompilerPath $binaries[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw "Scarp Windows QA fixture runner failed" }
 
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
