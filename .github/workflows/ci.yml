@@ -47,24 +47,24 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.16/scarp-0.0.6-alpha.16-x86_64-pc-windows-msvc.zip"
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.17/scarp-0.0.6-alpha.17-x86_64-pc-windows-msvc.zip"
           Invoke-WebRequest -Uri $url -OutFile scarp-compiler.zip
           $actual = (Get-FileHash scarp-compiler.zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne "9d7a1670794eb7dd42cc085760adef88067e1336df854498d935835d03a4d181") {
+          if ($actual -ne "fa05e57675799d881ebe33ccd54f6eb769825632904adf99cd08c940383134b5") {
             throw "Official compiler archive hash mismatch"
           }
           Expand-Archive -Path scarp-compiler.zip -DestinationPath scarp-compiler
           $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
           if (-not $binary) { throw "Official Scarp binary missing from archive" }
           $reportedVersion = & $binary.FullName --version
-          if ($LASTEXITCODE -ne 0 -or $reportedVersion -ne "scarp 0.0.6-alpha.16") {
+          if ($LASTEXITCODE -ne 0 -or $reportedVersion -ne "scarp 0.0.6-alpha.17") {
             throw "Unexpected Scarp compiler version"
           }
           & $binary.FullName guide exec
           if ($LASTEXITCODE -ne 0) { throw "Scarp exec probe failed" }
           & $binary.FullName guide verify
           if ($LASTEXITCODE -ne 0) { throw "Scarp verify probe failed" }
-          'assert(2 + 2 == 4, "Studio alpha.16 smoke"); print("Studio CLI smoke");' | Set-Content -Path scarp-smoke.srp -Encoding utf8
+          'assert(2 + 2 == 4, "Studio alpha.17 smoke"); print("Studio CLI smoke");' | Set-Content -Path scarp-smoke.srp -Encoding utf8
           & $binary.FullName verify --diagnostic-format=json -- scarp-smoke.srp
           if ($LASTEXITCODE -ne 0) { throw "Scarp static verification failed" }
           $execution = & $binary.FullName exec --max-steps 200000 --max-prints 1000 --diagnostic-format=json -- scarp-smoke.srp
