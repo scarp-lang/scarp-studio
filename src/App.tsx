@@ -13,6 +13,7 @@ import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { captureRunSnapshot, validateRunSnapshot, type ScarpRunSnapshot } from './model/compilerReadiness';
 import { exitBlockReason } from './model/exitGuards';
 import { canAutoSave, loadStudioSettings, storeStudioSettings, type StudioSettings } from './model/studioSettings';
+import { AutoSaveScheduler } from './model/autoSaveScheduler';
 import { detectScarp, executeScarp, openScarpDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
 type FolderEntry = { name: string; path: string };
@@ -45,9 +46,13 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
-  const autoSaveTimers = useRef(new Map<string, {
-    document: StudioDocument; delay: number; timeout: number;
-  }>());
+  const autoSaveAction = useRef<(document: StudioDocument) => void>(() => {});
+  const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
+  if (!autoSaveScheduler.current) {
+    autoSaveScheduler.current = new AutoSaveScheduler(
+      (document) => autoSaveAction.current(document),
+    );
+  }
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
   const exitConfirmationInProgress = useRef(false);
@@ -239,37 +244,20 @@ export default function App() {
     if (id) await saveDocument(id, forceSaveAs);
   }
 
-  // Per-document debounce: switching tabs or editing another document does
-  // not postpone an unrelated file's pending save. No Save As prompts here.
+  // The scheduler uses current live save logic and its reference-based timer
+  // snapshots. No stale callback may launch a save after the source changed.
+  autoSaveAction.current = (document) => {
+    void saveDocument(document.id, false, true, document);
+  };
+
   useEffect(() => {
-    const timers = autoSaveTimers.current;
-    for (const [id, pending] of timers) {
-      const current = documents.find((doc) => doc.id === id);
-      if (!settings.autoSave || !isTauri() || compilerBusy || compilerSelecting ||
-          !current || !canAutoSave(current) ||
-          current !== pending.document || pending.delay !== settings.autoSaveDelay) {
-        window.clearTimeout(pending.timeout);
-        timers.delete(id);
-      }
-    }
-    if (!settings.autoSave || !isTauri() || compilerBusy || compilerSelecting) return;
-    for (const document of documents) {
-      if (!canAutoSave(document) || timers.has(document.id)) continue;
-      const timeout = window.setTimeout(() => {
-        if (timers.get(document.id)?.timeout !== timeout) return;
-        timers.delete(document.id);
-        void saveDocument(document.id, false, true, document);
-      }, settings.autoSaveDelay);
-      timers.set(document.id, { document, delay: settings.autoSaveDelay, timeout });
-    }
+    autoSaveScheduler.current?.reconcile(
+      documents, settings.autoSave && isTauri(), settings.autoSaveDelay,
+      compilerBusy || compilerSelecting,
+    );
   }, [documents, settings.autoSave, settings.autoSaveDelay, compilerBusy, compilerSelecting]);
 
-  useEffect(() => () => {
-    for (const timer of autoSaveTimers.current.values()) {
-      window.clearTimeout(timer.timeout);
-    }
-    autoSaveTimers.current.clear();
-  }, []);
+  useEffect(() => () => { autoSaveScheduler.current?.dispose(); }, []);
 
   async function rescanCompilers(): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
