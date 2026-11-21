@@ -6,6 +6,7 @@ type TokenProvider = {
   keywords: string[];
   typeKeywords: string[];
   legacyKeywords: string[];
+  builtinFunctions: string[];
   tokenizer: { root: TokenRule[]; string: TokenRule[] };
 };
 
@@ -31,7 +32,7 @@ function matchesWhole(rule: RegExp, text: string): boolean {
 }
 
 describe('Scarp syntax highlighting and compiler compatibility', () => {
-  it('recognizes implemented alpha.8 statements, contracts and output forms', () => {
+  it('recognizes implemented Scarp statements, contracts and output forms', () => {
     const provider = captureProvider();
     for (const word of [
       'assert', 'needs', 'ensures', 'print', 'println', 'write', 'eprint', 'ewrite',
@@ -50,6 +51,10 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
       expect(provider.keywords, name).not.toContain(name);
     }
     expect(provider.legacyKeywords).toEqual(['let', 'mut']);
+    expect(provider.builtinFunctions).toEqual(['array_len', 'array_get_or', 'input_boolean']);
+    for (const builtin of provider.builtinFunctions) {
+      expect(provider.keywords).not.toContain(builtin);
+    }
     const identifier = provider.tokenizer.root.find(([, action]) =>
       typeof action === 'object' && action !== null && 'cases' in action
     );
@@ -57,6 +62,7 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
       cases: {
         '@keywords': 'keyword',
         '@typeKeywords': 'type',
+        '@builtinFunctions': 'predefined',
         '@legacyKeywords': 'invalid',
         '@default': 'identifier',
       },

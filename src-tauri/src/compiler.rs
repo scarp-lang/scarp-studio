@@ -517,7 +517,7 @@ mod tests {
         let selected = std::env::var("SCARP_TEST_BIN")
             .expect("CI must explicitly provide the verified official Scarp executable");
         let (binary, version) = probe(&selected).expect("official compiler probe");
-        assert_eq!(version, "0.0.6-alpha.16");
+        assert_eq!(version, "0.0.6-alpha.17");
 
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -561,7 +561,7 @@ mod tests {
         assert!(!execute.cancelled);
 
         // Verify checks assertion types but does not evaluate a false predicate.
-        // The alpha.8 interpreter must fail with the native E0065 diagnostic;
+        // The pinned alpha.17 interpreter must fail with the native E0065 diagnostic;
         // buffered program stdout must not leak after a runtime failure.
         let failing_assertion = "print(\"do-not-emit\");\nassert(false, \"intentional failure\");";
         fs::write(&source, failing_assertion).unwrap();
