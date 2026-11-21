@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import type { StudioSettings, AutoSaveDelay, EditorFontSize } from '../model/studioSettings';
+import type { StudioSettings, AutoSaveDelay, EditorFontSize, EditorTabSize } from '../model/studioSettings';
 
 interface Props {
   settings: StudioSettings;
@@ -77,8 +77,16 @@ export default function StudioSettingsPanel({
             <span>Editor font size</span>
             <select value={settings.fontSize} aria-label="Editor font size"
               onChange={(event) => onChange({ fontSize: Number(event.target.value) as EditorFontSize })}>
-              {[12, 14, 16, 18, 20].map((size) =>
+              {[12, 14, 16, 18, 20, 22, 24].map((size) =>
                 <option key={size} value={size}>{size} px</option>)}
+            </select>
+          </label>
+          <label className="settings-row">
+            <span>Tab width</span>
+            <select value={settings.tabSize} aria-label="Editor tab width"
+              onChange={(event) => onChange({ tabSize: Number(event.target.value) as EditorTabSize })}>
+              {[2, 4, 8].map((size) =>
+                <option key={size} value={size}>{size} spaces</option>)}
             </select>
           </label>
           <label className="settings-toggle">
