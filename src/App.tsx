@@ -46,7 +46,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
-  const autoSaveAction = useRef<(document: StudioDocument) => void>(() => {});
+  const autoSaveAction = useRef<(document: StudioDocument) => boolean>(() => true);
   const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
   if (!autoSaveScheduler.current) {
     autoSaveScheduler.current = new AutoSaveScheduler(
@@ -247,7 +247,14 @@ export default function App() {
   // The scheduler uses current live save logic and its reference-based timer
   // snapshots. No stale callback may launch a save after the source changed.
   autoSaveAction.current = (document) => {
+    const current = liveEditor.current.documents.find((item) => item.id === document.id);
+    // Stale snapshots must not be retried. Only a concurrent native save
+    // returns false so the scheduler can retry the same valid snapshot.
+    if (!settings.autoSave || current !== document || !canAutoSave(document)) return true;
+    if (commandInProgress.current || selectionInProgress.current) return false;
+    if (saveInProgress.current) return false;
     void saveDocument(document.id, false, true, document);
+    return true;
   };
 
   useEffect(() => {
