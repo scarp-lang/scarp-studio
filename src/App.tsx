@@ -478,10 +478,18 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && settingsOpen) {
+        event.preventDefault();
+        setSettingsOpen(false);
+        return;
+      }
       const modifier = event.ctrlKey || event.metaKey;
       if (!modifier || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === 's') {
+      if (key === ',') {
+        event.preventDefault();
+        setSettingsOpen((open) => !open);
+      } else if (key === 's') {
         event.preventDefault();
         void saveFile(event.shiftKey);
       } else if (key === 'n') {
@@ -519,11 +527,17 @@ export default function App() {
         </nav>
         <button
           className="theme-button"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          onClick={() => changeSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}
           aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
         >
           {theme === 'dark' ? '☀ Light' : '☾ Dark'}
         </button>
+        <button
+          className="settings-nav-button"
+          onClick={() => setSettingsOpen((open) => !open)}
+          aria-pressed={settingsOpen}
+          title="Editor and compiler settings (Ctrl+,)"
+        >⚙ Settings</button>
       </header>
 
       <div className="studio-main">
@@ -602,7 +616,21 @@ export default function App() {
             </div>
           )}
           <div className="editor-panel">
-            {active ? (
+            {settingsOpen ? (
+              <StudioSettingsPanel
+                settings={settings}
+                onChange={changeSettings}
+                onClose={() => setSettingsOpen(false)}
+                compilerCandidate={automaticCompiler}
+                trustedCompiler={compilerPath}
+                compilerVersion={compilerInfo}
+                compilerBusy={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
+                onConfirmCompiler={() => void confirmDetectedCompiler()}
+                onScanCompiler={() => void rescanCompilers()}
+                onChooseCompiler={() => void selectCompiler()}
+                onDownloadCompiler={() => void openCompilerDownloads()}
+              />
+            ) : active ? (
               <Editor
                 key={active.id}
                 path={active.path || active.id + '.srp'}
@@ -619,9 +647,9 @@ export default function App() {
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
                 options={{
-                  automaticLayout: true, fontSize: 14, fontFamily: 'Consolas, monospace',
-                  minimap: { enabled: false }, scrollBeyondLastLine: false,
-                  tabSize: 4, wordWrap: 'on', detectIndentation: false,
+                  automaticLayout: true, fontSize: settings.fontSize, fontFamily: 'Consolas, monospace',
+                  minimap: { enabled: settings.minimap }, scrollBeyondLastLine: false,
+                  tabSize: 4, wordWrap: settings.wordWrap ? 'on' : 'off', detectIndentation: false,
                 }}
               />
             ) : (
@@ -664,6 +692,15 @@ export default function App() {
               {compilerInfo || (automaticCompiler
                 ? 'Detected (not yet trusted): ' + automaticCompiler
                 : 'Compiler not detected. Download the official ZIP, extract it, then click Scan.')}
+              {automaticCompiler && !compilerPath && (
+                <div className="compiler-path-confirm">
+                  <span>Is your Scarp compiler at <code>{automaticCompiler}</code>?</span>
+                  <button onClick={() => void confirmDetectedCompiler()}
+                    disabled={compilerSelecting || compilerScanning || compilerBusy}>
+                    Yes, confirm this location
+                  </button>
+                </div>
+              )}
               {detectedCompilers.length > 1 && !compilerPath && (
                 <label className="compiler-choice">Detected compiler:
                   <select
@@ -685,6 +722,11 @@ export default function App() {
       <footer className="status-bar">
         <span>{busy ? 'Working…' : notice}</span>
         <span>{active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}</span>
+        <button className="status-settings-button"
+          onClick={() => setSettingsOpen(true)}
+          title="Configure Auto Save and editor preferences">
+          Auto Save: {settings.autoSave ? 'On' : 'Off'}
+        </button>
         <span title={compilerPath || automaticCompiler || 'No Scarp compiler detected'}>
           {compilerPath ? 'Compiler ready' : automaticCompiler ? 'Compiler detected · approval needed' : 'Compiler not found'}
         </span>
