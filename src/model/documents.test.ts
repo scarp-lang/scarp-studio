@@ -114,4 +114,36 @@ describe('Scarp-only file state', () => {
     expect(openedAgain.documents).toEqual(edited);
     expect(openedAgain.id).toBe(opened.id);
   });
+  it('never duplicates tab IDs after Save As moves A to B and A is reopened', () => {
+    const first = openedDocument([], 'C:/workspace/A.srp', 'original');
+    const moved = markSaved(first.documents, first.id, 'C:/workspace/B.srp', 'original');
+    expect(moved[0].id).toBe(first.id);
+    expect(moved[0].path).toBe('C:/workspace/B.srp');
+
+    const reopened = openedDocument(moved, 'C:/workspace/A.srp', 'new disk A');
+    expect(reopened.documents).toHaveLength(2);
+    expect(reopened.id).not.toBe(first.id);
+    expect(new Set(reopened.documents.map((document) => document.id)).size).toBe(2);
+    expect(reopened.documents[0].path).toBe('C:/workspace/B.srp');
+    expect(reopened.documents[1].path).toBe('C:/workspace/A.srp');
+
+    // A second Open uses the correct new tab, not the moved-to-B tab.
+    const again = openedDocument(reopened.documents, 'c:/WORKSPACE/a.SRP', 'stale disk data');
+    expect(again.documents).toBe(reopened.documents);
+    expect(again.id).toBe(reopened.id);
+  });
+
+  it('continues using unique IDs after several Save As relocations', () => {
+    const first = openedDocument([], '/project/A.srp', 'A');
+    const moved1 = markSaved(first.documents, first.id, '/project/B.srp', 'A');
+    const reopened1 = openedDocument(moved1, '/project/A.srp', 'new A');
+    const moved2 = markSaved(reopened1.documents, reopened1.id, '/project/C.srp', 'new A');
+    const reopened2 = openedDocument(moved2, '/project/A.srp', 'latest A');
+    expect(reopened2.documents).toHaveLength(3);
+    expect(new Set(reopened2.documents.map((document) => document.id)).size).toBe(3);
+    expect(reopened2.id).not.toBe(reopened1.id);
+    expect(reopened2.documents.map((document) => document.path))
+      .toEqual(['/project/B.srp', '/project/C.srp', '/project/A.srp']);
+  });
+
 });
