@@ -330,9 +330,7 @@ mod tests {
         for index in 0..(MAX_ROOTS + 50) {
             roots.push((base.join(format!("path-{index}")), 0, false));
         }
-        let found = scan_directories_with_budgets(
-            &roots, MAX_ENTRIES, MAX_ENTRIES_PER_ROOT,
-        );
+        let found = scan_directories_with_budgets(&roots, MAX_ENTRIES, MAX_ENTRIES_PER_ROOT);
         assert_eq!(found.len(), 1);
         assert!(found[0].ends_with(expected_file_name()));
 
@@ -340,9 +338,7 @@ mod tests {
         // locations was never visited, regardless of remaining entry budget.
         let downloaded = roots.remove(0);
         roots.push(downloaded);
-        let starved = scan_directories_with_budgets(
-            &roots, MAX_ENTRIES, MAX_ENTRIES_PER_ROOT,
-        );
+        let starved = scan_directories_with_budgets(&roots, MAX_ENTRIES, MAX_ENTRIES_PER_ROOT);
         assert!(starved.is_empty());
         fs::remove_dir_all(base).unwrap();
     }
