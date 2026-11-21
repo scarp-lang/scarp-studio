@@ -11,6 +11,11 @@ import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { captureRunSnapshot, validateRunSnapshot, type ScarpRunSnapshot } from './model/compilerReadiness';
 import { exitBlockReason } from './model/exitGuards';
+import {
+  DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
+  parseEditorPreferences, type EditorPreferences,
+} from './model/editorPreferences';
+import { NativeDialogGate } from './model/dialogGate';
 import { detectScarp, executeScarp, openScarpDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
 type Theme = 'dark' | 'light';
@@ -21,6 +26,14 @@ function getInitialTheme(): Theme {
     return localStorage.getItem('studio.theme') === 'light' ? 'light' : 'dark';
   } catch {
     return 'dark';
+  }
+}
+
+function getInitialEditorPreferences(): EditorPreferences {
+  try {
+    return parseEditorPreferences(localStorage.getItem('studio.editorPreferences'));
+  } catch {
+    return { ...DEFAULT_EDITOR_PREFERENCES };
   }
 }
 
@@ -40,8 +53,12 @@ export default function App() {
     setEditorState(next);
   }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
+  const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
+  const [folderListingLimited, setFolderListingLimited] = useState(false);
+  const selectedFolderRef = useRef<{ path: string; files: FolderEntry[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
   const [busy, setBusy] = useState(false);
@@ -49,7 +66,7 @@ export default function App() {
   const saveInProgress = useRef(false);
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
-  const exitConfirmationInProgress = useRef(false);
+  const nativeDialogGate = useRef(new NativeDialogGate());
   const [compilerSelecting, setCompilerSelecting] = useState(false);
   // Never silently trust a stored compiler path across sessions: an executable
   // may be replaced after the user previously approved it.
@@ -101,6 +118,11 @@ export default function App() {
     try { localStorage.setItem('studio.theme', theme); } catch { /* storage unavailable */ }
   }, [theme]);
 
+  useEffect(() => {
+    try { localStorage.setItem('studio.editorPreferences', JSON.stringify(editorPreferences)); }
+    catch { /* Continue with session defaults if storage is unavailable. */ }
+  }, [editorPreferences]);
+
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
     if (!isTauri()) return;
@@ -111,14 +133,14 @@ export default function App() {
       const blocked = exitBlockReason(
         saveInProgress.current, commandInProgress.current, selectionInProgress.current,
       );
-      if (!pending.length && !blocked && !exitConfirmationInProgress.current) return;
+      const gate = nativeDialogGate.current;
+      if (!pending.length && !blocked && !gate.isActive) return;
       event.preventDefault();
       if (blocked) {
         setError(blocked);
         return;
       }
-      if (exitConfirmationInProgress.current) return;
-      exitConfirmationInProgress.current = true;
+      if (!gate.begin('window-exit')) return;
       try {
         if (await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
@@ -138,7 +160,7 @@ export default function App() {
       } catch (caught) {
         setError(toMessage(caught));
       } finally {
-        exitConfirmationInProgress.current = false;
+        gate.finish('window-exit');
       }
     }).then((cleanup) => {
       if (removed) cleanup();
@@ -174,9 +196,12 @@ export default function App() {
     try {
       const result = await chooseSourceFolder();
       if (!result) return;
+      selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderPath(result.path);
       setFolderEntries(result.files);
-      setNotice(result.files.length + ' top-level .srp files found');
+      setFolderListingLimited(result.truncated);
+      setNotice(result.files.length + ' top-level .srp files shown' +
+        (result.truncated ? ' (listing limited)' : ''));
     } catch (caught) {
       setError('Could not open folder: ' + toMessage(caught));
     } finally {
@@ -186,8 +211,17 @@ export default function App() {
 
   async function openFolderFile(path: string): Promise<void> {
     setError(null);
+    const selection = selectedFolderRef.current;
+    if (!selection) {
+      setError('Choose a Scarp folder before opening its source files.');
+      return;
+    }
     try {
-      const content = await readFolderSource(path);
+      const content = await readFolderSource(path, selection.files);
+      if (selectedFolderRef.current !== selection) {
+        setError('The selected folder changed during the read. Choose the file again.');
+        return;
+      }
       activateOpenedFile(path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
@@ -204,7 +238,7 @@ export default function App() {
       const path = await writeSourceFile(
         document,
         forceSaveAs,
-        liveEditor.current.documents
+        () => liveEditor.current.documents
           .filter((item) => item.id !== document.id && item.path !== null)
           .map((item) => item.path as string),
       );
@@ -385,27 +419,32 @@ export default function App() {
       setError('Finish the current save before closing a tab.');
       return;
     }
-    const document = liveEditor.current.documents.find((item) => item.id === id);
-    if (!document) return;
-    if (isDirty(document)) {
-      try {
-        const discard = await ask('Discard unsaved changes to ' + document.name + '?', {
-          title: 'Close file',
-          kind: 'warning',
-        });
-        if (!discard) return;
-      } catch (caught) {
-        setError('Could not confirm close: ' + toMessage(caught));
+    const gate = nativeDialogGate.current;
+    if (!gate.begin('tab-close')) return;
+    try {
+      const document = liveEditor.current.documents.find((item) => item.id === id);
+      if (!document) return;
+      if (isDirty(document)) {
+        try {
+          const discard = await ask('Discard unsaved changes to ' + document.name + '?', {
+            title: 'Close file', kind: 'warning',
+          });
+          if (!discard) return;
+        } catch (caught) {
+          setError('Could not confirm close: ' + toMessage(caught));
+          return;
+        }
+      }
+      const current = liveEditor.current.documents.find((item) => item.id === id);
+      if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
+        setError('The file changed while confirming close. Review the changes and try again.');
         return;
       }
+      dispatch({ type: 'close', id, snapshot: document });
+      setNotice('Closed ' + document.name);
+    } finally {
+      gate.finish('tab-close');
     }
-    const current = liveEditor.current.documents.find((item) => item.id === id);
-    if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
-      setError('The file changed while confirming close. Review the changes and try again.');
-      return;
-    }
-    dispatch({ type: 'close', id, snapshot: document });
-    setNotice('Closed ' + document.name);
   }
 
   useEffect(() => {
@@ -450,6 +489,13 @@ export default function App() {
           <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
         </nav>
         <button
+          className="settings-toggle"
+          type="button"
+          onClick={() => setEditorSettingsOpen((isOpen) => !isOpen)}
+          aria-expanded={editorSettingsOpen}
+          aria-controls="editor-settings"
+        >Editor settings</button>
+        <button
           className="theme-button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
@@ -458,6 +504,46 @@ export default function App() {
         </button>
       </header>
 
+      {editorSettingsOpen && (
+        <section id="editor-settings" className="editor-settings" aria-label="Scarp editor settings">
+          <label htmlFor="editor-font-size">Font size</label>
+          <select
+            id="editor-font-size"
+            value={editorPreferences.fontSize}
+            onChange={(event) => setEditorPreferences((current) => ({
+              ...current, fontSize: Number(event.target.value) as EditorPreferences['fontSize'],
+            }))}
+          >
+            {FONT_SIZES.map((size) => <option key={size} value={size}>{size} px</option>)}
+          </select>
+          <label htmlFor="editor-tab-size">Tab width</label>
+          <select
+            id="editor-tab-size"
+            value={editorPreferences.tabSize}
+            onChange={(event) => setEditorPreferences((current) => ({
+              ...current, tabSize: Number(event.target.value) as EditorPreferences['tabSize'],
+            }))}
+          >
+            {TAB_SIZES.map((size) => <option key={size} value={size}>{size} spaces</option>)}
+          </select>
+          <label className="editor-setting-checkbox" htmlFor="editor-word-wrap">
+            <input
+              id="editor-word-wrap"
+              type="checkbox"
+              checked={editorPreferences.wordWrap}
+              onChange={(event) => setEditorPreferences((current) => ({
+                ...current, wordWrap: event.target.checked,
+              }))}
+            />
+            Wrap long lines
+          </label>
+          <button
+            className="settings-reset"
+            type="button"
+            onClick={() => setEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES })}
+          >Restore defaults</button>
+        </section>
+      )}
       <div className="studio-main">
         <aside className="sidebar" aria-label="Scarp file explorer">
           <div className="sidebar-heading">EXPLORER</div>
@@ -465,6 +551,12 @@ export default function App() {
             <section className="sidebar-section">
               <div className="folder-label" title={folderPath}>▾ {fileName(folderPath)}</div>
               <div className="sidebar-note">Top-level Scarp files</div>
+              {folderListingLimited && (
+                <p className="sidebar-note" role="status">
+                  Listing limited to 200 .srp files and 4096 inspected entries.
+                  Some sources may not appear.
+                </p>
+              )}
               {folderEntries.length ? folderEntries.map((entry) => (
                 <button
                   className="file-row"
@@ -551,9 +643,12 @@ export default function App() {
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
                 options={{
-                  automaticLayout: true, fontSize: 14, fontFamily: 'Consolas, monospace',
+                  automaticLayout: true, fontSize: editorPreferences.fontSize,
+                  fontFamily: 'Consolas, monospace',
                   minimap: { enabled: false }, scrollBeyondLastLine: false,
-                  tabSize: 4, wordWrap: 'on', detectIndentation: false,
+                  tabSize: editorPreferences.tabSize,
+                  wordWrap: editorPreferences.wordWrap ? 'on' : 'off',
+                  detectIndentation: false,
                 }}
               />
             ) : (
