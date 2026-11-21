@@ -84,3 +84,108 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .compiler-choice select { max-width: min(520px, 90vw); color: var(--text); background: var(--raised); border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; }
 .compiler-meta { overflow-wrap: anywhere; }
 .compiler-actions button:focus-visible, .compiler-choice select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Accessible settings surface: replaces the editor pane without losing tab state. */
+.settings-nav-button {
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px;
+  color: var(--text); background: var(--raised); cursor: pointer;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.settings-nav-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.settings-nav-button:focus-visible, .status-settings-button:focus-visible,
+.settings-view button:focus-visible, .settings-view select:focus-visible,
+.settings-view input:focus-visible, .compiler-path-confirm button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 3px;
+}
+.status-settings-button {
+  flex: 0 0 auto; color: inherit; background: transparent;
+  border: 1px solid rgb(255 255 255 / 55%); border-radius: 5px;
+  padding: 2px 7px; cursor: pointer; font-size: inherit;
+}
+.settings-view {
+  height: 100%; min-height: 0; overflow-y: auto;
+  padding: clamp(18px, 3vw, 38px);
+  background: var(--bg); color: var(--text);
+}
+.settings-topbar {
+  max-width: 1060px; margin: 0 auto 25px; display: flex;
+  align-items: flex-start; justify-content: space-between; gap: 18px;
+}
+.settings-eyebrow { font-weight: 700; letter-spacing: .14em; font-size: 10px; color: var(--accent); }
+.settings-topbar h1 { margin: 7px 0; font-size: clamp(24px, 3vw, 32px); }
+.settings-topbar h1:focus { outline: 0; }
+.settings-topbar p { margin: 0; line-height: 1.5; font-size: 13px; color: var(--muted); }
+.settings-close {
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--raised); color: var(--text); padding: 8px 12px;
+  cursor: pointer; white-space: nowrap;
+}
+.settings-content {
+  max-width: 1060px; margin: 0 auto;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px; align-items: start;
+}
+.settings-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 20px; min-width: 0;
+}
+.settings-section h2 {
+  font-size: 15px; letter-spacing: .01em; margin: 0 0 17px;
+}
+.settings-section:last-child { grid-column: 1 / -1; }
+.settings-toggle, .settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 14px; padding: 12px 0; border-top: 1px solid var(--border);
+  font-size: 13px; min-width: 0;
+}
+.settings-toggle > span { display: flex; flex-direction: column; gap: 5px; }
+.settings-toggle strong { font-size: 13px; }
+.settings-toggle small, .settings-compiler-status small {
+  font-size: 11px; color: var(--muted); line-height: 1.45;
+}
+.settings-toggle input[type="checkbox"] {
+  flex: 0 0 auto; width: 19px; height: 19px; accent-color: var(--accent);
+}
+.settings-row select {
+  background: var(--raised); color: var(--text); border: 1px solid var(--border);
+  padding: 7px 10px; border-radius: 6px; max-width: 60%; min-width: 110px;
+}
+.settings-row select:disabled { opacity: .5; }
+.settings-hint {
+  margin: 13px 0 0; line-height: 1.65; font-size: 11px; color: var(--muted);
+}
+.settings-compiler-status {
+  display: flex; flex-direction: column; gap: 7px; min-width: 0;
+  border: 1px solid var(--border); background: var(--bg);
+  border-radius: 7px; padding: 13px; margin: 15px 0;
+}
+.settings-compiler-status strong { font-size: 12px; }
+.settings-compiler-path {
+  overflow-wrap: anywhere; white-space: pre-wrap;
+  color: var(--accent); font-size: 12px; line-height: 1.5;
+}
+.settings-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-actions button, .compiler-path-confirm button {
+  padding: 8px 11px; color: var(--text); background: var(--raised);
+  border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  font-size: 12px;
+}
+.settings-actions button:hover:not(:disabled),
+.compiler-path-confirm button:hover:not(:disabled) { border-color: var(--accent); }
+.compiler-path-confirm {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 10px; margin-top: 7px; line-height: 1.55;
+}
+.compiler-path-confirm code { overflow-wrap: anywhere; color: var(--text); }
+.compiler-path-confirm button { padding: 4px 8px; font-size: 11px; }
+@media (max-width: 900px) {
+  .settings-content { grid-template-columns: minmax(0, 1fr); }
+  .settings-section:last-child { grid-column: auto; }
+}
+@media (max-width: 550px) {
+  .settings-view { padding: 14px; }
+  .settings-topbar { flex-direction: column; }
+  .settings-row { align-items: flex-start; flex-direction: column; }
+  .settings-row select { max-width: 100%; }
+  .status-settings-button { display: none; }
+}
