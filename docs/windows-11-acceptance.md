@@ -1,6 +1,6 @@
 # Scarp Studio — Windows 11 manual acceptance (development candidate)
 
-This is a **manual verification worksheet** for the consolidated development candidate [draft PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), which integrates the older stacked drafts into one main-targeted review surface. It is not evidence that any GUI check passed. Mark each test **PASS**, **FAIL**, or **NOT RUN**, recording the build SHA and evidence before considering a merge or release.
+This is a **manual verification worksheet** for the full IDE development candidate, currently extended by stacked drafts [#76](https://github.com/scarp-lang/scarp-studio/pull/76) and [#77](https://github.com/scarp-lang/scarp-studio/pull/77) above [#75](https://github.com/scarp-lang/scarp-studio/pull/75) and the earlier integration [#55](https://github.com/scarp-lang/scarp-studio/pull/55). It is not evidence that any GUI check passed. Mark each test **PASS**, **FAIL**, or **NOT RUN**, recording the build SHA and evidence before considering a merge or release.
 
 ## Test environment and provenance
 
@@ -11,8 +11,15 @@ This is a **manual verification worksheet** for the consolidated development can
 - Record: Scarp Studio source commit, CI run URL, candidate exe SHA-256, installer SHA-256, Windows build, and any code signing information. An unsigned installer is **not** a stable release. Respect Windows security warnings; investigate them rather than bypassing device protection.
 - Obtain the official Scarp `v0.0.6-alpha.17` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.17) and verify the Windows ZIP archive SHA-256 against its published GitHub release-asset digest:
   `fa05e57675799d881ebe33ccd54f6eb769825632904adf99cd08c940383134b5`. The installer and compiler archives are distinct files; never compare their hashes interchangeably.
-- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.17`. Scarp Studio must require explicit selection and trust confirmation of that compiler; it must not download or run one automatically. Automated CI also checks alpha.10–alpha.15 backwards compatibility, but this manual pass is against alpha.17.
+- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.17`. Scarp Studio may automatically **detect** the compiler, but must require explicit trust confirmation of its **exact path** before executing even a version probe; the Download action opens the official ZIP **only on click**, without installing or launching any found executable automatically. Automated CI also checks alpha.10–alpha.15 backwards compatibility, but this manual pass is against alpha.17.
 - Use only disposable `.srp` files in a test directory, e.g. `C:\\ScarpStudioAcceptance`; keep backups of any data you care about. Never test overwrite handling using real projects.
+
+A ready-to-run [Windows GUI smoke suite](../qa/windows/README.md) contains
+real `.srp` files for Run/Verify, fixed arrays, preloaded boolean input and
+an intentionally invalid diagnostic. The same source examples are executed
+by exact-head Windows CI against the SHA-pinned official alpha.17 compiler.
+**CI only establishes CLI compatibility; mark GUI cases PASS only after
+actually testing the Studio desktop build.**
 
 ## Core editor and saved file behavior
 
@@ -44,6 +51,11 @@ This is a **manual verification worksheet** for the consolidated development can
 | E22 | Open a disposable Windows drive/UNC source through `src\\..\\main.srp` and then its ordinary equivalent; attempt Save As from another tab using the alias | Studio reuses the original unsaved tab; Save As rejects an occupied alias without overwriting; invalid above-root and device paths remain distinct | NOT RUN |
 | E23 | Open a dirty source from a different Scarp project plus a dirty untitled tab, then select a clean project and use Run Project | Run Project remains enabled and operates only on the selected project's saved files; unrelated dirty buffers remain unchanged | NOT RUN |
 | E24 | Open a dirty source in the selected project through a `src\\..\\main.srp` path alias and try Run Project / Verify Project / Run Tests | Studio blocks disk-backed project commands until the source is saved, even when its path contains a valid lexical alias | NOT RUN |
+| E27 | Confirm a fresh install has Auto Save **Off**; enable it via Settings (Ctrl+,) with 1-second delay and edit a saved .srp; restart and edit again | After idle delay, exact file bytes save without a chooser; preference persists, restart does not launch any compiler, never auto-saves an untitled tab | NOT RUN |
+| E28 | Enable Auto Save for two named dirty tabs, edit each at different times and switch tabs; change delay to 5 seconds; toggle Auto Save Off | Each source saves its own latest snapshot after its idle delay even if inactive; new delay invalidates older pending timers; toggling Off cancels all pending writes | NOT RUN |
+| E29 | Enable Auto Save, externally modify a saved disposable .srp before the timer expires, then edit in Studio | Auto Save refuses to overwrite external changes, reports the failure, leaves Studio edits dirty; Save As can preserve both versions | NOT RUN |
+| E30 | Enable Auto Save, type during a native Save As dialog, then start Run/Verify or Run Project; try an unsaved/dirty source | Auto Save never opens another chooser, never writes during compiler work or while dialog locks are active; retries at bounded intervals, and Run still refuses stale saved sources | NOT RUN |
+| E31 | Enable Auto Save and edit a file, then close that tab or exit before the idle delay; repeat with React development Strict Mode remount | No write fires after closure or unmount; after Strict Mode effect replay a **fresh** scheduler still saves eligible documents | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 
@@ -98,6 +110,11 @@ This is a **manual verification worksheet** for the consolidated development can
 | C12 | Select a trusted but deliberately slow disposable test compiler probe, then click Stop during version or capability checking; also Stop after a completed probe before Run | Only that subprocess terminates; no later capability check or Run starts from its cancelled reservation, no stale success is shown, and a fresh compiler selection/Run can start afterward | NOT RUN |
 | C13 | Select the separately verified official Scarp alpha.15 Windows executable and explicitly approve its use; Verify and Run a saved disposable Unicode greeting/equality source, then Verify an undefined identifier | Studio reports alpha.15, correct output and structured JSON v1 error location; no automatic compiler installation, execution or false success. Recheck work-limit behavior against alpha.15 for long string comparisons | NOT RUN |
 | C14 | Verify and Run a saved alpha.17 source using `array_len` and `array_get_or`; separately check official alpha.17 `input_boolean` through the CLI's explicit preloaded-input mode | Studio runs/diagnoses the saved array source correctly; standalone CLI reads the preloaded boolean; **do not claim Studio GUI interactive boolean support from the CLI-only test** | NOT RUN |
+| C15 | Extract SHA-pinned official alpha.17 Windows ZIP into Downloads/Scarp, click **Scan Compiler**, then click Run on a clean saved source | Bounded scan finds the exact executable without manually selecting a file; Studio shows its full path and **requires explicit user consent before any version probe**; approved Run works | NOT RUN |
+| C16 | With multiple installed `scarp.exe` candidates, select the desired path from detected candidates, cancel once, then approve | Scan never executes candidates; cancellation does not grant trust or start Run; selected approved path appears in compiler status and persists only for current session | NOT RUN |
+| C17 | Click **Download Compiler**, inspect destination, then return without extracting; rescan | Only the official alpha.17 release ZIP opens from an explicit click; Studio does not silently install or execute it; rescan accurately reports no candidate until extracted | NOT RUN |
+| C18 | Start first Run and edit, save, switch tabs A→B→A, or close/reopen the source while the compiler trust dialog or probe is pending | No stale source launches after approval; Studio requires a fresh Run and exact saved snapshot after changed editor state | NOT RUN |
+| C19 | While the startup discovery worker is still scanning, click **Scan Compiler** again; repeat while first Run triggers its own scan, and test remount/exit with a delayed discovery result | Only the latest completed scan may update candidates; cancelled/unmounted first-Run discovery must not trigger any trust prompt or compiler launch; Auto Save remains paused during manual scanning | NOT RUN |
 | C09 | Project Info, Verify Project, Run Project, List Tests, Run Tests in disposable project | Compiler output and structured test report match actual CLI support | NOT RUN |
 | C10 | Choose an older official compiler and attempt an alpha.12-only program | Unsupported syntax is reported; Studio does not claim that old CLI executed alpha.12 | NOT RUN |
 | C11 | With official alpha.17, Verify/Run a result-propagation example that prints a value on Ok and forwards an Err unchanged | Exactly the expected output, no automatic execution; native Stop still available | NOT RUN |

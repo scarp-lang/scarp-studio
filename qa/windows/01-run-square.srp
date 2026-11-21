@@ -1,0 +1,6 @@
+// Scarp Studio alpha.17: simple saved-source Run/Verify acceptance.
+funcra square(value: integer) -> integer {
+    return value * value;
+}
+assert(square(10) == 100, "square must equal one hundred");
+print("SCARP_STUDIO_GUI_RUN_OK");

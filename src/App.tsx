@@ -5,7 +5,7 @@ import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  fileName, isDirty, sameFilePath,
+  fileName, isDirty, sameFilePath, type StudioDocument,
 } from './model/documents';
 import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, initialEditorState, isUnchangedSnapshot, sameOpenDocumentSnapshots, hasUnchangedEditorSession, type EditorAction } from './model/editorState';
 import { pickSourcePath, saveAllModifiedSources, writeSourceFile } from './services/files';
@@ -41,6 +41,12 @@ import { resolveListedTestSource } from './model/projectTestNavigation';
 import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/projectSourceState';
 import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
+import { AutoSaveScheduler } from './model/autoSaveScheduler';
+import { CompilerDiscoveryRequests } from './model/compilerDiscoveryRequests';
+import {
+  canAutoSave, loadAutoSavePreferences, persistAutoSavePreferences,
+  type AutoSaveDelay,
+} from './model/autoSaveSettings';
 
 import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
@@ -71,6 +77,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
   { id: 'previous-tab', label: 'Previous Open Tab', detail: 'Ctrl+Shift+Tab' },
   { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
+  { id: 'settings', label: 'Open Editor and Auto Save Settings', detail: 'Ctrl+,' },
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
   { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
   { id: 'scan-compiler', label: 'Scan for Installed Scarp Compiler', detail: 'Non-executing discovery' },
@@ -133,6 +140,9 @@ export default function App() {
   }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
+  const [autoSavePreferences, setAutoSavePreferences] = useState(loadAutoSavePreferences);
+  const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
+  const autoSaveAction = useRef<(document: StudioDocument) => boolean | void>(() => true);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
@@ -169,7 +179,7 @@ export default function App() {
   const [compilerScanning, setCompilerScanning] = useState(false);
   const [detectedCompilers, setDetectedCompilers] = useState<string[]>([]);
   const [preferredDetectedCompiler, setPreferredDetectedCompiler] = useState<string | null>(null);
-  const compilerScanRevision = useRef(0);
+  const compilerDiscoveryRequests = useRef(new CompilerDiscoveryRequests());
   const automaticCompiler = preferredDetectedCompiler && detectedCompilers.includes(preferredDetectedCompiler)
     ? preferredDetectedCompiler : detectedCompilers[0] ?? null;
   // Never silently trust a stored compiler path across sessions: an executable
@@ -344,6 +354,7 @@ export default function App() {
       case 'next-tab': cycleTab(1); break;
       case 'previous-tab': cycleTab(-1); break;
       case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
+      case 'settings': setEditorSettingsOpen(true); break;
       case 'explorer': setExplorerVisible((visible) => !visible); break;
       case 'select-compiler': void selectCompiler(); break;
       case 'scan-compiler': void rescanCompilers(); break;
@@ -371,11 +382,43 @@ export default function App() {
   useEffect(() => {
     if (!isTauri()) return;
     let mounted = true;
+    const requests = compilerDiscoveryRequests.current;
+    const request = requests.begin();
     void detectScarp().then((found) => {
-      if (mounted) setDetectedCompilers(found);
+      // React Strict Mode and manual Scan can both supersede startup.
+      if (mounted && requests.isCurrent(request)) setDetectedCompilers(found);
     }).catch(() => { /* Manual scan exposes any discovery error explicitly. */ });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+      // Also invalidate a manual or first-Run scan still outstanding at
+      // unmount. It must not later show UI or continue into execution.
+      requests.invalidate();
+    };
   }, []);
+
+  useEffect(() => {
+    persistAutoSavePreferences(autoSavePreferences);
+  }, [autoSavePreferences]);
+
+  // Own the scheduler for each React effect lifetime, including Strict Mode
+  // cleanup/replay. A disposed scheduler must never be reused.
+  useEffect(() => {
+    const scheduler = new AutoSaveScheduler((document) => autoSaveAction.current(document));
+    autoSaveScheduler.current = scheduler;
+    scheduler.reconcile(liveEditor.current.documents, autoSavePreferences.enabled && isTauri(),
+      autoSavePreferences.delay, compilerBusy || compilerSelecting || compilerScanning || busy);
+    return () => {
+      scheduler.dispose();
+      if (autoSaveScheduler.current === scheduler) autoSaveScheduler.current = null;
+    };
+    // The next effect reconciles all live source and preference changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    autoSaveScheduler.current?.reconcile(documents, autoSavePreferences.enabled && isTauri(),
+      autoSavePreferences.delay, compilerBusy || compilerSelecting || compilerScanning || busy);
+  }, [documents, autoSavePreferences, compilerBusy, compilerSelecting, compilerScanning, busy]);
 
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
@@ -715,6 +758,55 @@ export default function App() {
     }
   }
 
+  async function saveDocumentAutomatically(document: StudioDocument): Promise<void> {
+    if (!canAutoSave(document) || saveInProgress.current ||
+        commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || nativeDialogGate.current.isActive) return;
+    // A native lock covers the entire preflight, write and verified read-back.
+    // No file-picker is permitted here: unnamed source files are ineligible.
+    saveInProgress.current = true;
+    try {
+      const path = await writeSourceFile(
+        document,
+        false,
+        () => liveEditor.current.documents
+          .filter((item) => item.id !== document.id && item.path !== null)
+          .map((item) => item.path as string),
+        // Reject changed or closed source *before writing*, including source
+        // revisions that return to identical bytes (A→B→A).
+        () => {
+          const current = liveEditor.current.documents.find((item) => item.id === document.id);
+          return current !== undefined && isUnchangedSnapshot(current, document) &&
+            !commandInProgress.current && !selectionInProgress.current &&
+            !filePickerInProgress.current && !nativeDialogGate.current.isActive;
+        },
+      );
+      if (!path) return;
+      dispatch({ type: 'saved', id: document.id, path, savedContent: document.content });
+      const current = liveEditor.current.documents.find((item) => item.id === document.id);
+      setNotice(current && isDirty(current)
+        ? 'Auto saved older ' + fileName(path) + ' snapshot; newer edits remain unsaved'
+        : 'Auto saved ' + fileName(path));
+      setError((previous) =>
+        previous?.startsWith('Auto Save failed for ') ? null : previous);
+    } catch (caught) {
+      setError('Auto Save failed for ' + document.name + ': ' + toMessage(caught));
+    } finally {
+      saveInProgress.current = false;
+    }
+  }
+
+  autoSaveAction.current = (document) => {
+    const current = liveEditor.current.documents.find((item) => item.id === document.id);
+    if (!autoSavePreferences.enabled || current !== document || !canAutoSave(document)) {
+      return true;
+    }
+    if (saveInProgress.current || commandInProgress.current || selectionInProgress.current ||
+        filePickerInProgress.current || nativeDialogGate.current.isActive) return false;
+    void saveDocumentAutomatically(document);
+    return true;
+  };
+
   async function reloadFile(): Promise<void> {
     if (!isTauri()) {
       setError('Reload from Disk is available only in the desktop app.');
@@ -798,17 +890,18 @@ export default function App() {
         nativeDialogGate.current.isActive) return;
     selectionInProgress.current = true;
     setCompilerScanning(true);
-    const revision = ++compilerScanRevision.current;
+    const requests = compilerDiscoveryRequests.current;
+    const revision = requests.begin();
     try {
       const found = await detectScarp();
-      if (revision !== compilerScanRevision.current) return;
+      if (!requests.isCurrent(revision)) return;
       setDetectedCompilers(found);
       setPreferredDetectedCompiler(null);
       setNotice(found.length
         ? 'Found ' + found.length + ' Scarp compiler candidate(s); approval required before use.'
         : 'No Scarp executable found. Download the official ZIP, extract it, then scan again.');
     } catch (caught) {
-      if (revision === compilerScanRevision.current) {
+      if (requests.isCurrent(revision)) {
         setError('Compiler search failed: ' + toMessage(caught));
       }
     } finally {
@@ -900,7 +993,16 @@ export default function App() {
       selectionInProgress.current = true;
       setCompilerSelecting(true);
       try {
+        // First Run may overlap the effect-owned startup scan. Its newer
+        // results must win regardless of completion order.
+        const requests = compilerDiscoveryRequests.current;
+        const request = detectedCompilers.length ? null : requests.begin();
         const available = detectedCompilers.length ? detectedCompilers : await detectScarp();
+        if (request !== null && !requests.isCurrent(request)) {
+          // A superseded or unmounted first-Run scan cannot cause a trust
+          // prompt, let alone launch a compiler.
+          return;
+        }
         setDetectedCompilers(available);
         const chosen = automaticCompiler && available.includes(automaticCompiler)
           ? automaticCompiler : available[0];
@@ -1254,6 +1356,11 @@ export default function App() {
         hidePalette();
         return;
       }
+      if (paletteMode === null && event.key === 'Escape' && editorSettingsOpen) {
+        event.preventDefault();
+        setEditorSettingsOpen(false);
+        return;
+      }
       if (paletteMode === null && event.key === 'Escape' && searchOpen) {
         event.preventDefault();
         setSearchOpen(false);
@@ -1280,6 +1387,11 @@ export default function App() {
       }
       if (!modifier || event.altKey) return;
       const key = event.key.toLowerCase();
+      if (key === ',') {
+        event.preventDefault();
+        setEditorSettingsOpen((open) => !open);
+        return;
+      }
       if (key === 'p') {
         event.preventDefault();
         showPalette(event.shiftKey ? 'commands' : 'files');
@@ -1357,7 +1469,7 @@ export default function App() {
           onClick={() => setEditorSettingsOpen((isOpen) => !isOpen)}
           aria-expanded={editorSettingsOpen}
           aria-controls="editor-settings"
-        >Editor settings</button>
+        >⚙ Settings</button>
         <button
           className="theme-button"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -1369,6 +1481,25 @@ export default function App() {
 
       {editorSettingsOpen && (
         <section id="editor-settings" className="editor-settings" aria-label="Scarp editor settings">
+          <label className="editor-setting-checkbox" htmlFor="studio-auto-save">
+            <input id="studio-auto-save" type="checkbox"
+              checked={autoSavePreferences.enabled}
+              onChange={(event) => setAutoSavePreferences((current) => ({
+                ...current, enabled: event.target.checked,
+              }))} />
+            Auto Save (named .srp files only; off by default)
+          </label>
+          <label htmlFor="studio-auto-save-delay">Save after inactivity</label>
+          <select id="studio-auto-save-delay" aria-label="Auto Save delay"
+            value={autoSavePreferences.delay} disabled={!autoSavePreferences.enabled}
+            onChange={(event) => setAutoSavePreferences((current) => ({
+              ...current, delay: Number(event.target.value) as AutoSaveDelay,
+            }))}>
+            <option value={1000}>1 second</option>
+            <option value={3000}>3 seconds (recommended)</option>
+            <option value={5000}>5 seconds</option>
+          </select>
+          <span className="editor-settings-hint">Auto Save never opens Save As, pauses during compiler commands and rejects external disk changes.</span>
           <label htmlFor="editor-font-size">Font size</label>
           <select
             id="editor-font-size"
@@ -1899,6 +2030,10 @@ export default function App() {
           {compilerPath ? 'Scarp compiler ready' :
             automaticCompiler ? 'Compiler detected · approval required' : 'Compiler not detected'}
         </span>
+        <button type="button" className="status-nav"
+          onClick={() => setEditorSettingsOpen(true)} title="Configure Auto Save (Ctrl+,)">
+          Auto Save: {autoSavePreferences.enabled ? 'On' : 'Off'}
+        </button>
         <span>Scarp · .srp</span>
         <span>0.0.2-alpha.1 · development candidate</span>
       </footer>

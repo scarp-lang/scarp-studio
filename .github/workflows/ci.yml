@@ -539,6 +539,22 @@ jobs:
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler_discovery::tests::discovers_pinned_official_compiler_from_extracted_archive --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Studio failed to discover official alpha.17 extracted compiler" }
 
+      # Smoke the exact .srp sources provided for manual Windows 11 acceptance,
+      # so QA instructions cannot silently drift from the official compiler.
+      - name: Verify checked-in Scarp Studio Windows QA programs against alpha.17
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binaries = @(Get-ChildItem scarp-alpha17 -File -Recurse -Filter "scarp.exe")
+          if ($binaries.Count -ne 1) { throw "Verified official alpha.17 compiler binary missing" }
+          # The previous step independently verifies the official ZIP SHA-256
+          # and the exact CLI version. This runner reports which fixture fails.
+          # The script intentionally runs one invalid source and checks its
+          # nonzero Verify exit. A successful PowerShell script can therefore
+          # leave LASTEXITCODE=1 from that expected negative test; rely on its
+          # explicit exceptions instead of treating that exit as runner failure.
+          & ./scripts/verify-windows-qa.ps1 -CompilerPath $binaries[0].FullName
+
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate
