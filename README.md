@@ -25,7 +25,8 @@ At startup Studio searches standard Scarp installation folders, PATH entries and
 shallow scan of `Downloads/Scarp*` extracted folders. It does **not** recursively scan
 the entire drive. Automatic discovery does not execute any found file.
 
-After downloading the official Windows ZIP from the Scarp releases page, extract it
+On Windows, **Download Compiler** opens the official alpha.16 ZIP used in CI
+(the action does not install or execute it). After downloading, extract it
 into a `Scarp`-named folder in Downloads (or install in a standard location), then
 press **Scan Compiler**. The first **Run** or **Verify** asks for explicit executable
 trust confirmation and checks the compiler's version and command support; further
