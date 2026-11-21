@@ -7,6 +7,8 @@ use std::{
 };
 
 const MAX_ENTRIES: usize = 4096;
+const MAX_ENTRIES_PER_ROOT: usize = 512;
+const MAX_ROOTS: usize = 128;
 const MAX_CANDIDATES: usize = 24;
 
 fn expected_file_name() -> &'static str {
@@ -75,17 +77,39 @@ fn scan_directory(
     }
 }
 
-fn scan_directories(roots: &[(PathBuf, u8, bool)]) -> Vec<String> {
+fn scan_directories_with_budgets(
+    roots: &[(PathBuf, u8, bool)],
+    total_limit: usize,
+    root_limit: usize,
+) -> Vec<String> {
     let mut found = Vec::new();
     let mut seen = HashSet::new();
-    let mut budget = MAX_ENTRIES;
-    for (root, depth, all) in roots {
-        scan_directory(root, *depth, *all, &mut budget, &mut found, &mut seen);
-        if budget == 0 || found.len() >= MAX_CANDIDATES {
+    let mut remaining_total = total_limit;
+    for (root, depth, all) in roots.iter().take(MAX_ROOTS) {
+        if remaining_total == 0 || found.len() >= MAX_CANDIDATES {
             break;
         }
+        // Never walk a remote UNC root just because it appears in PATH.
+        if !root.is_absolute() {
+            continue;
+        }
+        #[cfg(windows)]
+        {
+            let name = root.to_string_lossy();
+            if name.starts_with(r"\\") || name.starts_with("//") {
+                continue;
+            }
+        }
+        let mut root_budget = root_limit.min(remaining_total);
+        let initial = root_budget;
+        scan_directory(root, *depth, *all, &mut root_budget, &mut found, &mut seen);
+        remaining_total -= initial - root_budget;
     }
     found
+}
+
+fn scan_directories(roots: &[(PathBuf, u8, bool)]) -> Vec<String> {
+    scan_directories_with_budgets(roots, MAX_ENTRIES, MAX_ENTRIES_PER_ROOT)
 }
 
 fn standard_roots() -> Vec<(PathBuf, u8, bool)> {
@@ -248,4 +272,32 @@ mod tests {
         );
         fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn one_crowded_root_does_not_starve_other_compiler_locations() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = env::temp_dir().join(format!(
+            "studio-fair-discovery-{}-{unique}",
+            std::process::id()
+        ));
+        let crowded = base.join("crowded");
+        let installed = base.join("Scarp");
+        fs::create_dir_all(&crowded).unwrap();
+        fs::create_dir_all(&installed).unwrap();
+        for i in 0..80 {
+            fs::write(crowded.join(format!("other-{i}.txt")), b"not a compiler").unwrap();
+        }
+        fs::write(installed.join(expected_file_name()), b"candidate").unwrap();
+        let candidates = scan_directories_with_budgets(
+            &[(crowded, 0, false), (installed, 0, false)],
+            32,
+            16,
+        );
+        assert_eq!(candidates.len(), 1);
+        assert!(candidates[0].ends_with(expected_file_name()));
+        fs::remove_dir_all(base).unwrap();
+    }
+
 }
