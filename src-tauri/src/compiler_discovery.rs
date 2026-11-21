@@ -285,7 +285,9 @@ mod tests {
         let parent = path.parent().expect("official compiler must have a parent");
         let found = scan_directories(&[(parent.to_path_buf(), 0, false)]);
         assert!(
-            found.iter().any(|candidate| Path::new(candidate) == canonical),
+            found
+                .iter()
+                .any(|candidate| Path::new(candidate) == canonical),
             "Native discovery did not find the pinned official compiler: {}",
             canonical.display()
         );
