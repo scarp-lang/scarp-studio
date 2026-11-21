@@ -115,6 +115,11 @@ pub async fn scarp_detect() -> Result<Vec<String>, String> {
 /// This is not an unattended binary installer.
 #[tauri::command]
 pub fn scarp_download_page() -> Result<(), String> {
+    // The Windows button points directly to the SHA-256-pinned compiler used in CI.
+    // Other platforms use the official releases page until platform-specific flows are tested.
+    #[cfg(windows)]
+    const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.16/scarp-0.0.6-alpha.16-x86_64-pc-windows-msvc.zip";
+    #[cfg(not(windows))]
     const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases";
     #[cfg(windows)]
     {
