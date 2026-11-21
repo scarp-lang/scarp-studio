@@ -39,31 +39,6 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 }
 .toolbar-actions button:hover:not(:disabled), .theme-button:hover { background: var(--raised); border-color: var(--border); }
 .theme-button { margin-left: auto; border-color: var(--border); white-space: nowrap; }
-
-.settings-toggle {
-  border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
-  background: transparent; color: var(--text); font-size: 12px; white-space: nowrap;
-}
-.settings-toggle:hover { background: var(--raised); }
-.settings-toggle[aria-expanded="true"] { border-color: var(--accent); }
-.editor-settings {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 9px;
-  padding: 9px 14px; border-bottom: 1px solid var(--border);
-  background: var(--surface); font-size: 12px;
-}
-.editor-settings label { color: var(--text); white-space: nowrap; }
-.editor-settings select, .settings-reset {
-  color: var(--text); background: var(--raised); border: 1px solid var(--border);
-  border-radius: 5px; padding: 5px 8px; font-size: 12px;
-}
-.editor-setting-checkbox { display: inline-flex; align-items: center; gap: 7px; }
-.editor-setting-checkbox input { accent-color: var(--accent); }
-.editor-settings select:focus-visible, .editor-settings input:focus-visible,
-.settings-reset:focus-visible, .settings-toggle:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 2px;
-}
-.settings-reset:hover { border-color: var(--accent); }
-
 .studio-main { display: flex; flex: 1; min-height: 0; }
 .sidebar { width: 245px; flex: 0 0 245px; overflow-y: auto; background: var(--surface); border-right: 1px solid var(--border); padding: 12px 8px; }
 .sidebar-heading { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .14em; padding: 10px 9px; }
@@ -94,3 +69,40 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .status-bar span:first-child { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 900px) { .sidebar { width: 180px; flex-basis: 180px; } .identity { font-size: 14px; } }
 @media (max-width: 690px) { .sidebar { display: none; } .toolbar { gap: 8px; } .theme-button { margin-left: 0; } }
+
+.compiler-panel { flex: 0 0 185px; min-height: 120px; display: flex; flex-direction: column; border-top: 1px solid var(--border); background: var(--surface); }
+.compiler-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 7px 12px; }
+.compiler-heading strong { font-size: 10px; letter-spacing: .1em; color: var(--muted); }
+.compiler-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.compiler-actions button { border: 1px solid var(--border); background: var(--raised); color: var(--text); padding: 5px 10px; border-radius: 5px; font-size: 11px; }
+.compiler-actions button:not(:disabled):hover { border-color: var(--accent); }
+.compiler-meta { color: var(--muted); font-size: 10px; padding: 0 12px 6px; }
+.compiler-output { font: 12px/1.5 Consolas, "Cascadia Code", monospace; margin: 0; padding: 8px 12px; color: var(--text); background: var(--bg); flex: 1; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-height: 660px) { .compiler-panel { flex-basis: 140px; } }
+
+/* Editor preference controls carried forward from main. */
+.settings-toggle {
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
+  background: transparent; color: var(--text); font-size: 12px; white-space: nowrap;
+}
+.settings-toggle:hover { background: var(--raised); }
+.settings-toggle[aria-expanded="true"] { border-color: var(--accent); }
+.editor-settings {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 9px;
+  padding: 9px 14px; border-bottom: 1px solid var(--border);
+  background: var(--surface); font-size: 12px;
+}
+.editor-settings label { color: var(--text); white-space: nowrap; }
+.editor-settings select, .settings-reset {
+  color: var(--text); background: var(--raised); border: 1px solid var(--border);
+  border-radius: 5px; padding: 5px 8px; font-size: 12px;
+}
+.editor-setting-checkbox { display: inline-flex; align-items: center; gap: 7px; }
+.editor-setting-checkbox input { accent-color: var(--accent); }
+.editor-settings select:focus-visible, .editor-settings input:focus-visible,
+.settings-reset:focus-visible, .settings-toggle:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.settings-reset:hover { border-color: var(--accent); }
+
+
