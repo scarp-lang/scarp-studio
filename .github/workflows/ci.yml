@@ -549,8 +549,11 @@ jobs:
           if ($binaries.Count -ne 1) { throw "Verified official alpha.17 compiler binary missing" }
           # The previous step independently verifies the official ZIP SHA-256
           # and the exact CLI version. This runner reports which fixture fails.
+          # The script intentionally runs one invalid source and checks its
+          # nonzero Verify exit. A successful PowerShell script can therefore
+          # leave LASTEXITCODE=1 from that expected negative test; rely on its
+          # explicit exceptions instead of treating that exit as runner failure.
           & ./scripts/verify-windows-qa.ps1 -CompilerPath $binaries[0].FullName
-          if ($LASTEXITCODE -ne 0) { throw "Scarp Windows QA fixture runner failed" }
 
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
