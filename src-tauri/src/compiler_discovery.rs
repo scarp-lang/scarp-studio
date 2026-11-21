@@ -138,6 +138,16 @@ fn standard_roots() -> Vec<(PathBuf, u8, bool)> {
             roots.push((PathBuf::from(program_files).join("Scarp"), 2, true));
         }
     }
+    // Downloads can contain thousands of unrelated files, so scan installed
+    // locations first. But reserve a bounded slot for the official extracted
+    // ZIP BEFORE PATH: a large PATH could otherwise exhaust MAX_ROOTS or the
+    // global entry budget and silently hide a freshly downloaded compiler.
+    if let Some(index) = roots.iter().position(|(p, depth, _)| {
+        *depth == 3 && p.file_name().is_some_and(|name| name == "Downloads")
+    }) {
+        let downloads = roots.remove(index);
+        roots.push(downloads);
+    }
     // Search each PATH directory directly; never run an untrusted 'where' command.
     if let Some(path) = env::var_os("PATH") {
         roots.extend(
@@ -145,14 +155,6 @@ fn standard_roots() -> Vec<(PathBuf, u8, bool)> {
                 .filter(|p| p.is_absolute())
                 .map(|p| (p, 0, false)),
         );
-    }
-    // Downloads can contain thousands of unrelated files. Scan installed
-    // compiler locations and PATH first so an entry budget cannot hide them.
-    if let Some(index) = roots.iter().position(|(p, depth, _)| {
-        *depth == 3 && p.file_name().is_some_and(|name| name == "Downloads")
-    }) {
-        let downloads = roots.remove(index);
-        roots.push(downloads);
     }
     roots
 }
@@ -291,6 +293,54 @@ mod tests {
             "Native discovery did not find the pinned official compiler: {}",
             canonical.display()
         );
+    }
+
+    #[test]
+    fn standard_downloads_root_precedes_expanded_path_roots() {
+        let roots = standard_roots();
+        // Standard Windows locations occupy at most four early slots. The
+        // Downloads entry must not be appended after an unbounded user PATH,
+        // because scan_directories caps inspected roots at MAX_ROOTS.
+        if let Some(download_index) = roots.iter().position(|(path, depth, _)| {
+            *depth == 3 && path.file_name().is_some_and(|name| name == "Downloads")
+        }) {
+            assert!(
+                download_index < 8,
+                "Downloads root moved behind user PATH; it can be starved at {}",
+                download_index
+            );
+        }
+    }
+
+    #[test]
+    fn extracted_download_is_found_despite_more_than_max_roots_path_dirs() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = env::temp_dir().join(format!(
+            "studio-download-priority-{}-{unique}",
+            std::process::id()
+        ));
+        let downloads = base.join("Downloads");
+        let extracted = downloads.join("Scarp-0.0.6-alpha.17").join("bin");
+        fs::create_dir_all(&extracted).unwrap();
+        fs::write(extracted.join(expected_file_name()), b"candidate").unwrap();
+        let mut roots = vec![(downloads, 3, false)];
+        for index in 0..(MAX_ROOTS + 50) {
+            roots.push((base.join(format!("path-{index}")), 0, false));
+        }
+        let found = scan_directories_with_budgets(&roots, MAX_ENTRIES, MAX_ENTRIES_PER_ROOT);
+        assert_eq!(found.len(), 1);
+        assert!(found[0].ends_with(expected_file_name()));
+
+        // Reproduces the older ordering: Downloads after MAX_ROOTS PATH
+        // locations was never visited, regardless of remaining entry budget.
+        let downloaded = roots.remove(0);
+        roots.push(downloaded);
+        let starved = scan_directories_with_budgets(&roots, MAX_ENTRIES, MAX_ENTRIES_PER_ROOT);
+        assert!(starved.is_empty());
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]
