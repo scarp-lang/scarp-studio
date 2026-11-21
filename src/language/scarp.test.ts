@@ -114,6 +114,21 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     expect(contextualType?.test('list = 2')).toBe(false);
   });
 
+  it('highlights alpha.17 built-in calls without reserving user identifier spellings', () => {
+    const provider = captureProvider();
+    for (const name of ['array_len', 'array_get_or', 'input_boolean']) {
+      expect(provider.builtinFunctions).toContain(name);
+      expect(provider.keywords).not.toContain(name);
+      expect(provider.legacyKeywords).not.toContain(name);
+    }
+    const callRule = provider.tokenizer.root.find(([, action]) =>
+      typeof action === 'object' && action !== null && 'cases' in action &&
+      typeof action.cases === 'object' && action.cases !== null &&
+      '@builtinFunctions' in action.cases
+    );
+    expect(callRule?.[1]).toMatchObject({ cases: { '@builtinFunctions': 'predefined' } });
+  });
+
   it('recognizes published hexadecimal and binary integer literals', () => {
     const root = captureProvider().tokenizer.root;
     const valid = root.filter(([, token]) => token === 'number').map(([rule]) => rule);
