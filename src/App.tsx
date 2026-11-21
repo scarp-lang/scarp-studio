@@ -306,6 +306,44 @@ export default function App() {
     }
   }
 
+  /** Show the full location before executing even a version probe. */
+  async function approveCompilerLocation(path: string): Promise<boolean> {
+    const approved = await ask(
+      'Is this your Scarp compiler location?\\n\\n' + path +
+      '\\n\\nIf you confirm, Studio will launch this executable to check its version ' +
+      'and supported commands. It has the same operating-system access as your account. ' +
+      'Only confirm a compiler you trust.',
+      { title: 'Confirm Scarp compiler location', kind: 'warning' },
+    );
+    if (!approved) return false;
+    const info = await probeScarp(path);
+    setCompilerPath(path);
+    setCompilerInfo(info);
+    setCompilerOutput(info + '\\nCompiler path confirmed: ' + path +
+      '\\nRun operates on the saved source on disk.');
+    setNotice('Scarp compiler confirmed for this session');
+    return true;
+  }
+
+  async function confirmDetectedCompiler(): Promise<void> {
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    if (!automaticCompiler) {
+      setError('No detected compiler to confirm. Scan again or choose the executable manually.');
+      return;
+    }
+    selectionInProgress.current = true;
+    setCompilerSelecting(true);
+    setError(null);
+    try {
+      await approveCompilerLocation(automaticCompiler);
+    } catch (caught) {
+      setError('Could not confirm compiler location: ' + toMessage(caught));
+    } finally {
+      selectionInProgress.current = false;
+      setCompilerSelecting(false);
+    }
+  }
+
   async function selectCompiler(): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
     selectionInProgress.current = true;
@@ -317,17 +355,7 @@ export default function App() {
         multiple: false,
       });
       if (typeof chosen !== 'string') return;
-      const approved = await ask(
-        'Scarp Studio will launch the selected executable to check its version and supported commands. ' +
-        'Only continue if you trust this file. Do you want to continue?',
-        { title: 'Trust the selected Scarp compiler?', kind: 'warning' },
-      );
-      if (!approved) return;
-      const info = await probeScarp(chosen);
-      setCompilerPath(chosen);
-      setCompilerInfo(info);
-      setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
-      setNotice('Scarp compiler configured');
+      await approveCompilerLocation(chosen);
     } catch (caught) {
       setError('Compiler selection failed: ' + toMessage(caught));
     } finally {
@@ -370,17 +398,8 @@ export default function App() {
           setError(message);
           return;
         }
-        const approved = await ask(
-          'Scarp Studio found this executable:\n' + chosen +
-          '\n\nRunning it grants it the same access as your account. Only approve a compiler you trust. Continue?',
-          { title: 'Trust detected Scarp compiler?', kind: 'warning' },
-        );
-        if (!approved) return;
-        const info = await probeScarp(chosen);
+        if (!await approveCompilerLocation(chosen)) return;
         binary = chosen;
-        setCompilerPath(chosen);
-        setCompilerInfo(info);
-        setNotice('Detected Scarp compiler approved for this session');
       } catch (caught) {
         setError('Automatic compiler setup failed: ' + toMessage(caught));
         return;
