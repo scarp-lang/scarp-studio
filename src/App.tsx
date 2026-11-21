@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import type { editor as MonacoEditorApi } from 'monaco-editor';
 import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  fileName, isDirty,
+  fileName, isDirty, sameFilePath,
 } from './model/documents';
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
@@ -16,6 +17,7 @@ import {
   parseEditorPreferences, type EditorPreferences,
 } from './model/editorPreferences';
 import { NativeDialogGate } from './model/dialogGate';
+import { parseScarpDiagnostic, diagnosticSourcePosition } from './model/diagnostics';
 import { executeScarp, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
 type Theme = 'dark' | 'light';
@@ -47,18 +49,12 @@ export default function App() {
   // file operations observe new edits before React renders the next frame.
   const liveEditor = useRef(editorState);
   const { documents, activeId } = editorState;
-  function dispatch(action: EditorAction): void {
-    const next = editorReducer(liveEditor.current, action);
-    liveEditor.current = next;
-    setEditorState(next);
-  }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
-  // Reject delayed reads from folders that were replaced during the read.
   const selectedFolderRef = useRef<{ path: string; files: FolderEntry[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
@@ -67,7 +63,6 @@ export default function App() {
   const saveInProgress = useRef(false);
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
-  // Share one native confirmation slot between tab closing and window exit.
   const nativeDialogGate = useRef(new NativeDialogGate());
   const [compilerSelecting, setCompilerSelecting] = useState(false);
   // Never silently trust a stored compiler path across sessions: an executable
@@ -79,8 +74,29 @@ export default function App() {
     'Source files are never executed automatically.',
   );
   const [compilerBusy, setCompilerBusy] = useState(false);
+  const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
+  const [compilerOutputSource, setCompilerOutputSource] = useState<{
+    path: string; content: string;
+  } | null>(null);
+  const editorRef = useRef<MonacoEditorApi.IStandaloneCodeEditor | null>(null);
+
+  function dispatch(action: EditorAction): void {
+    const before = liveEditor.current;
+    const next = editorReducer(before, action);
+    if (next === before) return;
+    // Invalidate source navigation on every edit, tab transition or save.
+    // Even if the text is later restored, old compiler positions stay stale.
+    setCompilerOutputSource(null);
+    liveEditor.current = next;
+    setEditorState(next);
+  }
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const diagnostic = parseScarpDiagnostic(compilerDiagnosticStderr);
+  const diagnosticPosition = active?.path && compilerOutputSource &&
+    sameFilePath(active.path, compilerOutputSource.path) &&
+    active.content === compilerOutputSource.content
+    ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -89,7 +105,7 @@ export default function App() {
 
   useEffect(() => {
     try { localStorage.setItem('studio.editorPreferences', JSON.stringify(editorPreferences)); }
-    catch { /* In-memory settings remain functional when storage is unavailable. */ }
+    catch { /* In-memory settings are still usable when storage fails. */ }
   }, [editorPreferences]);
 
   // The close event must be cancelled synchronously before any native dialog.
@@ -207,7 +223,6 @@ export default function App() {
       const path = await writeSourceFile(
         document,
         forceSaveAs,
-        // Recheck after a native Save As dialog, not before it opens.
         () => liveEditor.current.documents
           .filter((item) => item.id !== document.id && item.path !== null)
           .map((item) => item.path as string),
@@ -244,6 +259,8 @@ export default function App() {
       const info = await probeScarp(chosen);
       setCompilerPath(chosen);
       setCompilerInfo(info);
+      setCompilerOutputSource(null);
+      setCompilerDiagnosticStderr(null);
       setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
       setNotice('Scarp compiler configured');
     } catch (caught) {
@@ -276,10 +293,13 @@ export default function App() {
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
+    setCompilerOutputSource({ path: source, content: expectedContent });
+    setCompilerDiagnosticStderr(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(compilerPath, source, mode, expectedContent);
-      setCompilerOutput(result);
+      setCompilerOutput(result.output);
+      setCompilerDiagnosticStderr(result.diagnosticStderr);
       setNotice('Scarp ' + mode + ' finished; see output');
     } catch (caught) {
       const message = toMessage(caught);
@@ -289,6 +309,22 @@ export default function App() {
       commandInProgress.current = false;
       setCompilerBusy(false);
     }
+  }
+
+  function revealDiagnostic(): void {
+    const current = liveEditor.current.documents.find(
+      (item) => item.id === liveEditor.current.activeId,
+    );
+    if (!current?.path || !compilerOutputSource ||
+        !sameFilePath(current.path, compilerOutputSource.path) ||
+        current.content !== compilerOutputSource.content) return;
+    // Revalidate against the live editor state at click time, not just the
+    // position calculated during the last React render.
+    const position = diagnosticSourcePosition(diagnostic, current.path, current.content);
+    if (!position) return;
+    editorRef.current?.revealPositionInCenter(position);
+    editorRef.current?.setPosition(position);
+    editorRef.current?.focus();
   }
 
   async function stopCompiler(): Promise<void> {
@@ -521,6 +557,7 @@ export default function App() {
                   dispatch({ type: 'edit', id: active.id, content: content ?? '' });
                 }}
                 onMount={(editor) => {
+                  editorRef.current = editor;
                   editor.onDidChangeCursorPosition((event) => {
                     setCursor({ line: event.position.lineNumber, column: event.position.column });
                   });
@@ -565,6 +602,20 @@ export default function App() {
             <div className="compiler-meta">{compilerInfo || (compilerPath
               ? 'Compiler configured; version checked on the next Run/Verify.'
               : 'No compiler selected')}</div>
+            {diagnostic && (
+              <div className="compiler-diagnostic" role="status">
+                <strong>{diagnostic.code || 'Scarp error'}</strong>
+                <span>{diagnostic.message}</span>
+                {diagnosticPosition && (
+                  <button type="button"
+                    onClick={revealDiagnostic}
+                    title="Focus the reported error location in the open Scarp file">
+                    Go to line {diagnostic.line}, column {diagnostic.column}
+                  </button>
+                )}
+                {diagnostic.help && <span className="compiler-diagnostic-help">{diagnostic.help}</span>}
+              </div>
+            )}
             <pre className="compiler-output" role="log" aria-live="polite">{compilerOutput}</pre>
           </section>
         </main>

@@ -342,7 +342,7 @@ pub async fn scarp_execute(
     mode: String,
     expected_content: String,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<String, String> {
+) -> Result<(String, Option<String>), String> {
     let runtime = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let source = source_file(&source)?;
@@ -374,7 +374,7 @@ pub async fn scarp_execute(
         } else {
             ""
         };
-        Ok(format!(
+        let display = format!(
             "Scarp {version} — {mode} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
             source.display(),
             result.stdout,
@@ -385,7 +385,16 @@ pub async fn scarp_execute(
             },
             result.stderr,
             cap_notice
-        ))
+        );
+        // Only complete diagnostic stderr from a failed compiler command is
+        // eligible for source navigation; stdout is displayed but never parsed.
+        let show_diagnostics = !result.status.success() && !result.cancelled && !result.truncated;
+        let diagnostics = if show_diagnostics && !result.stderr.is_empty() {
+            Some(result.stderr)
+        } else {
+            None
+        };
+        Ok((display, diagnostics))
     })
     .await
     .map_err(|e| format!("Scarp execution worker failed: {e}"))?
@@ -598,11 +607,52 @@ mod tests {
             "{}",
             runtime_failure.stderr
         );
+        // The published schema is the same for runtime and static diagnostics:
+        // the frontend must not guess an ad hoc assertion error format.
+        let assertion_json = runtime_failure.stderr.trim();
+        assert!(
+            assertion_json
+                .starts_with("{\"schema_version\":1,\"severity\":\"error\",\"code\":\"E0065\""),
+            "unexpected assertion diagnostic: {assertion_json}"
+        );
+        assert!(assertion_json.contains("\"span_encoding\":\"utf-8-bytes\""));
+        assert!(assertion_json.contains("\"column_encoding\":\"unicode-scalar\""));
         assert!(
             runtime_failure.stdout.is_empty(),
             "failed execution replayed user stdout"
         );
 
+        // Validate the real published CLI's failure envelope, not just a
+        // hand-written frontend diagnostic fixture. Studio relies on this
+        // exact JSON schema being emitted on stderr by failed static verify.
+        let invalid_source = "print(unknown_name);";
+        fs::write(&source, invalid_source).unwrap();
+        ensure_matching_disk_snapshot(&validated, invalid_source).unwrap();
+        let failed_verify = process(
+            &binary,
+            &command_args("verify", &validated).unwrap(),
+            validated.parent(),
+            EXEC_TIMEOUT,
+            EXEC_OUTPUT_LIMIT,
+            Some(&runtime),
+        )
+        .expect("native diagnostic verify process");
+        assert!(
+            !failed_verify.status.success(),
+            "invalid source was accepted"
+        );
+        assert!(!failed_verify.cancelled);
+        assert!(!failed_verify.truncated);
+        let diagnostic = failed_verify.stderr.trim();
+        assert!(
+            diagnostic
+                .starts_with("{\"schema_version\":1,\"severity\":\"error\",\"code\":\"E0010\""),
+            "unexpected CLI diagnostic envelope: {diagnostic}"
+        );
+        assert!(diagnostic.contains("\"span_encoding\":\"utf-8-bytes\""));
+        assert!(diagnostic.contains("\"column_encoding\":\"unicode-scalar\""));
+        assert!(diagnostic.contains("\"position_base\":1"));
+        assert!(diagnostic.contains("\"primary\":{"));
         fs::remove_file(&source).unwrap();
         assert!(runtime.active.lock().unwrap().is_none());
     }
