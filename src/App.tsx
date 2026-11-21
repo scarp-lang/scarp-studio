@@ -51,11 +51,6 @@ export default function App() {
   const saveInProgress = useRef(false);
   const autoSaveAction = useRef<(document: StudioDocument) => boolean>(() => true);
   const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
-  if (!autoSaveScheduler.current) {
-    autoSaveScheduler.current = new AutoSaveScheduler(
-      (document) => autoSaveAction.current(document),
-    );
-  }
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
   const nativeDialogGate = useRef(new NativeDialogGate());
@@ -273,14 +268,32 @@ export default function App() {
     return true;
   };
 
+  // Own the scheduler for the effect lifetime, not the render lifetime.
+  // React Strict Mode intentionally cleans up and re-runs effects in development:
+  // a scheduler disposed during that cleanup must never be reused.
+  useEffect(() => {
+    const scheduler = new AutoSaveScheduler(
+      (document) => autoSaveAction.current(document),
+    );
+    autoSaveScheduler.current = scheduler;
+    scheduler.reconcile(
+      liveEditor.current.documents, settings.autoSave && isTauri(),
+      settings.autoSaveDelay, compilerBusy || compilerSelecting,
+    );
+    return () => {
+      scheduler.dispose();
+      if (autoSaveScheduler.current === scheduler) autoSaveScheduler.current = null;
+    };
+    // Effect setup only. The following effect reconciles all live changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     autoSaveScheduler.current?.reconcile(
       documents, settings.autoSave && isTauri(), settings.autoSaveDelay,
       compilerBusy || compilerSelecting,
     );
   }, [documents, settings.autoSave, settings.autoSaveDelay, compilerBusy, compilerSelecting]);
-
-  useEffect(() => () => { autoSaveScheduler.current?.dispose(); }, []);
 
   async function rescanCompilers(): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
