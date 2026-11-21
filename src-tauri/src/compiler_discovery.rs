@@ -88,6 +88,14 @@ fn standard_roots() -> Vec<(PathBuf, u8, bool)> {
     if let Some(path) = env::var_os("PATH") {
         roots.extend(env::split_paths(&path).filter(|p| p.is_absolute()).map(|p| (p, 0, false)));
     }
+    // Downloads can contain thousands of unrelated files. Scan installed
+    // compiler locations and PATH first so an entry budget cannot hide them.
+    if let Some(index) = roots.iter().position(|(p, depth, _)| {
+        *depth == 3 && p.file_name().is_some_and(|name| name == "Downloads")
+    }) {
+        let downloads = roots.remove(index);
+        roots.push(downloads);
+    }
     roots
 }
 
