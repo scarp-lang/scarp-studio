@@ -776,8 +776,8 @@ export default function App() {
     // Approval is per session and includes the exact resolved candidate path.
     // Scanning never grants permission to execute an arbitrary binary.
     const approved = await ask(
-      'Is your trusted official Scarp compiler located at:\\n' + chosen +
-      '\\n\\nStudio will launch this executable to check its version and supported commands. Continue?',
+      'Is your trusted official Scarp compiler located at:\n' + chosen +
+      '\n\nStudio will launch this executable to check its version and supported commands. Continue?',
       { title: 'Confirm Scarp compiler location', kind: 'warning' },
     );
     if (!approved) return false;
@@ -787,7 +787,7 @@ export default function App() {
     setCompilerOutputSource(null);
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
-    setCompilerOutput(info + '\\nCompiler is ready. Run operates on the saved file on disk.');
+    setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
     setNotice('Scarp compiler approved for this session');
     return true;
   }
