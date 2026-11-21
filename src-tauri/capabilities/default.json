@@ -11,6 +11,7 @@
     "dialog:allow-message",
     "fs:allow-read-dir",
     "fs:allow-read-text-file",
+    "fs:allow-stat",
     "fs:allow-write-text-file",
     "fs:deny-default"
   ]
