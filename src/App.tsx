@@ -244,13 +244,13 @@ export default function App() {
     const timers = autoSaveTimers.current;
     for (const [id, pending] of timers) {
       const current = documents.find((doc) => doc.id === id);
-      if (!settings.autoSave || !isTauri() || !current || !canAutoSave(current) ||
+      if (!settings.autoSave || !isTauri() || compilerBusy || !current || !canAutoSave(current) ||
           current !== pending.document || pending.delay !== settings.autoSaveDelay) {
         window.clearTimeout(pending.timeout);
         timers.delete(id);
       }
     }
-    if (!settings.autoSave || !isTauri()) return;
+    if (!settings.autoSave || !isTauri() || compilerBusy) return;
     for (const document of documents) {
       if (!canAutoSave(document) || timers.has(document.id)) continue;
       const timeout = window.setTimeout(() => {
@@ -260,7 +260,7 @@ export default function App() {
       }, settings.autoSaveDelay);
       timers.set(document.id, { document, delay: settings.autoSaveDelay, timeout });
     }
-  }, [documents, settings.autoSave, settings.autoSaveDelay]);
+  }, [documents, settings.autoSave, settings.autoSaveDelay, compilerBusy]);
 
   useEffect(() => () => {
     for (const timer of autoSaveTimers.current.values()) {
@@ -309,8 +309,8 @@ export default function App() {
   /** Show the full location before executing even a version probe. */
   async function approveCompilerLocation(path: string): Promise<boolean> {
     const approved = await ask(
-      'Is this your Scarp compiler location?\\n\\n' + path +
-      '\\n\\nIf you confirm, Studio will launch this executable to check its version ' +
+      'Is this your Scarp compiler location?\n\n' + path +
+      '\n\nIf you confirm, Studio will launch this executable to check its version ' +
       'and supported commands. It has the same operating-system access as your account. ' +
       'Only confirm a compiler you trust.',
       { title: 'Confirm Scarp compiler location', kind: 'warning' },
@@ -319,8 +319,8 @@ export default function App() {
     const info = await probeScarp(path);
     setCompilerPath(path);
     setCompilerInfo(info);
-    setCompilerOutput(info + '\\nCompiler path confirmed: ' + path +
-      '\\nRun operates on the saved source on disk.');
+    setCompilerOutput(info + '\nCompiler path confirmed: ' + path +
+      '\nRun operates on the saved source on disk.');
     setNotice('Scarp compiler confirmed for this session');
     return true;
   }
