@@ -1,41 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import Editor from '@monaco-editor/react';
+import StudioSettingsPanel from './components/StudioSettingsPanel';
 import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  fileName, isDirty,
+  fileName, isDirty, type StudioDocument,
 } from './model/documents';
 import { editorReducer, initialEditorState, isUnchangedSnapshot, sameDirtyDocuments, type EditorAction } from './model/editorState';
 import { pickSourceFile, writeSourceFile } from './services/files';
 import { chooseSourceFolder, readFolderSource } from './services/folders';
 import { captureRunSnapshot, validateRunSnapshot, type ScarpRunSnapshot } from './model/compilerReadiness';
 import { exitBlockReason } from './model/exitGuards';
-import {
-  DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
-  parseEditorPreferences, type EditorPreferences,
-} from './model/editorPreferences';
 import { NativeDialogGate } from './model/dialogGate';
+import { canAutoSave, loadStudioSettings, storeStudioSettings, type StudioSettings } from './model/studioSettings';
+import { AutoSaveScheduler } from './model/autoSaveScheduler';
 import { detectScarp, executeScarp, openScarpDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 
-type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
-
-function getInitialTheme(): Theme {
-  try {
-    return localStorage.getItem('studio.theme') === 'light' ? 'light' : 'dark';
-  } catch {
-    return 'dark';
-  }
-}
-
-function getInitialEditorPreferences(): EditorPreferences {
-  try {
-    return parseEditorPreferences(localStorage.getItem('studio.editorPreferences'));
-  } catch {
-    return { ...DEFAULT_EDITOR_PREFERENCES };
-  }
-}
 
 function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -52,9 +34,12 @@ export default function App() {
     liveEditor.current = next;
     setEditorState(next);
   }
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
-  const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<StudioSettings>(loadStudioSettings);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const theme = settings.theme;
+  function changeSettings(patch: Partial<StudioSettings>): void {
+    setSettings((current) => ({ ...current, ...patch }));
+  }
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
@@ -64,6 +49,13 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const saveInProgress = useRef(false);
+  const autoSaveAction = useRef<(document: StudioDocument) => boolean>(() => true);
+  const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
+  if (!autoSaveScheduler.current) {
+    autoSaveScheduler.current = new AutoSaveScheduler(
+      (document) => autoSaveAction.current(document),
+    );
+  }
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
   const nativeDialogGate = useRef(new NativeDialogGate());
@@ -115,13 +107,8 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem('studio.theme', theme); } catch { /* storage unavailable */ }
-  }, [theme]);
-
-  useEffect(() => {
-    try { localStorage.setItem('studio.editorPreferences', JSON.stringify(editorPreferences)); }
-    catch { /* Continue with session defaults if storage is unavailable. */ }
-  }, [editorPreferences]);
+    storeStudioSettings(settings);
+  }, [settings, theme]);
 
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
@@ -228,31 +215,72 @@ export default function App() {
     }
   }
 
-  async function saveFile(forceSaveAs = false): Promise<void> {
-    const document = liveEditor.current.documents.find((item) => item.id === activeId);
+  /**
+   * Save a snapshot of the correct document even when the active tab changes
+   * while an OS dialog or write is pending. Writes re-check external changes.
+   */
+  async function saveDocument(
+    id: string, forceSaveAs = false, automatic = false, expected?: StudioDocument,
+  ): Promise<void> {
+    const document = liveEditor.current.documents.find((item) => item.id === id);
     if (!document || saveInProgress.current) return;
+    if (automatic && (!settings.autoSave || !canAutoSave(document) || document !== expected ||
+        commandInProgress.current || selectionInProgress.current)) return;
     saveInProgress.current = true;
-    setError(null);
-    setBusy(true);
+    if (!automatic) {
+      setError(null);
+      setBusy(true);
+    }
     try {
       const path = await writeSourceFile(
         document,
         forceSaveAs,
+        // Recheck other open paths after a potentially lengthy Save As dialog.
         () => liveEditor.current.documents
           .filter((item) => item.id !== document.id && item.path !== null)
           .map((item) => item.path as string),
       );
       if (!path) return;
-      // Preserve edits made during the asynchronous native save operation.
+      // Record the exact bytes written; newer keystrokes remain visibly dirty.
       dispatch({ type: 'saved', id: document.id, path, savedContent: document.content });
-      setNotice('Saved ' + fileName(path));
+      setNotice((automatic ? 'Auto saved ' : 'Saved ') + fileName(path));
+      if (automatic) setError((current) =>
+        current?.startsWith('Auto Save failed for ') ? null : current);
     } catch (caught) {
-      setError('Could not save source: ' + toMessage(caught));
+      setError((automatic ? 'Auto Save failed for ' + document.name + ': '
+        : 'Could not save source: ') + toMessage(caught));
     } finally {
       saveInProgress.current = false;
-      setBusy(false);
+      if (!automatic) setBusy(false);
     }
   }
+
+  async function saveFile(forceSaveAs = false): Promise<void> {
+    const id = liveEditor.current.activeId;
+    if (id) await saveDocument(id, forceSaveAs);
+  }
+
+  // The scheduler uses current live save logic and its reference-based timer
+  // snapshots. No stale callback may launch a save after the source changed.
+  autoSaveAction.current = (document) => {
+    const current = liveEditor.current.documents.find((item) => item.id === document.id);
+    // Stale snapshots must not be retried. Only a concurrent native save
+    // returns false so the scheduler can retry the same valid snapshot.
+    if (!settings.autoSave || current !== document || !canAutoSave(document)) return true;
+    if (commandInProgress.current || selectionInProgress.current) return false;
+    if (saveInProgress.current) return false;
+    void saveDocument(document.id, false, true, document);
+    return true;
+  };
+
+  useEffect(() => {
+    autoSaveScheduler.current?.reconcile(
+      documents, settings.autoSave && isTauri(), settings.autoSaveDelay,
+      compilerBusy || compilerSelecting,
+    );
+  }, [documents, settings.autoSave, settings.autoSaveDelay, compilerBusy, compilerSelecting]);
+
+  useEffect(() => () => { autoSaveScheduler.current?.dispose(); }, []);
 
   async function rescanCompilers(): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
@@ -291,6 +319,44 @@ export default function App() {
     }
   }
 
+  /** Show the full location before executing even a version probe. */
+  async function approveCompilerLocation(path: string): Promise<boolean> {
+    const approved = await ask(
+      'Is this your Scarp compiler location?\n\n' + path +
+      '\n\nIf you confirm, Studio will launch this executable to check its version ' +
+      'and supported commands. It has the same operating-system access as your account. ' +
+      'Only confirm a compiler you trust.',
+      { title: 'Confirm Scarp compiler location', kind: 'warning' },
+    );
+    if (!approved) return false;
+    const info = await probeScarp(path);
+    setCompilerPath(path);
+    setCompilerInfo(info);
+    setCompilerOutput(info + '\nCompiler path confirmed: ' + path +
+      '\nRun operates on the saved source on disk.');
+    setNotice('Scarp compiler confirmed for this session');
+    return true;
+  }
+
+  async function confirmDetectedCompiler(): Promise<void> {
+    if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
+    if (!automaticCompiler) {
+      setError('No detected compiler to confirm. Scan again or choose the executable manually.');
+      return;
+    }
+    selectionInProgress.current = true;
+    setCompilerSelecting(true);
+    setError(null);
+    try {
+      await approveCompilerLocation(automaticCompiler);
+    } catch (caught) {
+      setError('Could not confirm compiler location: ' + toMessage(caught));
+    } finally {
+      selectionInProgress.current = false;
+      setCompilerSelecting(false);
+    }
+  }
+
   async function selectCompiler(): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current) return;
     selectionInProgress.current = true;
@@ -302,17 +368,7 @@ export default function App() {
         multiple: false,
       });
       if (typeof chosen !== 'string') return;
-      const approved = await ask(
-        'Scarp Studio will launch the selected executable to check its version and supported commands. ' +
-        'Only continue if you trust this file. Do you want to continue?',
-        { title: 'Trust the selected Scarp compiler?', kind: 'warning' },
-      );
-      if (!approved) return;
-      const info = await probeScarp(chosen);
-      setCompilerPath(chosen);
-      setCompilerInfo(info);
-      setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
-      setNotice('Scarp compiler configured');
+      await approveCompilerLocation(chosen);
     } catch (caught) {
       setError('Compiler selection failed: ' + toMessage(caught));
     } finally {
@@ -355,17 +411,8 @@ export default function App() {
           setError(message);
           return;
         }
-        const approved = await ask(
-          'Scarp Studio found this executable:\n' + chosen +
-          '\n\nRunning it grants it the same access as your account. Only approve a compiler you trust. Continue?',
-          { title: 'Trust detected Scarp compiler?', kind: 'warning' },
-        );
-        if (!approved) return;
-        const info = await probeScarp(chosen);
+        if (!await approveCompilerLocation(chosen)) return;
         binary = chosen;
-        setCompilerPath(chosen);
-        setCompilerInfo(info);
-        setNotice('Detected Scarp compiler approved for this session');
       } catch (caught) {
         setError('Automatic compiler setup failed: ' + toMessage(caught));
         return;
@@ -449,10 +496,18 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && settingsOpen) {
+        event.preventDefault();
+        setSettingsOpen(false);
+        return;
+      }
       const modifier = event.ctrlKey || event.metaKey;
       if (!modifier || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === 's') {
+      if (key === ',') {
+        event.preventDefault();
+        setSettingsOpen((open) => !open);
+      } else if (key === 's') {
         event.preventDefault();
         void saveFile(event.shiftKey);
       } else if (key === 'n') {
@@ -489,61 +544,20 @@ export default function App() {
           <button onClick={() => void saveFile(true)} disabled={!active || busy} title="Save As (Ctrl+Shift+S)">Save As</button>
         </nav>
         <button
-          className="settings-toggle"
-          type="button"
-          onClick={() => setEditorSettingsOpen((isOpen) => !isOpen)}
-          aria-expanded={editorSettingsOpen}
-          aria-controls="editor-settings"
-        >Editor settings</button>
-        <button
           className="theme-button"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          onClick={() => changeSettings({ theme: theme === 'dark' ? 'light' : 'dark' })}
           aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
         >
           {theme === 'dark' ? '☀ Light' : '☾ Dark'}
         </button>
+        <button
+          className="settings-nav-button"
+          onClick={() => setSettingsOpen((open) => !open)}
+          aria-pressed={settingsOpen}
+          title="Editor and compiler settings (Ctrl+,)"
+        >⚙ Settings</button>
       </header>
 
-      {editorSettingsOpen && (
-        <section id="editor-settings" className="editor-settings" aria-label="Scarp editor settings">
-          <label htmlFor="editor-font-size">Font size</label>
-          <select
-            id="editor-font-size"
-            value={editorPreferences.fontSize}
-            onChange={(event) => setEditorPreferences((current) => ({
-              ...current, fontSize: Number(event.target.value) as EditorPreferences['fontSize'],
-            }))}
-          >
-            {FONT_SIZES.map((size) => <option key={size} value={size}>{size} px</option>)}
-          </select>
-          <label htmlFor="editor-tab-size">Tab width</label>
-          <select
-            id="editor-tab-size"
-            value={editorPreferences.tabSize}
-            onChange={(event) => setEditorPreferences((current) => ({
-              ...current, tabSize: Number(event.target.value) as EditorPreferences['tabSize'],
-            }))}
-          >
-            {TAB_SIZES.map((size) => <option key={size} value={size}>{size} spaces</option>)}
-          </select>
-          <label className="editor-setting-checkbox" htmlFor="editor-word-wrap">
-            <input
-              id="editor-word-wrap"
-              type="checkbox"
-              checked={editorPreferences.wordWrap}
-              onChange={(event) => setEditorPreferences((current) => ({
-                ...current, wordWrap: event.target.checked,
-              }))}
-            />
-            Wrap long lines
-          </label>
-          <button
-            className="settings-reset"
-            type="button"
-            onClick={() => setEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES })}
-          >Restore defaults</button>
-        </section>
-      )}
       <div className="studio-main">
         <aside className="sidebar" aria-label="Scarp file explorer">
           <div className="sidebar-heading">EXPLORER</div>
@@ -626,7 +640,21 @@ export default function App() {
             </div>
           )}
           <div className="editor-panel">
-            {active ? (
+            {settingsOpen ? (
+              <StudioSettingsPanel
+                settings={settings}
+                onChange={changeSettings}
+                onClose={() => setSettingsOpen(false)}
+                compilerCandidate={automaticCompiler}
+                trustedCompiler={compilerPath}
+                compilerVersion={compilerInfo}
+                compilerBusy={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
+                onConfirmCompiler={() => void confirmDetectedCompiler()}
+                onScanCompiler={() => void rescanCompilers()}
+                onChooseCompiler={() => void selectCompiler()}
+                onDownloadCompiler={() => void openCompilerDownloads()}
+              />
+            ) : active ? (
               <Editor
                 key={active.id}
                 path={active.path || active.id + '.srp'}
@@ -643,12 +671,9 @@ export default function App() {
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
                 options={{
-                  automaticLayout: true, fontSize: editorPreferences.fontSize,
-                  fontFamily: 'Consolas, monospace',
-                  minimap: { enabled: false }, scrollBeyondLastLine: false,
-                  tabSize: editorPreferences.tabSize,
-                  wordWrap: editorPreferences.wordWrap ? 'on' : 'off',
-                  detectIndentation: false,
+                  automaticLayout: true, fontSize: settings.fontSize, fontFamily: 'Consolas, monospace',
+                  minimap: { enabled: settings.minimap }, scrollBeyondLastLine: false,
+                  tabSize: settings.tabSize, wordWrap: settings.wordWrap ? 'on' : 'off', detectIndentation: false,
                 }}
               />
             ) : (
@@ -691,6 +716,15 @@ export default function App() {
               {compilerInfo || (automaticCompiler
                 ? 'Detected (not yet trusted): ' + automaticCompiler
                 : 'Compiler not detected. Download the official ZIP, extract it, then click Scan.')}
+              {automaticCompiler && !compilerPath && (
+                <div className="compiler-path-confirm">
+                  <span>Is your Scarp compiler at <code>{automaticCompiler}</code>?</span>
+                  <button onClick={() => void confirmDetectedCompiler()}
+                    disabled={compilerSelecting || compilerScanning || compilerBusy}>
+                    Yes, confirm this location
+                  </button>
+                </div>
+              )}
               {detectedCompilers.length > 1 && !compilerPath && (
                 <label className="compiler-choice">Detected compiler:
                   <select
@@ -712,6 +746,11 @@ export default function App() {
       <footer className="status-bar">
         <span>{busy ? 'Working…' : notice}</span>
         <span>{active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}</span>
+        <button className="status-settings-button"
+          onClick={() => setSettingsOpen(true)}
+          title="Configure Auto Save and editor preferences">
+          Auto Save: {settings.autoSave ? 'On' : 'Off'}
+        </button>
         <span title={compilerPath || automaticCompiler || 'No Scarp compiler detected'}>
           {compilerPath ? 'Compiler ready' : automaticCompiler ? 'Compiler detected · approval needed' : 'Compiler not found'}
         </span>
