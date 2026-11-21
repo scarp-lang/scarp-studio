@@ -71,3 +71,9 @@ The `feat/scarp-compiler-run-verify` parent branch (PR #5) requires an explicitl
 The parent PR #5 CI pins Scarp `v0.0.6-alpha.8`, while this stacked draft CI pins and hashes the official Scarp `v0.0.6-alpha.16` Windows compiler archive, tests the actual `exec`/`verify` CLI surface, and checks that `assert(false)` verifies statically but fails at runtime with `E0065`. This **does not** bundle Scarp with Studio or automatically authorize another compiler binary; selection and trust confirmation remain session-specific. The editor still runs only saved standalone `.srp` files, not `scarp.project` commands or `scarp test`.
 
 PR #5 shows compiler output as plain text. The stacked draft PR #6 adds structured JSON diagnostic navigation, guarded against stale edits and unrelated module paths. Interactive stdin (`read_line`), language-server features, and debugging remain unsupported. Do not run untrusted binaries or source.
+
+## Support Scarp Studio
+
+This is an experimental open-source IDE. Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) helps support development and testing; sponsorship does not provide early access, private repository access, or guarantees about releases.
+
+**Repository:** https://github.com/scarp-lang/scarp-studio
