@@ -6,7 +6,7 @@
 
 ## 1. Review the candidate stack
 
-The integrated Windows IDE began in [PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), with additional safety changes stacked through #64. The current review-only release candidate extends that stack with alpha.17 release validation [#74](https://github.com/scarp-lang/scarp-studio/pull/74), IntelliSense [#75](https://github.com/scarp-lang/scarp-studio/pull/75), explicit-trust compiler discovery [#76](https://github.com/scarp-lang/scarp-studio/pull/76), and guarded Auto Save [#77](https://github.com/scarp-lang/scarp-studio/pull/77). **Use the exact topmost PR #77 head for all pre-release candidate builds and acceptance**, not an ancestor PR or already-published editor-only build. Review the complete combined diff against protected `main`; do not blindly merge the older overlapping #5/#65/#66/#71/#72/#73 drafts.
+The integrated Windows IDE began in [PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), with additional safety changes stacked through #64. The current review-only release candidate extends that stack with alpha.17 release validation [#74](https://github.com/scarp-lang/scarp-studio/pull/74), IntelliSense [#75](https://github.com/scarp-lang/scarp-studio/pull/75), explicit-trust compiler discovery [#76](https://github.com/scarp-lang/scarp-studio/pull/76), guarded Auto Save [#77](https://github.com/scarp-lang/scarp-studio/pull/77), and independent Save As/reopen tab identities [#78](https://github.com/scarp-lang/scarp-studio/pull/78). **Use the exact topmost PR #78 head for all pre-release candidate builds and acceptance**, not an ancestor PR or already-published editor-only build. Review the complete combined diff against protected `main`; do not blindly merge the older overlapping #5/#65/#66/#71/#72/#73 drafts.
 
 Do not create a release tag until the owner has explicitly reviewed and authorized both the source merge and the separate release publication. The old `publish-editor-alpha2.yml` workflow is restricted to `0.0.1-alpha.2` and **must not** be reused for `0.0.2-alpha.1`.
 
@@ -72,7 +72,8 @@ Until then, share only GitHub Actions development artifacts as **unsigned test c
 
 ## References
 
-- Current complete candidate draft PR: https://github.com/scarp-lang/scarp-studio/pull/77
+- Current complete candidate draft PR: https://github.com/scarp-lang/scarp-studio/pull/78
+- Full-IDE Auto Save parent: https://github.com/scarp-lang/scarp-studio/pull/77
 - Compiler discovery draft PR: https://github.com/scarp-lang/scarp-studio/pull/76
 - Consolidated historic integration PR: https://github.com/scarp-lang/scarp-studio/pull/55
 - Compiler probe safety PR: https://github.com/scarp-lang/scarp-studio/pull/57

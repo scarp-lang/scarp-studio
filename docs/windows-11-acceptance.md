@@ -56,6 +56,7 @@ actually testing the Studio desktop build.**
 | E29 | Enable Auto Save, externally modify a saved disposable .srp before the timer expires, then edit in Studio | Auto Save refuses to overwrite external changes, reports the failure, leaves Studio edits dirty; Save As can preserve both versions | NOT RUN |
 | E30 | Enable Auto Save, type during a native Save As dialog, then start Run/Verify or Run Project; try an unsaved/dirty source | Auto Save never opens another chooser, never writes during compiler work or while dialog locks are active; retries at bounded intervals, and Run still refuses stale saved sources | NOT RUN |
 | E31 | Enable Auto Save and edit a file, then close that tab or exit before the idle delay; repeat with React development Strict Mode remount | No write fires after closure or unmount; after Strict Mode effect replay a **fresh** scheduler still saves eligible documents | NOT RUN |
+| E32 | Open disposable `A.srp`, **Save As** to `B.srp` (without deleting A on disk), then Open the original `A.srp`, edit and save only A, and close A | Studio displays two independently addressed tabs with different internal IDs; saving or closing reopened A never modifies, selects or closes moved B; file contents on disk remain distinct | NOT RUN |
 
 ## Project Explorer, scopes and navigation
 

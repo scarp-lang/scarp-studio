@@ -397,4 +397,38 @@ describe('atomic editor session transitions', () => {
       type: 'saved', id: doc.id, path: '/project/x.srp', savedContent: '',
     })).toBe(closed);
   });
+  it('keeps Save As moved tab and reopened original tab independently editable', () => {
+    const openedA = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/demo/A.srp', content: 'saved A',
+    });
+    const originalId = openedA.activeId!;
+    const movedToB = editorReducer(openedA, {
+      type: 'saved', id: originalId, path: 'C:/demo/B.srp', savedContent: 'saved A',
+    });
+    const reopenedA = editorReducer(movedToB, {
+      type: 'open', path: 'C:/demo/A.srp', content: 'disk A again',
+    });
+    const newA = currentActiveDocument(reopenedA)!;
+    const oldB = reopenedA.documents.find((doc) => doc.id === originalId)!;
+    expect(newA.id).not.toBe(oldB.id);
+    expect(oldB.path).toBe('C:/demo/B.srp');
+    expect(newA.path).toBe('C:/demo/A.srp');
+    expect(new Set(reopenedA.documents.map((doc) => doc.id)).size)
+      .toBe(reopenedA.documents.length);
+
+    const changedA = editorReducer(reopenedA, {
+      type: 'edit', id: newA.id, content: 'unsaved new A',
+    });
+    expect(currentActiveDocument(changedA)?.content).toBe('unsaved new A');
+    expect(changedA.documents.find((doc) => doc.id === originalId)?.content)
+      .toBe('saved A');
+
+    const closingA = editorReducer(reopenedA, {
+      type: 'close', id: newA.id, snapshot: newA,
+    });
+    expect(closingA.documents.some((doc) => doc.id === originalId)).toBe(true);
+    expect(closingA.documents.some((doc) => doc.id === newA.id)).toBe(false);
+    expect(currentActiveDocument(closingA)?.path).toBe('C:/demo/B.srp');
+  });
+
 });
