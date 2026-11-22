@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { assertWellFormedUtf16, unicodeSafePreviewBounds } from './utf8Text';
+import { describe, expect, it, vi } from 'vitest';
+import { assertWellFormedUtf16, unicodeSafePreviewBounds, utf8ByteLength } from './utf8Text';
 
 describe('lossless UTF-8 boundary preflight', () => {
   it('accepts empty, ASCII, Hindi, CJK and paired supplementary Unicode', () => {
@@ -24,6 +24,30 @@ describe('lossless UTF-8 boundary preflight', () => {
 
   it('accepts adjacent complete pairs without confusing their boundaries', () => {
     expect(() => assertWellFormedUtf16('😀🙂👋\r\nसमाप्त', 'Program input')).not.toThrow();
+  });
+});
+
+describe('allocation-free UTF-8 size calculation', () => {
+  it('matches TextEncoder for valid and malformed UTF-16, including big input', () => {
+    const examples = [
+      '', 'ASCII\r\n', '\u0000', 'é', 'नमस्ते 👋', '漢字', 'e\u0301',
+      '😃😀🙂', '\ud800', '\udc00', '\ud800x', 'x\udc00', '😀\ud800',
+      '\ud800\ud800\udc00', 'a'.repeat(20000), 'न'.repeat(8000),
+    ];
+    for (const input of examples) {
+      expect(utf8ByteLength(input)).toBe(new TextEncoder().encode(input).byteLength);
+    }
+  });
+
+  it('does not allocate a UTF-8 byte buffer even for a large input preview', () => {
+    const encode = vi.spyOn(TextEncoder.prototype, 'encode')
+      .mockImplementation(() => { throw new Error('unexpected encoding'); });
+    try {
+      expect(utf8ByteLength('😀'.repeat(9000))).toBe(36000);
+      expect(encode).not.toHaveBeenCalled();
+    } finally {
+      encode.mockRestore();
+    }
   });
 });
 

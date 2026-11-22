@@ -1,4 +1,4 @@
-import { assertWellFormedUtf16 } from './utf8Text';
+import { assertWellFormedUtf16, utf8ByteLength } from './utf8Text';
 
 /** Fixed Studio limits smaller than the Scarp CLI defaults.
  * A Run receives only this explicit, session-local UTF-8 snapshot.
@@ -9,7 +9,16 @@ export const MAX_INPUT_LINE_BYTES = 4096;
 export const MAX_INPUT_LINES = 256;
 
 export function programInputBytes(input: string): number {
-  return new TextEncoder().encode(input).byteLength;
+  return utf8ByteLength(input);
+}
+
+export function programInputValidationError(input: string): string | null {
+  try {
+    validateProgramInput(input);
+    return null;
+  } catch (caught) {
+    return caught instanceof Error ? caught.message : 'Program input is invalid.';
+  }
 }
 
 /** Keep CRLF, whitespace and final unterminated lines unchanged. */
@@ -22,6 +31,10 @@ export function validateProgramInput(input: string): void {
   }
   // TextEncoder silently replaces lone surrogates unless rejected first.
   assertWellFormedUtf16(input, 'Program input');
+  // Live input validation must reject oversized Unicode before allocating.
+  if (utf8ByteLength(input) > MAX_INPUT_BYTES) {
+    throw new Error('Program input exceeds Studio\'s 16 KiB UTF-8 limit.');
+  }
   const bytes = new TextEncoder().encode(input);
   if (bytes.byteLength > MAX_INPUT_BYTES) {
     throw new Error('Program input exceeds Studio\'s 16 KiB UTF-8 limit.');

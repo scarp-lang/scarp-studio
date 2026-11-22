@@ -20,6 +20,27 @@ export function assertWellFormedUtf16(text: string, label: string): void {
   }
 }
 
+/** Count TextEncoder-equivalent UTF-8 bytes without allocating a byte array.
+ * Isolated surrogate units are counted like the encoder's replacement U+FFFD.
+ * Source and Program Input writing separately reject malformed UTF-16.
+ */
+export function utf8ByteLength(text: string): number {
+  let bytes = 0;
+  for (let index = 0; index < text.length; index++) {
+    const unit = text.charCodeAt(index);
+    if (unit <= 0x7f) bytes++;
+    else if (unit <= 0x7ff) bytes += 2;
+    else if (unit >= 0xd800 && unit <= 0xdbff && index + 1 < text.length) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index++;
+      } else bytes += 3;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
 /** Adjust a bounded, UI-only UTF-16 preview range so neither edge cuts an
  * emoji / other supplementary Unicode scalar in half. The returned offsets
  * are still source offsets; callers may use them for display slicing only.

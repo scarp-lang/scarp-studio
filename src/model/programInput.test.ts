@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_INPUT_BYTES, MAX_INPUT_LINE_BYTES, MAX_INPUT_LINES,
-  programInputBytes, validateProgramInput,
+  programInputBytes, programInputValidationError, validateProgramInput,
 } from './programInput';
 
 describe('bounded explicit Scarp program input', () => {
@@ -34,6 +34,13 @@ describe('bounded explicit Scarp program input', () => {
     } finally {
       encode.mockRestore();
     }
+  });
+
+  it('reports live input validity for Unicode, too-long lines and malformed text', () => {
+    expect(programInputValidationError('नमस्ते 👋\r\nOK')).toBeNull();
+    expect(programInputValidationError('👋'.repeat(5000))).toContain('16 KiB');
+    expect(programInputValidationError('x'.repeat(4097))).toContain('4096');
+    expect(programInputValidationError('\ud800')).toContain('unpaired UTF-16');
   });
 
   it('counts CRLF terminators inside the per-line byte budget', () => {

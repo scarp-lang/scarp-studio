@@ -1,4 +1,4 @@
-import { assertWellFormedUtf16 } from './utf8Text';
+import { assertWellFormedUtf16, utf8ByteLength } from './utf8Text';
 
 /** Protect the early-alpha Monaco editor from accidentally loading huge sources. */
 export const MAX_SCARP_SOURCE_BYTES = 4 * 1024 * 1024;
@@ -16,5 +16,6 @@ export function assertScarpSourceText(content: string): void {
   // bound: Hindi, emoji and other Unicode still need the exact byte check.
   assertScarpSourceBytes(content.length);
   assertWellFormedUtf16(content, 'Scarp source');
-  assertScarpSourceBytes(new TextEncoder().encode(content).byteLength);
+  // Full-length exact Unicode counting no longer allocates an encoded 4 MiB buffer.
+  assertScarpSourceBytes(utf8ByteLength(content));
 }

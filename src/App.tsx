@@ -26,7 +26,9 @@ import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist'
 import { NativeDialogGate } from './model/dialogGate';
 import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterTemplates';
 import { runnableSource } from './model/compilerReadiness';
-import { MAX_INPUT_BYTES, programInputBytes, validateProgramInput } from './model/programInput';
+import {
+  MAX_INPUT_BYTES, programInputBytes, programInputValidationError, validateProgramInput,
+} from './model/programInput';
 import { exitBlockReason, sameExitEditorState } from './model/exitGuards';
 import { detectScarp, executeScarp, openCompilerDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
@@ -212,6 +214,9 @@ export default function App() {
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const stdinValidationError = useMemo(
+    () => programInputValidationError(stdinText), [stdinText],
+  );
   // The same selected-project dirty-source policy governs both button state
   // and the guarded native action handler. Read-only Info stays available.
   const dirtySelectedProjectSources = useMemo(
@@ -1876,8 +1881,8 @@ export default function App() {
                   {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}
                 </button>
                 <button onClick={() => void runCompiler('exec')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
-                  title="Execute the saved Scarp source using the official compiler">Run</button>
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active) || stdinValidationError !== null}
+                  title={stdinValidationError ?? 'Execute the saved Scarp source using the official compiler'}>Run</button>
                 <button onClick={() => void runCompiler('verify')}
                   disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
                   title="Statically verify saved Scarp source without runtime execution">Verify</button>
@@ -1922,8 +1927,8 @@ export default function App() {
                 title="Verify the chosen Scarp project without executing code; save edited project sources first">Verify Project</button>
               <button type="button" onClick={() => void runProjectAction('run')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
-                  dirtySelectedProjectSources.length > 0}
-                title="Execute the project entrypoint with preloaded input; save modified files in this project first">Run Project</button>
+                  dirtySelectedProjectSources.length > 0 || stdinValidationError !== null}
+                title={stdinValidationError ?? 'Execute the project entrypoint with preloaded input; save modified files in this project first'}>Run Project</button>
               <button type="button" onClick={() => void runProjectAction('list-tests')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
                   dirtySelectedProjectSources.length > 0}
@@ -1955,6 +1960,7 @@ export default function App() {
               <textarea
                 id="scarp-stdin"
                 value={stdinText}
+                aria-invalid={stdinValidationError !== null}
                 onChange={(event) => setStdinText(event.target.value)}
                 disabled={compilerBusy}
                 maxLength={MAX_INPUT_BYTES}
@@ -1967,6 +1973,9 @@ export default function App() {
                 {programInputBytes(stdinText)} / {MAX_INPUT_BYTES} UTF-8 bytes ·
                 Max 4096 bytes per line and 256 lines. Input is not saved;
                 avoid entering passwords or secrets.
+                {stdinValidationError && (
+                  <div role="status"><strong>{stdinValidationError}</strong> — edit Program Input before Run.</div>
+                )}
               </div>
             </div>
             {projectTestResult && projectTestResult.folder === folderPath && (
