@@ -359,6 +359,43 @@ mod tests {
     }
 
     #[test]
+    fn version_heavy_installation_root_cannot_hide_new_download() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = env::temp_dir().join(format!(
+            "studio-candidate-fairness-{}-{unique}",
+            std::process::id()
+        ));
+        let older = base.join("installed-versions");
+        let downloaded = base.join("FreshScarp");
+        fs::create_dir_all(&downloaded).unwrap();
+
+        // Before per-root candidate limits, the first root filled all 24
+        // global slots and a later newly extracted compiler disappeared.
+        for index in 0..(MAX_CANDIDATES + 6) {
+            let dir = older.join(format!("old-version-{index}"));
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join(expected_file_name()), b"older candidate").unwrap();
+        }
+        let latest = downloaded.join(expected_file_name());
+        fs::write(&latest, b"new candidate").unwrap();
+
+        let found = scan_directories(&[(older, 1, true), (downloaded, 0, false)]);
+        let latest_path = fs::canonicalize(latest)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(found.len(), MAX_CANDIDATES_PER_ROOT + 1);
+        assert!(
+            found.contains(&latest_path),
+            "newer install root was starved by older versioned candidates"
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn one_crowded_root_does_not_starve_other_compiler_locations() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
