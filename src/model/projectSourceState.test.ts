@@ -96,6 +96,24 @@ describe('project test result freshness', () => {
       { ...unrelated, content: 'new text', revision: 1 }], folder)).toBe(false);
   });
 
+  it('invalidates structured project reports when a project source tab closes', () => {
+    const projectAlias = tab('alias.srp', String.raw`C:\Work\Scarp\src\..\main.srp`, false);
+    expect(projectSourceBuffersChanged([project], [], folder)).toBe(true);
+    expect(projectSourceBuffersChanged([projectAlias], [], folder)).toBe(true);
+    expect(projectSourceBuffersChanged([project, unrelated], [unrelated], folder)).toBe(true);
+    expect(projectSourceBuffersChanged([project], [
+      { ...project, id: 'file-reopened-same-source', revision: 0 },
+    ], folder)).toBe(true);
+  });
+
+  it('does not invalidate project reports when only unrelated or untitled tabs close', () => {
+    const untitled = tab('Untitled-7.srp', null);
+    expect(projectSourceBuffersChanged([unrelated], [], folder)).toBe(false);
+    expect(projectSourceBuffersChanged([untitled], [], folder)).toBe(false);
+    expect(projectSourceBuffersChanged([project, unrelated], [project], folder)).toBe(false);
+    expect(projectSourceBuffersChanged([project, untitled], [project], folder)).toBe(false);
+  });
+
   it('invalidates reports for edits, same-content Saves and Reloads in the project', () => {
     expect(projectSourceBuffersChanged([project], [
       { ...project, content: 'edited', revision: 1 },

@@ -100,10 +100,14 @@ export function projectSourceBuffersChanged(
   const currentById = new Map(after.map((document) => [document.id, document]));
   return before.some((previous) => {
     const current = currentById.get(previous.id);
-    if (!current ||
-        (!belongsToProject(previous.path, root) && !belongsToProject(current.path, root))) {
-      return false;
-    }
+    const previouslyInProject = belongsToProject(previous.path, root);
+    // A closed tab has no live document to compare against. Closing a
+    // selected-project source, including a clean one, must invalidate older
+    // structured test reports and in-flight results before a close/reopen ABA
+    // can make them look current again. Closing unrelated/untitled tabs does
+    // not affect the selected project or its disk-backed results.
+    if (!current) return previouslyInProject;
+    if (!previouslyInProject && !belongsToProject(current.path, root)) return false;
     return current.path !== previous.path ||
       current.content !== previous.content ||
       current.savedContent !== previous.savedContent ||
