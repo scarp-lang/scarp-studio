@@ -116,7 +116,13 @@ fn scan_directories_with_budgets(
         // earlier root contains dozens of versioned Scarp installations.
         let candidate_limit = (found.len() + MAX_CANDIDATES_PER_ROOT).min(MAX_CANDIDATES);
         scan_directory(
-            root, *depth, *all, &mut root_budget, &mut found, &mut seen, candidate_limit,
+            root,
+            *depth,
+            *all,
+            &mut root_budget,
+            &mut found,
+            &mut seen,
+            candidate_limit,
         );
         remaining_total -= initial - root_budget;
     }
