@@ -35,6 +35,38 @@ jobs:
         run: npm run typecheck
       - name: Frontend tests
         run: npm test
+      - name: Validate disposable crowded Explorer QA fixture
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP ('scarp-explorer-' + [Guid]::NewGuid().ToString('N'))
+          & ./qa/windows/create-crowded-explorer-fixture.ps1 -Destination $root
+          $cases = @(
+            @{ folder = $root; expected = 200 }
+            @{ folder = (Join-Path $root 'src'); expected = 226 }
+            @{ folder = (Join-Path $root 'tests'); expected = 1 }
+            @{ folder = (Join-Path $root 'examples'); expected = 1 }
+          )
+          foreach ($case in $cases) {
+            $folder = $case.folder
+            $count = @(Get-ChildItem -LiteralPath $folder -File).Count
+            if ($count -ne $case.expected) {
+              throw ('P34 fixture wrong count at ' + $folder + ': ' + $count)
+            }
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $root 'src/main.srp') -PathType Leaf)) {
+            throw 'P34 fixture main.srp is missing'
+          }
+          $refused = $false
+          try {
+            & ./qa/windows/create-crowded-explorer-fixture.ps1 -Destination $root | Out-Null
+          } catch {
+            $refused = $true
+          }
+          if (-not $refused) {
+            throw 'P34 fixture generator unexpectedly accepted an existing directory'
+          }
+          Remove-Item -LiteralPath $root -Recurse -Force
       - name: Check prerelease candidate version consistency (read-only)
         run: npm run check:release-candidate
       - name: Test prerelease candidate safety gates

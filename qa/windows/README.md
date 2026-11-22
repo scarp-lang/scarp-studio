@@ -8,7 +8,7 @@ must be independently checked and explicitly approved before use.
 ## Prepare
 
 1. Obtain the **exact-head** Scarp Studio candidate Windows executable and NSIS
-   installer from the same successful GitHub Actions run linked by [PR #77](https://github.com/scarp-lang/scarp-studio/pull/77).
+   installer from the same successful GitHub Actions run linked by [draft PR #82](https://github.com/scarp-lang/scarp-studio/pull/82).
    Check the two binaries and `SHA256SUMS.txt` using
    [the offline verifier](../../scripts/verify-windows-artifacts.ps1)
    and record the source SHA + run URL. The installer is **unsigned**; do not
@@ -44,6 +44,25 @@ Manual fallback selection remains available.
 All expected outcomes above are **test requirements, not claimed GUI PASS
 results**. Record the actual build SHA, test platform and evidence before
 marking acceptance cases PASS.
+
+## Crowded Explorer stress fixture (P34)
+
+On Windows, create an empty test parent folder first. From the repository root,
+use this command with a new, non-existing destination:
+
+```powershell
+pwsh -File qa/windows/create-crowded-explorer-fixture.ps1 `
+  -Destination "C:\ScarpStudioAcceptance\P34-crowded-project"
+```
+
+The script creates 200 root `.srp` sources, 225 `src/a-*.srp` sources
+plus `src/main.srp`, and one each in `tests/` and `examples/`.
+It never overwrites existing directories or launches a compiler.
+Select the generated project in Studio. Acceptance case P34 requires
+no more than 200 displayed files, visible `src/main.srp`,
+`tests/smoke.srp` and `examples/demo.srp`, a truncation notice, and
+working Ctrl+P navigation. Windows CI validates only fixture generation;
+actual desktop UI results must be recorded separately.
 
 ## Optional standalone CLI cross-check
 
