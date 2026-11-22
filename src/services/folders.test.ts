@@ -139,6 +139,42 @@ describe('selected-folder Scarp source reads', () => {
     expect(listing?.truncated).toBe(true);
   });
 
+  it('preserves standard nested sources under a saturated 200-file root', async () => {
+    vi.mocked(open).mockResolvedValue('C:/project');
+    const asFile = (name: string) => ({
+      name, isFile: true, isDirectory: false, isSymlink: false,
+    });
+    const asDirectory = (name: string) => ({
+      name, isFile: false, isDirectory: true, isSymlink: false,
+    });
+    vi.mocked(readDir).mockImplementation(async (path) => {
+      if (path === 'C:/project') return [
+        ...Array.from({ length: 200 }, (_, i) =>
+          asFile('root-' + String(i).padStart(3, '0') + '.srp')),
+        asDirectory('src'), asDirectory('tests'), asDirectory('examples'),
+      ];
+      if (path === 'C:/project/src') return [asFile('main.srp')];
+      if (path === 'C:/project/tests') return [asFile('smoke.srp')];
+      if (path === 'C:/project/examples') return [asFile('demo.srp')];
+      throw new Error('unexpected directory scan');
+    });
+    const listing = await chooseSourceFolder();
+    expect(listing?.truncated).toBe(true);
+    expect(listing?.files).toHaveLength(200);
+    expect(listing?.files).toContainEqual({
+      name: 'src/main.srp', path: 'C:/project/src/main.srp',
+    });
+    expect(listing?.files).toContainEqual({
+      name: 'tests/smoke.srp', path: 'C:/project/tests/smoke.srp',
+    });
+    expect(listing?.files).toContainEqual({
+      name: 'examples/demo.srp', path: 'C:/project/examples/demo.srp',
+    });
+    // Three directory joins plus only the 200 selected file paths.
+    expect(join).toHaveBeenCalledTimes(203);
+    expect(readDir).toHaveBeenCalledTimes(4);
+  });
+
   it('opens a nested source only when it was explicitly listed', async () => {
     vi.mocked(readScarpSource).mockResolvedValue('print("nested");');
     const selected = [{ name: 'src/main.srp', path: 'C:/project/src/main.srp' }];

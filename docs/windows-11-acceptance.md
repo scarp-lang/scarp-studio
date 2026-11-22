@@ -71,6 +71,7 @@ actually testing the Studio desktop build.**
 | P02 | Ctrl+P, open a listed nested `.srp` source, and switch folders while a read is pending | Only current folder-listed files are opened; no stale former-project activation | NOT RUN |
 | P03 | Include unrelated deep folders, a junction/symlink and inaccessible subfolder in disposable project | No unbounded walk; denied folders surfaced; links are not followed | NOT RUN |
 | P04 | Fill project with more than 200 listed `.srp` candidates | UI explains truncation; never displays more than 200 sources | NOT RUN |
+| P34 | Fill a disposable project root with 200 `.srp` files, plus `src/main.srp`, `tests/smoke.srp` and `examples/demo.srp`; refresh Explorer and try Ctrl+P | Explorer still shows the three nested sources while respecting the 200-file combined cap and clearly indicating truncation; selected paths open correctly and no recursive scan is performed | NOT RUN |
 | P05 | Test search across open buffers, Go to Line, function outline and Ctrl+Tab | Navigation uses current buffer contents and cannot navigate to stale search offsets | NOT RUN |
 | P06 | Add, rename or remove .srp files on disk while Explorer is open, then click Refresh Explorer | Current root/src/tests/examples listing updates without a folder chooser or changing open tab contents | NOT RUN |
 | P07 | Deny read access to a disposable selected folder, then click Refresh Explorer | Error shown; previous Explorer entries and dirty editor contents remain intact | NOT RUN |

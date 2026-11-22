@@ -4,7 +4,8 @@ import { readDir } from '@tauri-apps/plugin-fs';
 import { readScarpSource } from './sourceRead';
 import { isScarpPath, sameFilePath } from '../model/documents';
 import {
-  collectTopLevelScarpNames, MAX_DISPLAYED_SCARP_FILES, MAX_INSPECTED_FOLDER_ENTRIES,
+  collectTopLevelScarpNames, selectBalancedScarpProjectNames,
+  MAX_DISPLAYED_SCARP_FILES, MAX_INSPECTED_FOLDER_ENTRIES, type ScarpProjectNameGroup,
 } from '../model/folderListing';
 
 export interface FolderFile {
@@ -38,10 +39,8 @@ export async function chooseSourceFolder(): Promise<ScarpFolderScan | null> {
 export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
   const entries = await readDir(path);
   const root = collectTopLevelScarpNames(entries);
-  const files: FolderFile[] = await Promise.all(root.names.map(async (name) => ({
-    name,
-    path: await join(path, name),
-  })));
+  const groups: ScarpProjectNameGroup[] = [{ directory: '', names: root.names }];
+  const directoryPaths = new Map<string, string>();
   let truncated = root.truncated;
   const unavailableFolders: string[] = [];
   const inspected = entries.slice(0, MAX_INSPECTED_FOLDER_ENTRIES);
@@ -53,25 +52,29 @@ export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
       const subdir = await join(path, directoryName);
       const childListing = collectTopLevelScarpNames(await readDir(subdir));
       truncated ||= childListing.truncated;
-      const childFiles = await Promise.all(childListing.names.map(async (name) => ({
-        name: directoryName + '/' + name,
-        path: await join(subdir, name),
-      })));
-      files.push(...childFiles);
+      groups.push({ directory: directoryName, names: childListing.names });
+      directoryPaths.set(directoryName, subdir);
     } catch {
       // A denied/removed directory must not silently masquerade as empty.
-      // Other accessible Scarp files remain available in the Explorer.
       unavailableFolders.push(directoryName);
     }
   }
-  files.sort((a, b) => a.name.localeCompare(b.name));
-  truncated ||= files.length > MAX_DISPLAYED_SCARP_FILES;
-  return {
-    path,
-    files: files.slice(0, MAX_DISPLAYED_SCARP_FILES),
-    truncated,
-    unavailableFolders,
-  };
+
+  // Selection is fair across populated directories and always bounded.
+  // Build paths only for the selected entries, not up to 800 candidates.
+  const availableNames = groups.reduce((sum, group) => sum + group.names.length, 0);
+  truncated ||= availableNames > MAX_DISPLAYED_SCARP_FILES;
+  const names = selectBalancedScarpProjectNames(groups);
+  const files: FolderFile[] = await Promise.all(names.map(async (name) => {
+    const separator = name.indexOf('/');
+    const folder = separator < 0 ? path : directoryPaths.get(name.slice(0, separator));
+    if (!folder) throw new Error('The Scarp Explorer listing is inconsistent.');
+    return {
+      name,
+      path: await join(folder, separator < 0 ? name : name.slice(separator + 1)),
+    };
+  }));
+  return { path, files, truncated, unavailableFolders };
 }
 
 /** A caller can read only a Scarp entry listed in the current chosen folder.

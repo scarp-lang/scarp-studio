@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  collectTopLevelScarpNames, MAX_DISPLAYED_SCARP_FILES, MAX_INSPECTED_FOLDER_ENTRIES,
+  collectTopLevelScarpNames, selectBalancedScarpProjectNames,
+  MAX_DISPLAYED_SCARP_FILES, MAX_INSPECTED_FOLDER_ENTRIES,
   safeTopLevelSourceName, type FolderEntryCandidate,
 } from './folderListing';
 
@@ -52,5 +53,48 @@ describe('safe and bounded top-level Scarp folder listing', () => {
 
   it('returns no files and no truncation for an empty directory', () => {
     expect(collectTopLevelScarpNames([])).toEqual({ names: [], truncated: false });
+  });
+});
+
+describe('balanced bounded project Explorer selection', () => {
+  it('keeps src, tests and examples visible when root consumes the full per-folder cap', () => {
+    const rootNames = Array.from({ length: MAX_DISPLAYED_SCARP_FILES },
+      (_, index) => 'root-' + String(index).padStart(3, '0') + '.srp');
+    const selected = selectBalancedScarpProjectNames([
+      { directory: '', names: rootNames },
+      { directory: 'src', names: ['main.srp'] },
+      { directory: 'tests', names: ['smoke.srp'] },
+      { directory: 'examples', names: ['demo.srp'] },
+    ]);
+    expect(selected).toHaveLength(MAX_DISPLAYED_SCARP_FILES);
+    expect(selected).toContain('src/main.srp');
+    expect(selected).toContain('tests/smoke.srp');
+    expect(selected).toContain('examples/demo.srp');
+    expect(selected).toEqual([...selected].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it('shares the cap between four crowded groups without exceeding it', () => {
+    const names = Array.from({ length: MAX_DISPLAYED_SCARP_FILES },
+      (_, index) => 'file-' + String(index).padStart(3, '0') + '.srp');
+    const selected = selectBalancedScarpProjectNames([
+      { directory: '', names },
+      { directory: 'src', names },
+      { directory: 'tests', names },
+      { directory: 'examples', names },
+    ]);
+    expect(selected).toHaveLength(MAX_DISPLAYED_SCARP_FILES);
+    for (const prefix of ['', 'src/', 'tests/', 'examples/']) {
+      expect(selected.filter((name) => name.startsWith(prefix) &&
+        (prefix !== '' || !name.includes('/')))).toHaveLength(50);
+    }
+  });
+
+  it('keeps the old complete alphabetical result for uncrowded projects', () => {
+    expect(selectBalancedScarpProjectNames([
+      { directory: '', names: ['z.srp', 'a.srp'] },
+      { directory: 'src', names: ['main.srp'] },
+      { directory: 'tests', names: [] },
+    ])).toEqual(['a.srp', 'src/main.srp', 'z.srp']);
+    expect(selectBalancedScarpProjectNames([])).toEqual([]);
   });
 });

@@ -39,3 +39,36 @@ export function collectTopLevelScarpNames(
       names.length > MAX_DISPLAYED_SCARP_FILES,
   };
 }
+
+/** The Explorer displays at most 200 sources across the chosen root and the
+ * three fixed project folders. Round-robin selection prevents a crowded root
+ * (or one large tests folder) from hiding all sources in another directory.
+ * Inputs are already sanitized and independently bounded by
+ * collectTopLevelScarpNames; this is not a filesystem permission boundary.
+ */
+export interface ScarpProjectNameGroup {
+  directory: '' | 'src' | 'tests' | 'examples';
+  names: readonly string[];
+}
+
+export function selectBalancedScarpProjectNames(
+  groups: readonly ScarpProjectNameGroup[],
+): string[] {
+  const next = groups.map(() => 0);
+  const selected: string[] = [];
+  let progressed = true;
+  while (progressed && selected.length < MAX_DISPLAYED_SCARP_FILES) {
+    progressed = false;
+    for (let i = 0; i < groups.length && selected.length < MAX_DISPLAYED_SCARP_FILES; i++) {
+      const group = groups[i];
+      const index = next[i];
+      if (index >= group.names.length) continue;
+      const name = group.names[index];
+      selected.push(group.directory ? group.directory + '/' + name : name);
+      next[i] = index + 1;
+      progressed = true;
+    }
+  }
+  // Preserve the familiar alphabetical Explorer order after fair selection.
+  return selected.sort((a, b) => a.localeCompare(b));
+}
