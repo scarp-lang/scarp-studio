@@ -179,6 +179,37 @@ describe('selected-folder Scarp source reads', () => {
     expect(readDir).toHaveBeenCalledTimes(4);
   });
 
+  it('finds standard project folders after the 4096-entry generic budget', async () => {
+    const other = Array.from({ length: 4096 }, (_, index) => ({
+      name: 'noise-' + index + '.rs', isFile: true, isDirectory: false, isSymlink: false,
+    }));
+    const file = (name: string) => ({
+      name, isFile: true, isDirectory: false, isSymlink: false,
+    });
+    const directory = (name: string, isSymlink = false) => ({
+      name, isFile: false, isDirectory: true, isSymlink,
+    });
+    vi.mocked(readDir).mockImplementation(async (path) => {
+      if (path === 'C:/project') return [
+        ...other, file('main.srp'),
+        directory('src'), directory('tests'), directory('examples', true),
+      ];
+      if (path === 'C:/project/src') return [file('main.srp')];
+      if (path === 'C:/project/tests') return [file('smoke.srp')];
+      throw new Error('unexpected directory traversal: ' + path);
+    });
+    const result = await scanSourceFolder('C:/project');
+    expect(result.truncated).toBe(true);
+    expect(result.files).toEqual([
+      { name: 'main.srp', path: 'C:/project/main.srp' },
+      { name: 'src/main.srp', path: 'C:/project/src/main.srp' },
+      { name: 'tests/smoke.srp', path: 'C:/project/tests/smoke.srp' },
+    ]);
+    expect(readDir).toHaveBeenCalledTimes(3);
+    expect(readDir).not.toHaveBeenCalledWith('C:/project/examples');
+    expect(result.unavailableFolders).toEqual([]);
+  });
+
   it('opens a nested source only when it was explicitly listed', async () => {
     vi.mocked(readScarpSource).mockResolvedValue('print("nested");');
     const selected = [{ name: 'src/main.srp', path: 'C:/project/src/main.srp' }];

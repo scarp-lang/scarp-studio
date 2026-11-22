@@ -1,7 +1,10 @@
 import { isScarpPath } from './documents';
 
 /** Tauri's readDir materializes a whole immediate directory. These budgets bound
- * frontend processing and displayed results, not the native readDir allocation.
+ * generic frontend source processing and displayed results, not native readDir
+ * allocation. We additionally inspect only fixed trusted names (main.srp and
+ * src/tests/examples) across the already-returned entry names. This keeps a
+ * conventional entrypoint from vanishing arbitrarily at the 4096 cutoff.
  */
 export const MAX_INSPECTED_FOLDER_ENTRIES = 4096;
 export const MAX_DISPLAYED_SCARP_FILES = 200;
@@ -31,12 +34,19 @@ export function collectTopLevelScarpNames(
   const inspected = entries.slice(0, MAX_INSPECTED_FOLDER_ENTRIES);
   const names = inspected
     .filter(safeTopLevelSourceName)
-    .map((entry) => entry.name)
-    .sort((a, b) => a.localeCompare(b));
+    .map((entry) => entry.name);
+  // readDir has already materialized the full immediate directory. A cheap
+  // fixed-name lookup outside the generic 4096-entry processing budget avoids
+  // hiding main.srp merely because the OS enumerated it last. The extension,
+  // symlink and name-safety checks remain identical to ordinary candidates.
+  const main = entries.find((entry) =>
+    entry.name.toLowerCase() === 'main.srp' && safeTopLevelSourceName(entry));
+  if (main && !names.includes(main.name)) names.push(main.name);
+  names.sort((a, b) => a.localeCompare(b));
   const visible = names.slice(0, MAX_DISPLAYED_SCARP_FILES);
   // Keep the conventional main.srp entrypoint available even if more than
-  // 200 alphabetically earlier files occupy the same directory. This does
-  // not inspect beyond the fixed 4096-entry budget or increase the file cap.
+  // 200 alphabetically earlier files occupy the same directory. This keeps
+  // the display cap while allowing only the fixed-name safety exception.
   const entrypoint = names.find((name) => name.toLowerCase() === 'main.srp');
   if (entrypoint && !visible.includes(entrypoint)) {
     visible[visible.length - 1] = entrypoint;

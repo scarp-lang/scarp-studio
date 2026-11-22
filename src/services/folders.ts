@@ -5,7 +5,7 @@ import { readScarpSource } from './sourceRead';
 import { isScarpPath, sameFilePath } from '../model/documents';
 import {
   collectTopLevelScarpNames, selectBalancedScarpProjectNames,
-  MAX_DISPLAYED_SCARP_FILES, MAX_INSPECTED_FOLDER_ENTRIES, type ScarpProjectNameGroup,
+  MAX_DISPLAYED_SCARP_FILES, type ScarpProjectNameGroup,
 } from '../model/folderListing';
 
 export interface FolderFile {
@@ -43,10 +43,21 @@ export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
   const directoryPaths = new Map<string, string>();
   let truncated = root.truncated;
   const unavailableFolders: string[] = [];
-  const inspected = entries.slice(0, MAX_INSPECTED_FOLDER_ENTRIES);
+  // The generic 4096-entry budget still bounds ordinary .srp candidates.
+  // Check only these three fixed directory names across the already-read
+  // root entries: otherwise a crowded root can hide the entire src/tests/
+  // examples project structure simply due to filesystem enumeration order.
+  // Never follow a symlink, recurse, or join an untrusted directory name.
+  const namedDirectories = new Map<string, boolean>();
+  for (const entry of entries) {
+    if (SCARP_PROJECT_SUBFOLDERS.some((name) => name === entry.name) &&
+        !namedDirectories.has(entry.name)) {
+      namedDirectories.set(entry.name, entry.isDirectory && !entry.isSymlink);
+      if (namedDirectories.size === SCARP_PROJECT_SUBFOLDERS.length) break;
+    }
+  }
   for (const directoryName of SCARP_PROJECT_SUBFOLDERS) {
-    const directory = inspected.find((entry) =>
-      entry.name === directoryName && entry.isDirectory && !entry.isSymlink);
+    if (!namedDirectories.get(directoryName)) continue;
     if (!directory) continue;
     try {
       const subdir = await join(path, directoryName);

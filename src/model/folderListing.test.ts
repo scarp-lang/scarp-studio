@@ -64,6 +64,22 @@ describe('safe and bounded top-level Scarp folder listing', () => {
     expect(listing.truncated).toBe(true);
   });
 
+  it('reserves only an exact safe main.srp beyond the generic 4096-entry budget', () => {
+    const ordinary = Array.from({ length: MAX_INSPECTED_FOLDER_ENTRIES },
+      (_, index) => file('note-' + index + '.rs'));
+    const listing = collectTopLevelScarpNames([
+      ...ordinary, file('ignored.srp'), file('main.srp'),
+    ]);
+    expect(listing.names).toEqual(['main.srp']);
+    expect(listing.truncated).toBe(true);
+
+    const unsafe = collectTopLevelScarpNames([
+      ...ordinary, file('main.srp', { isSymlink: true }),
+    ]);
+    expect(unsafe.names).toEqual([]);
+    expect(unsafe.truncated).toBe(true);
+  });
+
   it('returns no files and no truncation for an empty directory', () => {
     expect(collectTopLevelScarpNames([])).toEqual({ names: [], truncated: false });
   });
