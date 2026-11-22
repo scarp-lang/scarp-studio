@@ -40,6 +40,19 @@ describe('safe and bounded top-level Scarp folder listing', () => {
     expect(listing.names[0]).toBe('item-0000.srp');
   });
 
+  it('retains main.srp inside an individually crowded folder', () => {
+    const entries = [
+      ...Array.from({ length: 250 }, (_, index) =>
+        file('a-' + String(index).padStart(3, '0') + '.srp')),
+      file('main.srp'),
+    ];
+    const listing = collectTopLevelScarpNames(entries);
+    expect(listing.names).toHaveLength(MAX_DISPLAYED_SCARP_FILES);
+    expect(listing.truncated).toBe(true);
+    expect(listing.names).toContain('main.srp');
+    expect(listing.names).toEqual([...listing.names].sort((a, b) => a.localeCompare(b)));
+  });
+
   it('limits frontend processing when a folder contains many entries', () => {
     const entries = [
       ...Array.from({ length: MAX_INSPECTED_FOLDER_ENTRIES }, (_, index) =>
@@ -71,6 +84,20 @@ describe('balanced bounded project Explorer selection', () => {
     expect(selected).toContain('tests/smoke.srp');
     expect(selected).toContain('examples/demo.srp');
     expect(selected).toEqual([...selected].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it('prioritizes main.srp in combined cap even if it appears last in its group', () => {
+    const crowded = Array.from({ length: MAX_DISPLAYED_SCARP_FILES - 1 },
+      (_, i) => 'a-' + String(i).padStart(3, '0') + '.srp');
+    const selected = selectBalancedScarpProjectNames([
+      { directory: '', names: [...crowded, 'main.srp'] },
+      { directory: 'src', names: [...crowded, 'main.srp'] },
+      { directory: 'tests', names: crowded },
+      { directory: 'examples', names: crowded },
+    ]);
+    expect(selected).toHaveLength(MAX_DISPLAYED_SCARP_FILES);
+    expect(selected).toContain('main.srp');
+    expect(selected).toContain('src/main.srp');
   });
 
   it('shares the cap between four crowded groups without exceeding it', () => {

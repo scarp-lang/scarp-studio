@@ -33,8 +33,17 @@ export function collectTopLevelScarpNames(
     .filter(safeTopLevelSourceName)
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b));
+  const visible = names.slice(0, MAX_DISPLAYED_SCARP_FILES);
+  // Keep the conventional main.srp entrypoint available even if more than
+  // 200 alphabetically earlier files occupy the same directory. This does
+  // not inspect beyond the fixed 4096-entry budget or increase the file cap.
+  const entrypoint = names.find((name) => name.toLowerCase() === 'main.srp');
+  if (entrypoint && !visible.includes(entrypoint)) {
+    visible[visible.length - 1] = entrypoint;
+    visible.sort((a, b) => a.localeCompare(b));
+  }
   return {
-    names: names.slice(0, MAX_DISPLAYED_SCARP_FILES),
+    names: visible,
     truncated: entries.length > MAX_INSPECTED_FOLDER_ENTRIES ||
       names.length > MAX_DISPLAYED_SCARP_FILES,
   };
@@ -54,6 +63,13 @@ export interface ScarpProjectNameGroup {
 export function selectBalancedScarpProjectNames(
   groups: readonly ScarpProjectNameGroup[],
 ): string[] {
+  // Give each visible main.srp first chance at a slot. A main.srp retained
+  // by an individual folder's cap could still be crowded out by the combined
+  // cap without this second priority pass.
+  const ordered = groups.map((group) => {
+    const main = group.names.find((name) => name.toLowerCase() === 'main.srp');
+    return main ? [main, ...group.names.filter((name) => name !== main)] : group.names;
+  });
   const next = groups.map(() => 0);
   const selected: string[] = [];
   let progressed = true;
@@ -62,8 +78,8 @@ export function selectBalancedScarpProjectNames(
     for (let i = 0; i < groups.length && selected.length < MAX_DISPLAYED_SCARP_FILES; i++) {
       const group = groups[i];
       const index = next[i];
-      if (index >= group.names.length) continue;
-      const name = group.names[index];
+      if (index >= ordered[i].length) continue;
+      const name = ordered[i][index];
       selected.push(group.directory ? group.directory + '/' + name : name);
       next[i] = index + 1;
       progressed = true;

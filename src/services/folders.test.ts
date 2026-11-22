@@ -153,7 +153,11 @@ describe('selected-folder Scarp source reads', () => {
           asFile('root-' + String(i).padStart(3, '0') + '.srp')),
         asDirectory('src'), asDirectory('tests'), asDirectory('examples'),
       ];
-      if (path === 'C:/project/src') return [asFile('main.srp')];
+      if (path === 'C:/project/src') return [
+        ...Array.from({ length: 225 }, (_, i) =>
+          asFile('a-' + String(i).padStart(3, '0') + '.srp')),
+        asFile('main.srp'),
+      ];
       if (path === 'C:/project/tests') return [asFile('smoke.srp')];
       if (path === 'C:/project/examples') return [asFile('demo.srp')];
       throw new Error('unexpected directory scan');
