@@ -19,7 +19,12 @@ export function isScarpPath(path: string): boolean {
  * canonicalization; symlink/junction identity still needs native handling.
  */
 export function sameFilePath(left: string, right: string): boolean {
-  const isWindows = (path: string) => /^[A-Za-z]:[\\/]/.test(path) || /^\\\\/.test(path);
+  // Win32 accepts both separators for UNC prefixes as well as path tails.
+  // The original check recognized only backslash-prefixed UNC roots, so the
+  // exact same network source through //server/share and \\\\server\\share
+  // could bypass dirty-tab reuse and Save As collision prevention.
+  const isWindows = (path: string) =>
+    /^[A-Za-z]:[\\/]/.test(path) || /^[\\/]{2}/.test(path);
   if (!isWindows(left) || !isWindows(right)) return left === right;
 
   const normalize = (original: string): string => {

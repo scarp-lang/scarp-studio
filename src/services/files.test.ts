@@ -56,6 +56,15 @@ describe('safe .srp file writes', () => {
     expect(writeTextFile).not.toHaveBeenCalled();
   });
 
+  it('rejects Save As via forward-slash UNC spelling of a dirty network tab', async () => {
+    vi.mocked(save).mockResolvedValue('//SERVER/SHARE/src/main.srp');
+    await expect(writeSourceFile(createUntitled(18), true, [
+      String.raw`\\server\share\src\MAIN.SRP`,
+    ])).rejects.toThrow('already open');
+    expect(readScarpSource).not.toHaveBeenCalled();
+    expect(writeTextFile).not.toHaveBeenCalled();
+  });
+
   it('refuses Save As through a Windows parent-directory alias of an already-open tab', async () => {
     vi.mocked(save).mockResolvedValue(String.raw`C:\Project\src\..\main.srp`);
     await expect(writeSourceFile(createUntitled(1), true, ['c:/project/MAIN.SRP']))

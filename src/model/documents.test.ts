@@ -56,6 +56,31 @@ describe('Scarp-only file state', () => {
     )).toBe(false);
   });
 
+  it('treats slash-prefixed and mixed-separator UNC paths as the same Windows file', () => {
+    expect(sameFilePath('//SERVER/share/src/main.srp',
+      String.raw`\\server\SHARE\src\MAIN.SRP`)).toBe(true);
+    expect(sameFilePath(String.raw`\\SERVER\share\src\..\main.srp`,
+      '//server/share/main.srp')).toBe(true);
+    expect(sameFilePath('//?/UNC/SERVER/share/Main.srp',
+      String.raw`\\server\share\main.srp`)).toBe(true);
+    expect(sameFilePath('//server/share/main.srp',
+      String.raw`\\server\other\main.srp`)).toBe(false);
+    expect(sameFilePath('//server/share/../main.srp',
+      String.raw`\\server\share\main.srp`)).toBe(false);
+    expect(sameFilePath('//?/UNC/server/share/src/../main.srp',
+      String.raw`\\server\share\main.srp`)).toBe(false);
+    expect(sameFilePath('/tmp/Main.srp', '/tmp/main.srp')).toBe(false);
+  });
+
+  it('reuses a dirty UNC tab when the picker returns forward slashes', () => {
+    const first = openedDocument([], String.raw`\\server\share\Main.srp`, 'saved');
+    const edited = updateContent(first.documents, first.id, 'unsaved work');
+    const again = openedDocument(edited, '//SERVER/SHARE/main.SRP', 'stale disk');
+    expect(again.documents).toBe(edited);
+    expect(again.id).toBe(first.id);
+    expect(again.documents[0].content).toBe('unsaved work');
+  });
+
   it('detects ordinary Windows dot-segment aliases without crossing roots or device namespaces', () => {
     expect(sameFilePath(
       String.raw`C:\Project\src\..\Main.srp`, 'c:/project/main.SRP',

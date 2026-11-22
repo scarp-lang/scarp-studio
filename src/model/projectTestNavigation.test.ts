@@ -18,6 +18,18 @@ describe('project test report → current Explorer source navigation', () => {
       .toBe('C:/Scarp/Project/tests/लाल.srp');
   });
 
+  it('resolves a listed UNC project under slash/backslash spelling changes only', () => {
+    const network = {
+      path: String.raw`\\server\share\Scarp`,
+      files: [{ name: 'tests/green.srp',
+        path: String.raw`\\server\share\Scarp\tests\green.srp` }],
+    };
+    expect(resolveListedTestSource('tests/green.srp',
+      '//SERVER/SHARE/scarp', network)).toBe(network.files[0].path);
+    expect(resolveListedTestSource('tests/green.srp',
+      '//SERVER/another/scarp', network)).toBeNull();
+  });
+
   it('refuses unlisted or removed project test sources', () => {
     expect(resolveListedTestSource('tests/new.srp', current.path, current)).toBeNull();
     expect(resolveListedTestSource('tests/green.srp', current.path,
