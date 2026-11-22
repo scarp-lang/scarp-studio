@@ -10,6 +10,9 @@ const MAX_ENTRIES: usize = 4096;
 const MAX_ENTRIES_PER_ROOT: usize = 512;
 const MAX_ROOTS: usize = 128;
 const MAX_CANDIDATES: usize = 24;
+// Reserve discovery capacity for later locations (especially extracted ZIPs).
+// A version-heavy installation tree must not hide every other candidate.
+const MAX_CANDIDATES_PER_ROOT: usize = 4;
 
 fn expected_file_name() -> &'static str {
     if cfg!(windows) {
@@ -19,8 +22,13 @@ fn expected_file_name() -> &'static str {
     }
 }
 
-fn record_binary(path: &Path, found: &mut Vec<String>, seen: &mut HashSet<PathBuf>) {
-    if found.len() >= MAX_CANDIDATES
+fn record_binary(
+    path: &Path,
+    found: &mut Vec<String>,
+    seen: &mut HashSet<PathBuf>,
+    candidate_limit: usize,
+) {
+    if found.len() >= candidate_limit
         || !path.file_name().is_some_and(|name| {
             name.to_string_lossy()
                 .eq_ignore_ascii_case(expected_file_name())
@@ -46,15 +54,16 @@ fn scan_directory(
     budget: &mut usize,
     found: &mut Vec<String>,
     seen: &mut HashSet<PathBuf>,
+    candidate_limit: usize,
 ) {
-    if *budget == 0 || found.len() >= MAX_CANDIDATES {
+    if *budget == 0 || found.len() >= candidate_limit {
         return;
     }
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
-        if *budget == 0 || found.len() >= MAX_CANDIDATES {
+        if *budget == 0 || found.len() >= candidate_limit {
             break;
         }
         *budget -= 1;
@@ -63,7 +72,7 @@ fn scan_directory(
             continue;
         };
         if kind.is_file() || kind.is_symlink() {
-            record_binary(&path, found, seen);
+            record_binary(&path, found, seen, candidate_limit);
         } else if depth > 0 && kind.is_dir() {
             let scarp_named = entry
                 .file_name()
@@ -71,7 +80,7 @@ fn scan_directory(
                 .to_ascii_lowercase()
                 .contains("scarp");
             if descend_all || scarp_named {
-                scan_directory(&path, depth - 1, true, budget, found, seen);
+                scan_directory(&path, depth - 1, true, budget, found, seen, candidate_limit);
             }
         }
     }
@@ -102,7 +111,13 @@ fn scan_directories_with_budgets(
         }
         let mut root_budget = root_limit.min(remaining_total);
         let initial = root_budget;
-        scan_directory(root, *depth, *all, &mut root_budget, &mut found, &mut seen);
+        // Each root gets at most four of the global 24 candidate slots.
+        // This preserves later install/Downloads/PATH locations even when an
+        // earlier root contains dozens of versioned Scarp installations.
+        let candidate_limit = (found.len() + MAX_CANDIDATES_PER_ROOT).min(MAX_CANDIDATES);
+        scan_directory(
+            root, *depth, *all, &mut root_budget, &mut found, &mut seen, candidate_limit,
+        );
         remaining_total -= initial - root_budget;
     }
     found
