@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './projectSourceState';
+import {
+  dirtyProjectSourceNames, projectActionRequiresSavedSources,
+  projectSourceBuffersChanged,
+} from './projectSourceState';
 import type { StudioDocument } from './documents';
 
 function tab(name: string, path: string | null, dirty = true): StudioDocument {
   return { id: name, name, path, savedContent: 'saved', content: dirty ? 'edited' : 'saved', revision: 0 };
 }
+
+describe('project commands and saved source requirements', () => {
+  it('keeps Info available but requires clean sources for every source-backed action', () => {
+    expect(projectActionRequiresSavedSources('info')).toBe(false);
+    for (const action of ['verify', 'run', 'list-tests', 'run-tests'] as const) {
+      expect(projectActionRequiresSavedSources(action)).toBe(true);
+    }
+  });
+});
 
 describe('disk-backed project source awareness', () => {
   it('flags only dirty files belonging to the chosen project', () => {

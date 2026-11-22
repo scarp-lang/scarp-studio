@@ -38,7 +38,10 @@ import {
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReportForAction, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource } from './model/projectTestNavigation';
-import { dirtyProjectSourceNames, projectSourceBuffersChanged } from './model/projectSourceState';
+import {
+  dirtyProjectSourceNames, projectActionRequiresSavedSources,
+  projectSourceBuffersChanged,
+} from './model/projectSourceState';
 import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
@@ -209,6 +212,12 @@ export default function App() {
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  // The same selected-project dirty-source policy governs both button state
+  // and the guarded native action handler. Read-only Info stays available.
+  const dirtySelectedProjectSources = useMemo(
+    () => folderPath ? dirtyProjectSourceNames(documents, folderPath) : [],
+    [documents, folderPath],
+  );
   const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
   const diagnosticPosition = isCurrentVerifiedSource(compilerOutputSource, active) && active?.path
     ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
@@ -1118,7 +1127,7 @@ export default function App() {
       setError('Select the official compiler and a Scarp project folder first.');
       return;
     }
-    if (action === 'run' || action === 'verify' || action === 'run-tests') {
+    if (projectActionRequiresSavedSources(action)) {
       try {
         if (action === 'run') validateProgramInput(stdinText);
         // Disk-backed project actions cannot reflect unsaved source edits.
@@ -1908,19 +1917,28 @@ export default function App() {
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
                 title="Inspect the chosen project's manifest and entrypoint">Info</button>
               <button type="button" onClick={() => void runProjectAction('verify')}
-                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
-                title="Verify the chosen Scarp project without executing code">Verify Project</button>
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
+                  dirtySelectedProjectSources.length > 0}
+                title="Verify the chosen Scarp project without executing code; save edited project sources first">Verify Project</button>
               <button type="button" onClick={() => void runProjectAction('run')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
-                  dirtyProjectSourceNames(documents, folderPath).length > 0}
+                  dirtySelectedProjectSources.length > 0}
                 title="Execute the project entrypoint with preloaded input; save modified files in this project first">Run Project</button>
               <button type="button" onClick={() => void runProjectAction('list-tests')}
-                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
-                title="List discovered project tests without running them">List Tests</button>
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
+                  dirtySelectedProjectSources.length > 0}
+                title="List saved project tests without executing them; save edited project sources first">List Tests</button>
               <button type="button" onClick={() => void runProjectAction('run-tests')}
-                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
-                title="Explicitly execute the chosen project's test files">Run Tests</button>
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
+                  dirtySelectedProjectSources.length > 0}
+                title="Explicitly execute saved project tests; save edited project sources first">Run Tests</button>
               <span>{folderPath ? fileName(folderPath) : 'Choose a Scarp project folder'}</span>
+              {dirtySelectedProjectSources.length > 0 && (
+                <span className="project-dirty-warning" role="status">
+                  Save {dirtySelectedProjectSources.length} modified project source(s) before
+                  Verify, Run, List Tests or Run Tests. Project Info stays available.
+                </span>
+              )}
             </div>
             <div className="compiler-stdin">
               <label htmlFor="scarp-stdin">Program input (Run / Run Project; preloaded UTF-8 lines)</label>

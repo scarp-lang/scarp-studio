@@ -1,4 +1,5 @@
 import { isDirty, type StudioDocument } from './documents';
+import type { ScarpProjectAction } from '../services/project';
 
 type CanonicalParts = { kind: 'windows' | 'posix'; parts: string[] };
 
@@ -59,6 +60,15 @@ function belongsToProject(path: string | null, root: CanonicalParts): boolean {
   return candidate !== null && candidate.kind === root.kind &&
     candidate.parts.length > root.parts.length &&
     root.parts.every((part, index) => candidate.parts[index] === part);
+}
+
+/** Project Info reads the saved project manifest, not Studio source buffers.
+ * Every other project action reads project source files from disk; List Tests
+ * is read-only but discovers saved tests, and must not misrepresent unsaved
+ * edits as the current test inventory.
+ */
+export function projectActionRequiresSavedSources(action: ScarpProjectAction): boolean {
+  return action !== 'info';
 }
 
 /** Only dirty, named .srp source tabs under the selected project can make a
