@@ -14,12 +14,18 @@ export function programInputBytes(input: string): number {
 
 /** Keep CRLF, whitespace and final unterminated lines unchanged. */
 export function validateProgramInput(input: string): void {
+  // A UTF-8 encoding cannot be smaller than the number of UTF-16 code units
+  // of a well-formed string. Avoid a large pre-validation allocation if
+  // input reaches this boundary outside the textarea's maxLength guard.
+  if (input.length > MAX_INPUT_BYTES) {
+    throw new Error('Program input exceeds Studio\'s 16 KiB UTF-8 limit.');
+  }
+  // TextEncoder silently replaces lone surrogates unless rejected first.
+  assertWellFormedUtf16(input, 'Program input');
   const bytes = new TextEncoder().encode(input);
   if (bytes.byteLength > MAX_INPUT_BYTES) {
     throw new Error('Program input exceeds Studio\'s 16 KiB UTF-8 limit.');
   }
-  // TextEncoder would otherwise silently replace unpaired UTF-16 with U+FFFD.
-  assertWellFormedUtf16(input, 'Program input');
   if (!bytes.length) return;
   let lineBytes = 0;
   let lines = 1;

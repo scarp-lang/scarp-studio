@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   MAX_INPUT_BYTES, MAX_INPUT_LINE_BYTES, MAX_INPUT_LINES,
   programInputBytes, validateProgramInput,
@@ -24,6 +24,18 @@ describe('bounded explicit Scarp program input', () => {
     expect(() => validateProgramInput('a\n'.repeat(MAX_INPUT_LINES))).not.toThrow();
     expect(() => validateProgramInput('a\n'.repeat(MAX_INPUT_LINES + 1))).toThrow('256 lines');
   });
+  it('does not allocate a UTF-8 input buffer for an obviously oversized paste', () => {
+    const encode = vi.spyOn(TextEncoder.prototype, 'encode')
+      .mockImplementation(() => { throw new Error('unexpected allocation'); });
+    try {
+      expect(() => validateProgramInput('a'.repeat(MAX_INPUT_BYTES + 1)))
+        .toThrow('16 KiB');
+      expect(encode).not.toHaveBeenCalled();
+    } finally {
+      encode.mockRestore();
+    }
+  });
+
   it('counts CRLF terminators inside the per-line byte budget', () => {
     expect(() => validateProgramInput('a'.repeat(MAX_INPUT_LINE_BYTES - 2) + '\r\n')).not.toThrow();
     expect(() => validateProgramInput('a'.repeat(MAX_INPUT_LINE_BYTES - 1) + '\r\n')).toThrow('4096');
