@@ -58,7 +58,6 @@ export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
   }
   for (const directoryName of SCARP_PROJECT_SUBFOLDERS) {
     if (!namedDirectories.get(directoryName)) continue;
-    if (!directory) continue;
     try {
       const subdir = await join(path, directoryName);
       const childListing = collectTopLevelScarpNames(await readDir(subdir));
