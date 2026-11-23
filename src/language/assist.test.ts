@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS, scanScarpFunctions,
+  isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS,
+  MAX_SCARP_OUTLINE_HEADER_UNITS, MAX_SCARP_OUTLINE_SYMBOLS,
+  scanScarpFunctions, scanScarpOutlineSymbols,
   scarpCompletions, scarpTokenHelp,
 } from './assist';
 
@@ -203,6 +205,62 @@ describe('lexical completion safety', () => {
     const line = 'print("say \\"hello\\""); bind answer = 42;';
     expect(isScarpCodePosition(line, line.indexOf('hello') + 2)).toBe(false);
     expect(isScarpCodePosition(line, line.indexOf('bind') + 3)).toBe(true);
+  });
+});
+
+describe('Scarp full declaration outline', () => {
+  it('shows public records, variants, and functions in source order', () => {
+    const source = [
+      '// pub record Hidden {',
+      'pub record Task { title: string, done: boolean }',
+      'var literal = "variant Invisible {";',
+      'variant Lookup { Missing, Found(integer) }',
+      'pure funcra process(value: integer) -> integer {',
+      '    return value;',
+      '}',
+      'pub variant Result { Ok, Failed(string) }',
+    ].join('\r\n');
+    const outline = scanScarpOutlineSymbols(source);
+    expect(outline.map(({ name, kind, line }) => [name, kind, line])).toEqual([
+      ['Task', 'record', 2],
+      ['Lookup', 'variant', 4],
+      ['process', 'function', 5],
+      ['Result', 'variant', 8],
+    ]);
+    expect(outline[0].startColumn).toBe('pub record '.length + 1);
+    expect(outline[1].startColumn).toBe('variant '.length + 1);
+    expect(scanScarpFunctions(source).map(({ name }) => name)).toEqual(['process']);
+    expect(scanScarpFunctions(source)[0]).not.toHaveProperty('kind');
+  });
+
+  it('ignores malformed headers and respects mixed CR, LF and CRLF lines', () => {
+    const source = [
+      'record MissingOpening',
+      '  record Entry { label: string }',
+      '// variant Fake { Ignored }',
+      'pub variant State { Ready }',
+      'funcra compute() -> integer { return 1; }',
+      'variant NotAHeader(variable)',
+    ].join('\r').replace('\rpub variant', '\r\npub variant');
+    expect(scanScarpOutlineSymbols(source).map((symbol) =>
+      [symbol.kind, symbol.name, symbol.line, symbol.startColumn])).toEqual([
+      ['record', 'Entry', 2, 10],
+      ['variant', 'State', 4, 13],
+      ['function', 'compute', 5, 8],
+    ]);
+  });
+
+  it('limits the mixed outline and avoids examining giant declaration headers', () => {
+    const text = [
+      ' '.repeat(MAX_SCARP_OUTLINE_HEADER_UNITS + 5) + 'record TooFar {}',
+      ...Array.from({ length: MAX_SCARP_OUTLINE_SYMBOLS + 20 },
+        (_, i) => 'pub record Item' + i + ' {}'),
+    ].join('\n');
+    const entries = scanScarpOutlineSymbols(text);
+    expect(entries).toHaveLength(MAX_SCARP_OUTLINE_SYMBOLS);
+    expect(entries[0]).toMatchObject({ name: 'Item0', kind: 'record', line: 2 });
+    expect(entries.at(-1)?.name).toBe('Item499');
+    expect(scanScarpFunctions(text)).toEqual([]);
   });
 });
 

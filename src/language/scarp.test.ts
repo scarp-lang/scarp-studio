@@ -208,7 +208,7 @@ describe('Scarp editor assistance registration', () => {
         registerDocumentSymbolProvider: provideSymbols,
         CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
-        SymbolKind: { Function: 11 },
+        SymbolKind: { Function: 11, Enum: 9, Struct: 22 },
       },
     };
     registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
@@ -276,5 +276,21 @@ describe('Scarp editor assistance registration', () => {
       getValue: () => 'funcra add(a: integer) -> integer { return a; }',
       getLineMaxColumn: () => 44,
     }).map((item) => item.name)).toEqual(['add']);
+    const nominal = outline.provideDocumentSymbols({
+      getValue: () => [
+        'pub record Task { title: string }',
+        'pub variant State { Ready }',
+        'pure funcra check() -> boolean { return true; }',
+      ].join('\n'),
+      getLineMaxColumn: () => 48,
+    }) as Array<{ name: string; detail: string; kind: number;
+      selectionRange: { startLineNumber: number; startColumn: number } }>;
+    expect(nominal.map(({ name, detail, kind }) => [name, detail, kind])).toEqual([
+      ['Task', 'Scarp record', 22],
+      ['State', 'Scarp variant', 9],
+      ['check', 'Scarp function', 11],
+    ]);
+    expect(nominal[0].selectionRange.startLineNumber).toBe(1);
+    expect(nominal[1].selectionRange.startColumn).toBe(13);
   });
 });

@@ -23,7 +23,7 @@ import {
   keyboardTabTarget, MAX_NAVIGATION_QUERY_UNITS, parseLineLocation,
   type NavigationEntry,
 } from './model/navigation';
-import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
+import { scanScarpOutlineSymbols, type ScarpOutlineSymbol } from './language/assist';
 import { NativeDialogGate } from './model/dialogGate';
 import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterTemplates';
 import { runnableSource } from './model/compilerReadiness';
@@ -295,8 +295,8 @@ export default function App() {
     ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
   const problemMarker = useMemo(() => verifiedProblemMarker(diagnostic, compilerOutputSource, active),
     [diagnostic, compilerOutputSource, active]);
-  const functionOutline = useMemo(
-    () => active ? scanScarpFunctions(active.content) : [],
+  const declarationOutline = useMemo(
+    () => active ? scanScarpOutlineSymbols(active.content) : [],
     [active?.content],
   );
 
@@ -340,14 +340,14 @@ export default function App() {
     };
   }, [activeId, active?.content, problemMarker]);
 
-  function jumpToFunction(symbol: ScarpFunctionSymbol): void {
+  function jumpToDeclaration(symbol: ScarpOutlineSymbol): void {
     const editor = editorHandle.current;
     if (!editor) return;
     const position = { lineNumber: symbol.line, column: symbol.startColumn };
     editor.setPosition(position);
     editor.revealPositionInCenter(position);
     editor.focus();
-    setNotice('Scarp function: ' + symbol.name);
+    setNotice('Scarp ' + symbol.kind + ': ' + symbol.name);
   }
 
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
@@ -1933,21 +1933,24 @@ export default function App() {
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
           </section>
-          <section className="sidebar-section" aria-label="Scarp function outline">
-            <div className="sidebar-heading">FUNCTION OUTLINE</div>
-            {functionOutline.map((symbol) => (
+          <section className="sidebar-section" aria-label="Scarp declaration outline">
+            <div className="sidebar-heading">DECLARATION OUTLINE</div>
+            {declarationOutline.map((symbol) => (
               <button type="button" className="file-row outline-row"
-                key={symbol.line + ':' + symbol.name}
-                onClick={() => jumpToFunction(symbol)}
-                title={'Go to ' + symbol.name + ' at line ' + symbol.line}>
-                <span className="file-glyph" aria-hidden="true">ƒ</span>
+                key={symbol.line + ':' + symbol.kind + ':' + symbol.name}
+                onClick={() => jumpToDeclaration(symbol)}
+                title={'Go to ' + symbol.kind + ' ' + symbol.name + ' at line ' + symbol.line}>
+                <span className="file-glyph" aria-hidden="true">
+                  {symbol.kind === 'function' ? 'ƒ' : symbol.kind === 'record' ? '▣' : '◇'}
+                </span>
                 <span className="file-name">{symbol.name}</span>
                 <span className="outline-line">:{symbol.line}</span>
               </button>
             ))}
-            {!functionOutline.length && <p className="sidebar-note">No function declarations in this file.</p>}
-            {functionOutline.length >= 500 &&
-              <p className="sidebar-note" role="status">Function outline limited to 500 entries.</p>}
+            {!declarationOutline.length &&
+              <p className="sidebar-note">No function, record or variant declarations in this file.</p>}
+            {declarationOutline.length >= 500 &&
+              <p className="sidebar-note" role="status">Declaration outline limited to 500 entries.</p>}
           </section>
         </aside>
 

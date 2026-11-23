@@ -429,30 +429,59 @@ export interface ScarpFunctionSymbol {
   endColumn: number;
 }
 
-/** A conservative, editor-only function outline; not a Scarp parser.
- * Share Monaco's CR, LF and CRLF boundaries with Search/Diagnostics and
- * scan lazily so we can stop after the 500-symbol UI budget.
+export interface ScarpOutlineSymbol extends ScarpFunctionSymbol {
+  kind: 'function' | 'record' | 'variant';
+}
+
+export const MAX_SCARP_OUTLINE_SYMBOLS = 500;
+export const MAX_SCARP_OUTLINE_HEADER_UNITS = 2048;
+
+/** Editor-only declaration scanning, not a Scarp parser or compiler.
+ * The functions-only API keeps an independent 500-function budget even if a
+ * source begins with many public record or variant declarations.
  */
-export function scanScarpFunctions(content: string): ScarpFunctionSymbol[] {
-  const results: ScarpFunctionSymbol[] = [];
+function scanDeclarations(
+  content: string,
+  includeNominalTypes: boolean,
+): ScarpOutlineSymbol[] {
+  const results: ScarpOutlineSymbol[] = [];
   let start = 0;
   let lineNumber = 1;
   while (start <= content.length) {
     const end = nextLineBreak(content, start);
-    const line = content.slice(start, end < 0 ? content.length : end);
-    // Avoid treating commented-out declarations as functions.
-    const match = /^\s*(?:(?:pub|pure)\s+){0,2}funcra\s+([A-Za-z_][A-Za-z_0-9]*)\s*\(/.exec(line);
-    if (match) {
-      const startColumn = line.indexOf(match[1], match[0].indexOf('funcra')) + 1;
+    const lineEnd = end < 0 ? content.length : end;
+    // Avoid allocating or running declaration regexes over giant lines.
+    const line = content.slice(start, Math.min(lineEnd, start + MAX_SCARP_OUTLINE_HEADER_UNITS));
+    const fn = /^\s*(?:(?:pub|pure)\s+){0,2}funcra\s+([A-Za-z_][A-Za-z_0-9]*)\s*\(/.exec(line);
+    const nominal = !fn && includeNominalTypes
+      ? /^\s*(?:pub\s+)?(record|variant)\s+([A-Za-z_][A-Za-z_0-9]*)\s*\{/.exec(line)
+      : null;
+    if (fn || nominal) {
+      const kind: ScarpOutlineSymbol['kind'] = fn ? 'function' : nominal![1] as 'record' | 'variant';
+      const match = fn ?? nominal!;
+      const name = fn ? fn[1] : nominal![2];
+      const startColumn = match[0].lastIndexOf(name) + 1;
       results.push({
-        name: match[1], line: lineNumber,
-        startColumn, endColumn: startColumn + match[1].length,
+        kind, name, line: lineNumber,
+        startColumn, endColumn: startColumn + name.length,
       });
-      if (results.length >= 500) break;
+      if (results.length >= MAX_SCARP_OUTLINE_SYMBOLS) break;
     }
     if (end < 0) break;
     start = end + lineBreakWidth(content, end);
     lineNumber++;
   }
   return results;
+}
+
+/** Backwards-compatible function-only shape and limit. */
+export function scanScarpFunctions(content: string): ScarpFunctionSymbol[] {
+  return scanDeclarations(content, false).map(({ name, line, startColumn, endColumn }) => ({
+    name, line, startColumn, endColumn,
+  }));
+}
+
+/** Structured symbols for Monaco and Studio's mixed Declaration Outline. */
+export function scanScarpOutlineSymbols(content: string): ScarpOutlineSymbol[] {
+  return scanDeclarations(content, true);
 }

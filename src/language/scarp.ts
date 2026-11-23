@@ -1,6 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import {
-  isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, scanScarpFunctions, scarpCompletions, scarpTokenHelp,
+  isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
   type ScarpCompletion,
 } from './assist';
 
@@ -152,10 +152,12 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
 
   monaco.languages.registerDocumentSymbolProvider('scarp', {
     provideDocumentSymbols(model) {
-      return scanScarpFunctions(model.getValue()).map((symbol) => ({
+      return scanScarpOutlineSymbols(model.getValue()).map((symbol) => ({
         name: symbol.name,
-        detail: 'Scarp function',
-        kind: monaco.languages.SymbolKind.Function,
+        detail: 'Scarp ' + symbol.kind,
+        kind: symbol.kind === 'function' ? monaco.languages.SymbolKind.Function
+          : symbol.kind === 'record' ? monaco.languages.SymbolKind.Struct
+            : monaco.languages.SymbolKind.Enum,
         tags: [],
         range: new monaco.Range(symbol.line, 1, symbol.line, model.getLineMaxColumn(symbol.line)),
         selectionRange: new monaco.Range(symbol.line, symbol.startColumn,
