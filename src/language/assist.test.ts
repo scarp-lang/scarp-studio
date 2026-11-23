@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  isScarpCodePosition, MAX_COMPLETION_PREFIX_UNITS, scanScarpFunctions,
+  isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS, scanScarpFunctions,
   scarpCompletions, scarpTokenHelp,
 } from './assist';
 
@@ -179,6 +179,19 @@ describe('published Scarp alpha.18 immutable fixed-array updates', () => {
 });
 
 describe('lexical completion safety', () => {
+  it('bounds assistance on giant lines instead of scanning a whole source per hover', () => {
+    const hugeLine = 'x'.repeat(MAX_ASSIST_SCAN_UNITS + 1);
+    expect(MAX_ASSIST_SCAN_UNITS).toBe(16 * 1024);
+    expect(isScarpCodePosition(hugeLine, MAX_ASSIST_SCAN_UNITS)).toBe(true);
+    expect(isScarpCodePosition(hugeLine, MAX_ASSIST_SCAN_UNITS + 1)).toBe(false);
+    expect(isScarpCodePosition('hello', 5)).toBe(true);
+    for (const invalid of [-1, 6, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(isScarpCodePosition('hello', invalid)).toBe(false);
+    }
+    expect(isScarpCodePosition('// disabled', 4)).toBe(false);
+    expect(isScarpCodePosition('"still a string', 4)).toBe(false);
+  });
+
   it('suppresses suggestions inside comments and quoted strings', () => {
     const line = 'print("https://test"); // trailing comment';
     expect(isScarpCodePosition(line, line.indexOf('https') + 2)).toBe(false);

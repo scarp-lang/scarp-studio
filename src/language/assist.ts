@@ -396,11 +396,20 @@ export function scarpTokenHelp(token: string): ScarpCompletion | undefined {
     templates.find((entry) => entry.label === token);
 }
 
+/** Editor-only source inspection should never scan a multi-megabyte single
+ * line on every hover or completion callback. Suppress assistance beyond the
+ * budget rather than guessing whether a prefix opened a string or comment. */
+export const MAX_ASSIST_SCAN_UNITS = 16 * 1024;
+
 /** Do not insert suggestions into a single-line string or // comment. */
 export function isScarpCodePosition(line: string, zeroBasedOffset: number): boolean {
+  if (!Number.isSafeInteger(zeroBasedOffset) || zeroBasedOffset < 0 ||
+      zeroBasedOffset > line.length || zeroBasedOffset > MAX_ASSIST_SCAN_UNITS) {
+    return false;
+  }
   let insideString = false;
   let escaped = false;
-  const end = Math.max(0, Math.min(line.length, zeroBasedOffset));
+  const end = zeroBasedOffset;
   for (let index = 0; index < end; index += 1) {
     const char = line[index];
     if (insideString) {

@@ -1,8 +1,16 @@
 import type * as Monaco from 'monaco-editor';
 import {
-  isScarpCodePosition, scanScarpFunctions, scarpCompletions, scarpTokenHelp,
+  isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, scanScarpFunctions, scarpCompletions, scarpTokenHelp,
   type ScarpCompletion,
 } from './assist';
+
+/** Avoid fetching a multi-megabyte line before deciding whether Monaco
+ * completion or hover is within the lexical assistance scanning budget.
+ * Positions come from Monaco and use one-based UTF-16 columns. */
+function canAssistAtColumn(column: number): boolean {
+  return Number.isSafeInteger(column) && column >= 1 &&
+    column <= MAX_ASSIST_SCAN_UNITS + 1;
+}
 
 /** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.19.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
@@ -89,6 +97,7 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
   };
   monaco.languages.registerCompletionItemProvider('scarp', {
     provideCompletionItems(model, position) {
+      if (!canAssistAtColumn(position.column)) return { suggestions: [] };
       const line = model.getLineContent(position.lineNumber);
       if (!isScarpCodePosition(line, position.column - 1)) return { suggestions: [] };
       const word = model.getWordUntilPosition(position);
@@ -123,6 +132,7 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
 
   monaco.languages.registerHoverProvider('scarp', {
     provideHover(model, position) {
+      if (!canAssistAtColumn(position.column)) return null;
       const line = model.getLineContent(position.lineNumber);
       if (!isScarpCodePosition(line, position.column - 1)) return null;
       const word = model.getWordAtPosition(position);

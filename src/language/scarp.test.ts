@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { registerScarpLanguage } from './scarp';
+import { MAX_ASSIST_SCAN_UNITS } from './assist';
 
 type TokenRule = [RegExp, unknown];
 type TokenProvider = {
@@ -228,6 +229,17 @@ describe('Scarp editor assistance registration', () => {
     };
     const position = { lineNumber: 1, column: 5 };
     expect(handler.provideCompletionItems(model, position).suggestions.some((s) => s.label === 'funcra')).toBe(true);
+    const giantModel = {
+      getLineContent: () => { throw new Error('must not load giant lines for assistance'); },
+      getWordUntilPosition: () => { throw new Error('must not complete giant lines'); },
+      getWordAtPosition: () => { throw new Error('must not inspect giant lines'); },
+    };
+    const tooFar = { lineNumber: 1, column: MAX_ASSIST_SCAN_UNITS + 2 };
+    expect(handler.provideCompletionItems(giantModel, tooFar).suggestions).toEqual([]);
+    const hoverHandler = provideHover.mock.calls[0][1] as {
+      provideHover: (model: unknown, position: unknown) => unknown;
+    };
+    expect(hoverHandler.provideHover(giantModel, tooFar)).toBeNull();
     const commentModel = { ...model, getLineContent: () => '// func' };
     expect(handler.provideCompletionItems(commentModel, { lineNumber: 1, column: 8 }).suggestions).toEqual([]);
     // Mid-word accepting "funcra" must replace the entire existing token.
