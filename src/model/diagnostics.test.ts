@@ -26,6 +26,7 @@ describe('published Scarp JSON error diagnostics', () => {
       code: 'E0015',
       message: 'expected integer, found string',
       path: 'main.srp', line: 2, column: 4,
+      endLine: 2, endColumn: 9,
       help: 'Keep primitive types consistent',
     });
   });
@@ -49,6 +50,28 @@ describe('published Scarp JSON error diagnostics', () => {
     expect(diagnosticSourcePosition(diagnostic, 'C:/Project/main.srp', source))
       .toEqual({ lineNumber: 1, column: 14 });
   });
+  it('validates half-open end positions without discarding the error start', () => {
+    const make = (end: unknown) => parseScarpDiagnostic(stderr({
+      ...fixture,
+      primary: { ...fixture.primary, end },
+    }));
+    expect(make({ line: 2, column: 12 })).toMatchObject({
+      line: 2, column: 4, endLine: 2, endColumn: 12,
+    });
+    expect(make({ line: 3, column: 1 })).toMatchObject({
+      line: 2, column: 4, endLine: 3, endColumn: 1,
+    });
+    for (const end of [
+      null, { line: 2, column: 4 }, { line: 2, column: 3 },
+      { line: 1, column: 500 }, { line: 2, column: -1 },
+      { line: 2, column: 0 }, { line: 9_999_999_999, column: 1 },
+    ]) {
+      expect(make(end)).toMatchObject({
+        line: 2, column: 4, endLine: null, endColumn: null,
+      });
+    }
+  });
+
   it('allows a diagnostic without a source position', () => {
     expect(parseScarpDiagnostic(stderr({
       ...fixture, code: null, primary: null, help: null,

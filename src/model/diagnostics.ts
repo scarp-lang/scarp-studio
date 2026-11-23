@@ -8,6 +8,9 @@ export interface ScarpDiagnostic {
   path: string | null;
   line: number | null;
   column: number | null;
+  /** Optional validated end of the compiler's half-open Unicode-scalar span. */
+  endLine: number | null;
+  endColumn: number | null;
   help: string | null;
 }
 
@@ -46,6 +49,13 @@ export function parseScarpDiagnostic(stderr: string | null): ScarpDiagnostic | n
       ? diagnostic.code : null;
     const primary = object(diagnostic.primary) ? diagnostic.primary : null;
     const start = sourcePosition(primary?.start);
+    const candidateEnd = sourcePosition(primary?.end);
+    // Half-open compiler span: a missing, reversed or zero-width end is not
+    // safe to underline as a source range. Preserve the valid start alone.
+    const end = start && candidateEnd &&
+      (candidateEnd.line > start.line ||
+        (candidateEnd.line === start.line && candidateEnd.column > start.column))
+      ? candidateEnd : null;
     const path = typeof primary?.path === 'string' && primary.path.length <= 4096
       ? primary.path : null;
     return {
@@ -54,6 +64,8 @@ export function parseScarpDiagnostic(stderr: string | null): ScarpDiagnostic | n
       path: start ? path : null,
       line: start ? start.line : null,
       column: start ? start.column : null,
+      endLine: end?.line ?? null,
+      endColumn: end?.column ?? null,
       help: typeof diagnostic.help === 'string' ? diagnostic.help : null,
     };
   } catch {
