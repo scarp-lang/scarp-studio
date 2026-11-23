@@ -24,6 +24,9 @@ const MAX_SOURCE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_STDIN_BYTES: usize = 16 * 1024;
 const MAX_STDIN_LINE_BYTES: usize = 4096;
 const MAX_STDIN_LINES: usize = 256;
+// Match the bounded interpreter budgets for both single-source and project Run.
+const STUDIO_MAX_EXEC_STEPS: &str = "200000";
+const STUDIO_MAX_EXEC_PRINTS: &str = "1000";
 
 fn validate_stdin(input: &str) -> Result<(), String> {
     if input.len() > MAX_STDIN_BYTES {
@@ -415,10 +418,15 @@ fn project_action_args(action: &str, folder: &Path) -> Result<Vec<OsString>, Str
 }
 
 /// Project Run executes only the selected manifest entrypoint, not any
-/// arbitrary source path. It inherits the same input quotas as single-file Run.
+/// arbitrary source path. It shares single-file Run's work, print and input
+/// quotas so switching to a project cannot silently grant larger budgets.
 fn project_run_args(folder: &Path, interactive: bool) -> Vec<OsString> {
     let mut args: Vec<OsString> = [
         "run",
+        "--max-steps",
+        STUDIO_MAX_EXEC_STEPS,
+        "--max-prints",
+        STUDIO_MAX_EXEC_PRINTS,
         "--max-input-line-bytes",
         "4096",
         "--max-input-bytes",
@@ -663,9 +671,9 @@ fn command_args(mode: &str, source: &Path) -> Result<Vec<OsString>, String> {
         "exec" => vec![
             OsString::from("exec"),
             OsString::from("--max-steps"),
-            OsString::from("200000"),
+            OsString::from(STUDIO_MAX_EXEC_STEPS),
             OsString::from("--max-prints"),
-            OsString::from("1000"),
+            OsString::from(STUDIO_MAX_EXEC_PRINTS),
         ],
         "verify" => vec![OsString::from("verify")],
         _ => return Err("Only the official Scarp exec and verify commands are allowed.".into()),
@@ -969,6 +977,19 @@ mod tests {
         let root = Path::new("C:/Scarp Project");
         let ordinary = project_run_args(root, false);
         assert_eq!(ordinary[0], "run");
+        // Both ways to execute user code must carry identical bounded
+        // interpreter workloads rather than the larger compiler defaults.
+        let single = command_args("exec", Path::new("C:/source.srp")).unwrap();
+        for (flag, limit) in [
+            ("--max-steps", STUDIO_MAX_EXEC_STEPS),
+            ("--max-prints", STUDIO_MAX_EXEC_PRINTS),
+        ] {
+            for args in [&ordinary, &single] {
+                let index = args.iter().position(|item| item == flag).unwrap();
+                assert_eq!(args[index + 1], limit);
+                assert!(index < args.len() - 2, "work quota must precede --");
+            }
+        }
         assert!(ordinary.contains(&OsString::from("--max-input-line-bytes")));
         assert!(ordinary.contains(&OsString::from("4096")));
         assert!(ordinary.contains(&OsString::from("--max-input-bytes")));
@@ -981,6 +1002,14 @@ mod tests {
         assert_eq!(ordinary.last().unwrap(), root.as_os_str());
         let prompted = project_run_args(root, true);
         assert!(prompted.contains(&OsString::from("--interactive")));
+        for (flag, limit) in [
+            ("--max-steps", STUDIO_MAX_EXEC_STEPS),
+            ("--max-prints", STUDIO_MAX_EXEC_PRINTS),
+        ] {
+            let index = prompted.iter().position(|item| item == flag).unwrap();
+            assert_eq!(prompted[index + 1], limit);
+        }
+        assert_eq!(prompted[prompted.len() - 2], "--");
         assert_eq!(prompted.last().unwrap(), root.as_os_str());
     }
 
