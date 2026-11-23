@@ -8,6 +8,9 @@ use std::{
 
 const MAX_ENTRIES: usize = 4096;
 const MAX_ENTRIES_PER_ROOT: usize = 512;
+// Scan at most this many Downloads entry names before applying the ordinary
+// per-root processing budget. This stays bounded, even in crowded Downloads.
+const MAX_DOWNLOADS_LOOKAHEAD: usize = 4096;
 const MAX_ROOTS: usize = 128;
 const MAX_CANDIDATES: usize = 24;
 // Reserve discovery capacity for later locations (especially extracted ZIPs).
@@ -55,6 +58,7 @@ fn scan_directory(
     found: &mut Vec<String>,
     seen: &mut HashSet<PathBuf>,
     candidate_limit: usize,
+    prioritize_scarp_archives: bool,
 ) {
     if *budget == 0 || found.len() >= candidate_limit {
         return;
@@ -62,7 +66,27 @@ fn scan_directory(
     let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
-    for entry in entries.flatten() {
+    // A Scarp-named ZIP extraction may enumerate after hundreds of unrelated
+    // downloads. Prefer those directories in a bounded 4096-name lookahead,
+    // without increasing the ordinary 512-entry processing/recursion budget.
+    let lookahead = if prioritize_scarp_archives {
+        MAX_DOWNLOADS_LOOKAHEAD
+    } else {
+        *budget
+    };
+    let mut entries: Vec<_> = entries.flatten().take(lookahead).collect();
+    if prioritize_scarp_archives {
+        entries.sort_by_key(|entry| {
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            match entry.file_type() {
+                Ok(kind) if kind.is_dir() && name.contains("scarp") => 0_u8,
+                Ok(kind) if (kind.is_file() || kind.is_symlink())
+                    && name.eq_ignore_ascii_case(expected_file_name()) => 1,
+                _ => 2,
+            }
+        });
+    }
+    for entry in entries {
         if *budget == 0 || found.len() >= candidate_limit {
             break;
         }
@@ -80,7 +104,7 @@ fn scan_directory(
                 .to_ascii_lowercase()
                 .contains("scarp");
             if descend_all || scarp_named {
-                scan_directory(&path, depth - 1, true, budget, found, seen, candidate_limit);
+                scan_directory(&path, depth - 1, true, budget, found, seen, candidate_limit, false);
             }
         }
     }
@@ -123,6 +147,9 @@ fn scan_directories_with_budgets(
             &mut found,
             &mut seen,
             candidate_limit,
+            // Only the bounded Downloads archive scan gets the extra name
+            // lookahead. No extra path roots or executable permissions.
+            *depth == 3 && !*all && root.file_name().is_some_and(|name| name == "Downloads"),
         );
         remaining_total -= initial - root_budget;
     }
@@ -361,6 +388,39 @@ mod tests {
         roots.push(downloaded);
         let starved = scan_directories_with_budgets(&roots, MAX_ENTRIES, MAX_ENTRIES_PER_ROOT);
         assert!(starved.is_empty());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn crowded_downloads_prioritizes_extracted_scarp_archive() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = env::temp_dir().join(format!(
+            "studio-crowded-downloads-{}-{unique}",
+            std::process::id()
+        ));
+        let downloads = base.join("Downloads");
+        fs::create_dir_all(&downloads).unwrap();
+        // A plain 512-entry scan could miss the later versioned archive.
+        // Discovery must not execute the fake candidate to find it.
+        for index in 0..(MAX_ENTRIES_PER_ROOT + 100) {
+            fs::write(downloads.join(format!("unrelated-{index:04}.txt")), b"noise")
+                .unwrap();
+        }
+        let extracted = downloads.join("Scarp-0.0.6-alpha.18").join("bin");
+        fs::create_dir_all(&extracted).unwrap();
+        let executable = extracted.join(expected_file_name());
+        fs::write(&executable, b"discovery must not execute this").unwrap();
+        let found = scan_directories(&[(downloads, 3, false)]);
+        assert_eq!(
+            found,
+            vec![fs::canonicalize(executable)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()]
+        );
         fs::remove_dir_all(base).unwrap();
     }
 
