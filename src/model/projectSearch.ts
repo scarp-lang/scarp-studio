@@ -1,4 +1,4 @@
-import { isScarpPath, sameFilePath, type StudioDocument } from './documents';
+import { isDirty, isScarpPath, sameFilePath, type StudioDocument } from './documents';
 import { searchOpenFiles, type OpenFileSearchHit, type SearchOptions } from './openFileSearch';
 import { utf8ByteLength } from './utf8Text';
 import { projectSourceBuffersChanged } from './projectSourceState';
@@ -62,11 +62,16 @@ function sourceGroup(name: string): number {
 const safeListedName = /^(?:(?:src|tests|examples)\/)?[^/\\\0]+\.srp$/i;
 
 /** Round-robin the project root, src, tests and examples to avoid a crowded
- * directory hiding every other category. Prefer each group's main.srp first.
- * This only selects among files already authorized in the Explorer listing.
+ * directory hiding every other category. Give listed, dirty open buffers
+ * priority *within each group* before main.srp and other on-disk sources.
+ * Otherwise the 24-file scan cap could silently exclude the very unsaved
+ * source the user is searching for when one directory is crowded.
+ * A preferred path never grants access: only sanitized, listed entries enter
+ * the groups and the filesystem reader retains its independent scoped checks.
  */
 export function selectProjectSearchSources(
   listed: readonly ProjectSearchSource[],
+  preferredPaths: readonly string[] = [],
 ): ProjectSearchSource[] {
   const groups: ProjectSearchSource[][] = [[], [], [], []];
   const seen: string[] = [];
@@ -76,9 +81,14 @@ export function selectProjectSearchSources(
     seen.push(source.path);
     groups[sourceGroup(source.name)].push(source);
   }
+  const isPreferred = (source: ProjectSearchSource): boolean =>
+    preferredPaths.some((path) => sameFilePath(path, source.path));
+  const isMain = (source: ProjectSearchSource): boolean =>
+    source.name.toLowerCase().split('/').at(-1) === 'main.srp';
   const ordered = groups.map((group) => [
-    ...group.filter((source) => source.name.toLowerCase().split('/').at(-1) === 'main.srp'),
-    ...group.filter((source) => source.name.toLowerCase().split('/').at(-1) !== 'main.srp'),
+    ...group.filter(isPreferred),
+    ...group.filter((source) => !isPreferred(source) && isMain(source)),
+    ...group.filter((source) => !isPreferred(source) && !isMain(source)),
   ]);
   const next = [0, 0, 0, 0];
   const selected: ProjectSearchSource[] = [];
@@ -117,7 +127,11 @@ export async function searchListedProjectSources(
   if (queryValidation.error) return { ...empty, error: queryValidation.error };
   if (!query) return empty;
 
-  const selected = selectProjectSearchSources(listed);
+  const selected = selectProjectSearchSources(
+    listed,
+    openDocuments.filter((document) => document.path !== null && isDirty(document))
+      .map((document) => document.path!),
+  );
   let skipped = listed.length - selected.length;
   let truncated = skipped > 0;
   let totalBytes = 0;

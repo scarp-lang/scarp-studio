@@ -89,6 +89,64 @@ describe('bounded read-only selected-project search', () => {
     expect(selected.map((entry) => entry.name)).toEqual(['normal.srp', 'src/okay.srp']);
   });
 
+  it('prioritizes dirty listed buffers outside the ordinary 24-file window', async () => {
+    const listed = [
+      ...Array.from({ length: 80 }, (_, i) => file('file-' + i + '.srp')),
+      file('src/main.srp'), file('tests/check.srp'), file('examples/demo.srp'),
+      file('z-dirty.srp'),
+    ];
+    const dirty = openFile('z-dirty.srp', 'unsaved needle');
+    const read = vi.fn(async () => 'saved but unrelated text');
+    const result = await searchListedProjectSources(
+      listed, [dirty], 'needle', options, read,
+    );
+    expect(selectProjectSearchSources(listed).some((item) =>
+      item.path === dirty.path)).toBe(false);
+    expect(result?.hits.map((hit) => [hit.name, hit.fromOpenTab]))
+      .toContainEqual(['z-dirty.srp', true]);
+    expect(result?.searchedFiles).toBe(MAX_PROJECT_SEARCH_FILES);
+    expect(result?.truncated).toBe(true);
+    expect(read).not.toHaveBeenCalledWith(dirty.path, MAX_PROJECT_SEARCH_READ_BYTES);
+  });
+
+  it('keeps the cross-folder budget fair when several dirty sources are preferred', () => {
+    const listed = [
+      ...Array.from({ length: 60 }, (_, i) => file('root-' + i + '.srp')),
+      file('main.srp'), file('src/main.srp'), file('tests/main.srp'),
+      file('examples/main.srp'), file('root-dirty.srp'),
+      file('src/dirty.srp'), file('tests/dirty.srp'), file('examples/dirty.srp'),
+    ];
+    const dirtyNames = ['root-dirty.srp', 'src/dirty.srp',
+      'tests/dirty.srp', 'examples/dirty.srp'];
+    const priority = dirtyNames.map((name) => file(name).path);
+    expect(selectProjectSearchSources(listed, priority)
+      .slice(0, 4).map((source) => source.name)).toEqual(dirtyNames);
+    // Main entrypoints remain preferred over ordinary clean files afterwards.
+    expect(selectProjectSearchSources(listed, priority)
+      .slice(4, 8).map((source) => source.name))
+      .toEqual(['main.srp', 'src/main.srp', 'tests/main.srp', 'examples/main.srp']);
+    expect(selectProjectSearchSources(listed, priority))
+      .toHaveLength(MAX_PROJECT_SEARCH_FILES);
+  });
+
+  it('never adds unlisted preferred paths or lets clean open tabs displace main.srp', async () => {
+    const listed = [
+      file('a.srp'), file('main.srp'), file('src/main.srp'),
+      file('tests/check.srp'), file('examples/demo.srp'),
+    ];
+    const outside = openFile('not-listed.srp', 'needle');
+    const injected = selectProjectSearchSources(listed, [outside.path!]);
+    expect(injected.map((item) => item.name)).not.toContain(outside.name);
+    expect(injected[0].name).toBe('main.srp');
+    const clean = { ...openFile('a.srp', 'needle'), savedContent: 'needle' };
+    const read = vi.fn(async () => 'other');
+    const result = await searchListedProjectSources(
+      listed, [outside, clean], 'needle', options, read,
+    );
+    expect(result?.hits.map((hit) => hit.name)).toEqual(['a.srp']);
+    expect(read).not.toHaveBeenCalledWith(outside.path, MAX_PROJECT_SEARCH_READ_BYTES);
+  });
+
   it('uses unsaved live tab contents and its identity rather than disk', async () => {
     const doc = openFile('src/main.srp', 'print("unsaved needle");');
     const read = vi.fn(async () => 'print("stale disk");');
