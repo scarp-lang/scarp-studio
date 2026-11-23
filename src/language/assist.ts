@@ -39,12 +39,12 @@ const templates: readonly ScarpCompletion[] = [
   },
   {
     label: 'while', kind: 'snippet', detail: 'Conditional loop',
-    documentation: 'Run the body repeatedly while the boolean condition is true.',
+    documentation: 'The guard must be boolean and is re-evaluated before each iteration. Keep state moving forward before continue; Studio Run has a deterministic work budget. break exits the nearest loop.',
     insertText: 'while ${1:condition} {\n    ${2:// body}\n}',
   },
   {
     label: 'repeat', kind: 'snippet', detail: 'Counted loop with index',
-    documentation: 'Evaluate a repeat count once and optionally bind the loop index.',
+    documentation: 'Evaluate an integer repeat count exactly once. The as index clause is required; its zero-based index is immutable. break exits this loop and continue advances its index.',
     insertText: 'repeat ${1:5} as ${2:index} {\n    ${3:// body}\n}',
   },
   {
@@ -97,7 +97,17 @@ const templates: readonly ScarpCompletion[] = [
     documentation: 'Check a boolean condition, optionally with a string message.',
     insertText: 'assert(${1:condition});',
   },
-  ...(['return', 'break', 'continue', 'elif', 'else', 'true', 'false',
+  {
+    label: 'break', kind: 'keyword', detail: 'Exit nearest loop',
+    documentation: 'Inside while or repeat, break; exits the nearest enclosing loop. Outside a loop it is a compiler error (E0016). The trailing semicolon is required.',
+    insertText: 'break;',
+  },
+  {
+    label: 'continue', kind: 'keyword', detail: 'Advance nearest loop',
+    documentation: 'Inside while or repeat, continue; skips the rest of the nearest loop body. A while guard is then re-evaluated; a repeat index advances. The trailing semicolon is required.',
+    insertText: 'continue;',
+  },
+  ...(['return', 'elif', 'else', 'true', 'false',
     'and', 'or', 'not', 'pub', 'pure', 'needs', 'ensures',
     'match', 'on', 'case', 'new'] as const).map((label) => ({
       label, kind: 'keyword' as const, detail: 'Scarp keyword',

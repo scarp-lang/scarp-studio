@@ -15,6 +15,24 @@ describe('Scarp completion catalog', () => {
     expect(scarpTokenHelp('repeat')?.insertText).toContain(' as ${2:index}');
   });
 
+  it('teaches the published boolean-while and mandatory repeat-index semantics', () => {
+    const whileHelp = scarpTokenHelp('while');
+    const repeatHelp = scarpTokenHelp('repeat');
+    const exit = scarpTokenHelp('break');
+    const advance = scarpTokenHelp('continue');
+    expect(whileHelp?.documentation).toContain('guard must be boolean');
+    expect(whileHelp?.documentation).toContain('re-evaluated');
+    expect(whileHelp?.documentation).toContain('work budget');
+    expect(repeatHelp?.documentation).toContain('index clause is required');
+    expect(repeatHelp?.documentation).toContain('immutable');
+    expect(exit?.insertText).toBe('break;');
+    expect(exit?.documentation).toContain('E0016');
+    expect(advance?.insertText).toBe('continue;');
+    expect(advance?.documentation).toContain('re-evaluated');
+    expect(scarpCompletions('break')).toHaveLength(1);
+    expect(scarpCompletions('continue')).toHaveLength(1);
+  });
+
   it('matches English compiler builtin spellings independent of OS locale', () => {
     const original = String.prototype.toLocaleLowerCase;
     const localeMock = vi.spyOn(String.prototype, 'toLocaleLowerCase')
