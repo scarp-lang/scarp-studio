@@ -132,7 +132,10 @@ fn scan_directory(
         *budget
     };
     let mut entries: Vec<_> = entries.flatten().take(lookahead).collect();
-    if prioritize_scarp_archives {
+    // Standard Scarp installation roots can also contain several versions.
+    // Apply the same numeric ordering within their ordinary 512-entry budget,
+    // without widening PATH scans or increasing any I/O allowance.
+    if prioritize_scarp_archives || descend_all {
         entries.sort_by(|left, right| {
             let left = download_entry_order(left);
             let right = download_entry_order(right);
@@ -566,6 +569,56 @@ mod tests {
             .to_string_lossy()
             .into_owned();
             assert_eq!(actual, &path, "a stale archive hid a newer candidate");
+        }
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn versioned_installs_select_newest_within_the_same_root_budget() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = env::temp_dir().join(format!(
+            "studio-versioned-install-{}-{unique}",
+            std::process::id()
+        ));
+        let installed = base.join("Scarp");
+        let versions = [
+            "0.0.6-alpha.9",
+            "0.0.6-alpha.1",
+            "0.0.6-alpha.18",
+            "0.0.6-alpha.10",
+            "0.0.6-alpha.17",
+            "0.0.5-alpha.99",
+        ];
+        for version in versions {
+            let bin = installed.join(format!("Scarp-{version}")).join("bin");
+            fs::create_dir_all(&bin).unwrap();
+            fs::write(
+                bin.join(expected_file_name()),
+                b"fake compiler, native discovery only",
+            )
+            .unwrap();
+        }
+        let found = scan_directories(&[(installed.clone(), 2, true)]);
+        assert_eq!(found.len(), MAX_CANDIDATES_PER_ROOT);
+        for (candidate, version) in found.iter().zip([
+            "0.0.6-alpha.18",
+            "0.0.6-alpha.17",
+            "0.0.6-alpha.10",
+            "0.0.6-alpha.9",
+        ]) {
+            let expected = fs::canonicalize(
+                installed
+                    .join(format!("Scarp-{version}"))
+                    .join("bin")
+                    .join(expected_file_name()),
+            )
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+            assert_eq!(candidate, &expected);
         }
         fs::remove_dir_all(base).unwrap();
     }
