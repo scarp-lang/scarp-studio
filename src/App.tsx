@@ -19,7 +19,8 @@ import {
   parseEditorPreferences, type EditorPreferences,
 } from './model/editorPreferences';
 import {
-  clampLineLocation, cycleTabId, filterNavigationEntries, keyboardTabTarget, parseLineLocation,
+  boundedNavigationQuery, clampLineLocation, cycleTabId, filterNavigationEntries,
+  keyboardTabTarget, MAX_NAVIGATION_QUERY_UNITS, parseLineLocation,
   type NavigationEntry,
 } from './model/navigation';
 import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
@@ -2416,7 +2417,11 @@ export default function App() {
                 aria-label={paletteMode === 'files' ? 'Search open Scarp tabs and listed project files' : paletteMode === 'commands' ? 'Search editor commands' : 'Line and optional column'}
                 placeholder={paletteMode === 'files' ? 'Find an open or project .srp file…' : paletteMode === 'commands' ? 'Type a Studio command…' : 'Line or line:column (e.g. 12:4)'}
                 value={paletteQuery}
-                onChange={(event) => { setPaletteQuery(event.target.value); setPaletteIndex(0); }}
+                maxLength={MAX_NAVIGATION_QUERY_UNITS}
+                onChange={(event) => {
+                  setPaletteQuery(boundedNavigationQuery(event.target.value));
+                  setPaletteIndex(0);
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                     event.preventDefault();

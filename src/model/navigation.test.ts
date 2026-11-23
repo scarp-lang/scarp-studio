@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clampLineLocation, filterNavigationEntries, parseLineLocation,
+  boundedNavigationQuery, clampLineLocation, filterNavigationEntries,
+  MAX_NAVIGATION_QUERY_UNITS, parseLineLocation,
 } from './navigation';
 
 const entries = [
@@ -29,6 +30,40 @@ describe('quick navigation matching', () => {
       { id: 'name', label: 'main.srp', detail: 'D:/main.srp' },
     ], 'main');
     expect(ordered.map((entry) => entry.id)).toEqual(['name', 'folder']);
+  });
+
+  it('uses locale-independent casing for ASCII I in source names and paths', () => {
+    const files = [
+      { id: 'file', label: 'File.srp', detail: 'C:/Project/File.srp' },
+      { id: 'library', label: 'I18N.srp', detail: 'C:/project/International' },
+    ];
+    expect(filterNavigationEntries(files, 'FILE').map((entry) => entry.id))
+      .toEqual(['file']);
+    expect(filterNavigationEntries(files, 'i18n').map((entry) => entry.id))
+      .toEqual(['library']);
+  });
+
+  it('rejects over-budget pasted queries before normalizing any entries', () => {
+    const expensive = {
+      id: 'huge', label: 'source.srp', detail: 'X'.repeat(100_000),
+    };
+    expect(filterNavigationEntries([expensive], 'a'.repeat(MAX_NAVIGATION_QUERY_UNITS + 1)))
+      .toEqual([]);
+    expect(filterNavigationEntries([expensive], 'source')).toHaveLength(1);
+    expect(filterNavigationEntries([expensive], 'source', 0)).toEqual([]);
+  });
+
+  it('clips long Quick Open queries without splitting an emoji pair', () => {
+    expect(boundedNavigationQuery('hello')).toBe('hello');
+    const long = 'a'.repeat(MAX_NAVIGATION_QUERY_UNITS - 1) + '😀' + 'tail';
+    const bounded = boundedNavigationQuery(long);
+    expect(bounded).toBe('a'.repeat(MAX_NAVIGATION_QUERY_UNITS - 1));
+    expect(bounded).toHaveLength(MAX_NAVIGATION_QUERY_UNITS - 1);
+    const complete = 'a'.repeat(MAX_NAVIGATION_QUERY_UNITS - 2) + '😀' + 'tail';
+    expect(boundedNavigationQuery(complete))
+      .toBe('a'.repeat(MAX_NAVIGATION_QUERY_UNITS - 2) + '😀');
+    expect(boundedNavigationQuery('z'.repeat(MAX_NAVIGATION_QUERY_UNITS + 200)))
+      .toHaveLength(MAX_NAVIGATION_QUERY_UNITS);
   });
 
   it('limits results and rejects invalid limits', () => {

@@ -5,19 +5,33 @@ export interface NavigationEntry {
   detail?: string;
 }
 
+/** Quick Open is interactive; never normalize an unbounded pasted query on
+ * every keystroke. Preserve a complete UTF-16 surrogate pair at the limit. */
+export const MAX_NAVIGATION_QUERY_UNITS = 256;
+
+export function boundedNavigationQuery(query: string): string {
+  if (query.length <= MAX_NAVIGATION_QUERY_UNITS) return query;
+  const prefix = query.slice(0, MAX_NAVIGATION_QUERY_UNITS);
+  const end = prefix.charCodeAt(prefix.length - 1);
+  return end >= 0xd800 && end <= 0xdbff ? prefix.slice(0, -1) : prefix;
+}
+
 export function filterNavigationEntries<T extends NavigationEntry>(
   entries: readonly T[],
   query: string,
   limit = 40,
 ): T[] {
-  if (!Number.isSafeInteger(limit) || limit <= 0) return [];
-  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (!Number.isSafeInteger(limit) || limit <= 0 ||
+      query.length > MAX_NAVIGATION_QUERY_UNITS) return [];
+  // Use locale-independent Unicode case folding: a Turkish Windows UI
+  // locale must not make ASCII FILE fail to match File.srp.
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   if (!terms.length) return entries.slice(0, limit);
 
   const matches: Array<{ entry: T; rank: number; index: number }> = [];
   entries.forEach((entry, index) => {
-    const label = entry.label.toLocaleLowerCase();
-    const detail = (entry.detail ?? '').toLocaleLowerCase();
+    const label = entry.label.toLowerCase();
+    const detail = (entry.detail ?? '').toLowerCase();
     if (!terms.every((term) => label.includes(term) || detail.includes(term))) return;
     const rank = label === terms.join(' ') ? 0
       : label.startsWith(terms[0]) ? 1
