@@ -92,11 +92,20 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       const line = model.getLineContent(position.lineNumber);
       if (!isScarpCodePosition(line, position.column - 1)) return { suggestions: [] };
       const word = model.getWordUntilPosition(position);
+      const completeWord = model.getWordAtPosition(position);
+      // Completing inside an identifier must replace its existing suffix:
+      // fun|cra -> funcra, not funcracra. A mismatching word at a
+      // punctuation boundary cannot widen the replacement.
+      const endColumn = completeWord &&
+        completeWord.startColumn === word.startColumn &&
+        completeWord.endColumn >= word.endColumn &&
+        completeWord.word.startsWith(word.word)
+        ? completeWord.endColumn : word.endColumn;
       const range = {
         startLineNumber: position.lineNumber,
         endLineNumber: position.lineNumber,
         startColumn: word.startColumn,
-        endColumn: word.endColumn,
+        endColumn,
       };
       return {
         suggestions: scarpCompletions(word.word).map((item) => ({

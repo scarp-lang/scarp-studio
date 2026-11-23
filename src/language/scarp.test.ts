@@ -216,16 +216,47 @@ describe('Scarp editor assistance registration', () => {
       expect(spy.mock.calls[0][0]).toBe('scarp');
     }
     const handler = provideCompletion.mock.calls[0][1] as {
-      provideCompletionItems: (model: unknown, position: unknown) => { suggestions: Array<{ label: string }> },
+      provideCompletionItems: (model: unknown, position: unknown) => { suggestions: Array<{
+        label: string;
+        range: { startColumn: number; endColumn: number };
+      }> },
     };
     const model = {
       getLineContent: () => 'func',
       getWordUntilPosition: () => ({ word: 'func', startColumn: 1, endColumn: 5 }),
+      getWordAtPosition: () => ({ word: 'func', startColumn: 1, endColumn: 5 }),
     };
     const position = { lineNumber: 1, column: 5 };
     expect(handler.provideCompletionItems(model, position).suggestions.some((s) => s.label === 'funcra')).toBe(true);
     const commentModel = { ...model, getLineContent: () => '// func' };
     expect(handler.provideCompletionItems(commentModel, { lineNumber: 1, column: 8 }).suggestions).toEqual([]);
+    // Mid-word accepting "funcra" must replace the entire existing token.
+    const middle = {
+      getLineContent: () => 'funcra',
+      getWordUntilPosition: () => ({ word: 'fun', startColumn: 1, endColumn: 4 }),
+      getWordAtPosition: () => ({ word: 'funcra', startColumn: 1, endColumn: 7 }),
+    };
+    const accepted = handler.provideCompletionItems(middle, {
+      lineNumber: 1, column: 4,
+    }).suggestions.find((item) => item.label === 'funcra');
+    expect(accepted?.range).toEqual({ startLineNumber: 1, endLineNumber: 1,
+      startColumn: 1, endColumn: 7 });
+    // At punctuation or an inconsistent word boundary do not swallow other text.
+    for (const other of [
+      null,
+      { word: 'other', startColumn: 1, endColumn: 6 },
+      { word: 'funcra', startColumn: 2, endColumn: 7 },
+    ]) {
+      const boundary = {
+        getLineContent: () => 'fun(',
+        getWordUntilPosition: () => ({ word: 'fun', startColumn: 1, endColumn: 4 }),
+        getWordAtPosition: () => other,
+      };
+      const suggestion = handler.provideCompletionItems(boundary, {
+        lineNumber: 1, column: 4,
+      }).suggestions.find((item) => item.label === 'funcra');
+      expect(suggestion?.range).toMatchObject({ startColumn: 1, endColumn: 4 });
+    }
     const outline = provideSymbols.mock.calls[0][1] as {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
     };
