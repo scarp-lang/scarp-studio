@@ -27,7 +27,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 
 The offline candidate checker validates versions in `package.json`, `package-lock.json` (top level and root package), Tauri, Cargo and Cargo.lock. Its manifest explicitly requires **manual Windows acceptance and no publication authorization**. Neither check command creates a tag, upload or release.
 
-GitHub Actions must additionally show a successful exact-head Windows run with the SHA-pinned **official Scarp alpha.17 Windows CLI** (while retaining alpha.10–alpha.15 backwards-compatibility checks), frontend tests, native service tests, build, installer, SHA-256 and deliberate tamper rejection. The alpha.17 gate also checks real fixed-array intrinsics, preloaded boolean input and JSON v1 diagnostics; this does not imply Studio GUI prompt support.
+GitHub Actions must additionally show a successful exact-head Windows run with the SHA-pinned **official Scarp alpha.18 Windows CLI** (while retaining separate alpha.10–alpha.15 and alpha.17 backwards-compatibility checks), frontend tests, native service tests, build, installer, SHA-256 and deliberate tamper rejection. The alpha.17 gate checks fixed-array reads, preloaded boolean input and JSON v1 diagnostics; the alpha.18 gate additionally checks immutable `array_set`, no-argument `exec` selecting `src/main.srp`, native process integration and compiler discovery; this does not imply Studio GUI prompt support.
 
 ## 3. Verify CI artifacts from the same run
 
@@ -53,7 +53,7 @@ Test at least: editor launch/WebView2 and installer/uninstaller; file Open/Save/
 Use the checked-in [Windows GUI smoke examples](../qa/windows/README.md)
 for an independently reproducible Run, Verify, array, preloaded boolean-input
 and invalid-diagnostic check. They are checked by CI against the published
-alpha.17 CLI, but they do **not** substitute for running the actual Windows
+alpha.17 and alpha.18 CLIs, but they do **not** substitute for running the actual Windows
 Studio application with its exact-head build.
 
 If the candidate fails, record reproducible steps, fix the source on a review branch, and repeat the **exact-head** automated and affected manual checks.
@@ -83,4 +83,4 @@ Until then, share only GitHub Actions development artifacts as **unsigned test c
 - Compiler probe safety PR: https://github.com/scarp-lang/scarp-studio/pull/57
 - Test report freshness PR: https://github.com/scarp-lang/scarp-studio/pull/58
 - Windows acceptance worksheet: `docs/windows-11-acceptance.md`
-- Official compiler release: https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.17
+- Official compiler release: https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.18
