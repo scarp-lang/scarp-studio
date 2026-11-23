@@ -59,6 +59,9 @@ import {
   isCurrentSearchHit, searchOpenFiles, type OpenFileSearchHit,
 } from './model/openFileSearch';
 import { planOpenFileReplacement, type OpenFileReplacePlan } from './model/openFileReplace';
+import {
+  searchListedProjectSources, type ProjectSearchHit, type ProjectSearchResult,
+} from './model/projectSearch';
 import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplaceUndo } from './model/openFileReplaceUndo';
 
 type Theme = 'dark' | 'light';
@@ -77,6 +80,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'reload', label: 'Reload Current Scarp File from Disk', detail: 'Confirms before discarding unsaved edits' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
+  { id: 'find-project', label: 'Find in Selected Scarp Project', detail: 'Read-only and bounded' },
   { id: 'replace-open-files', label: 'Find and Replace in Open Scarp Files', detail: 'Preview and confirm; editor buffers only' },
   { id: 'undo-replace-open-files', label: 'Undo Last Replace All in Open Scarp Files', detail: 'Only if every buffer is unchanged' },
   { id: 'quick-open', label: 'Quick Open Tabs and Project Sources', detail: 'Ctrl+P' },
@@ -128,10 +132,22 @@ export default function App() {
   // successfully replaced. In-flight test reports must match this generation.
   const projectResultEpoch = useRef(0);
   const { documents, activeId } = editorState;
+  // Explicit project search never persists across a changed buffer or listing.
+  const projectSearchEpoch = useRef(0);
+  const [projectSearchResult, setProjectSearchResult] = useState<{
+    selection: { path: string; files: FolderEntry[] };
+    query: string;
+    result: ProjectSearchResult;
+  } | null>(null);
+  function invalidateProjectSearch(): void {
+    projectSearchEpoch.current++;
+    setProjectSearchResult(null);
+  }
   function dispatch(action: EditorAction): void {
     const before = liveEditor.current;
     const next = editorReducer(before, action);
     if (next === before) return;
+    invalidateProjectSearch();
     const project = selectedFolderRef.current?.path;
     if (project && projectSourceBuffersChanged(before.documents, next.documents, project)) {
       projectResultEpoch.current++;
@@ -366,6 +382,7 @@ export default function App() {
         if (liveEditor.current.activeId) void closeFile(liveEditor.current.activeId);
         break;
       case 'find-open-files': setSearchOpen(true); break;
+      case 'find-project': setSearchOpen(true); break;
       case 'replace-open-files': setSearchOpen(true); break;
       case 'undo-replace-open-files': undoLastOpenFileReplace(); break;
       case 'quick-open': showPalette('files'); break;
@@ -590,6 +607,7 @@ export default function App() {
       // test passes must not reappear after folder A→B→A selection cycles.
       projectResultEpoch.current++;
       setProjectTestResult(null);
+      invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderPath(result.path);
       setFolderEntries(result.files);
@@ -630,6 +648,7 @@ export default function App() {
       // A refresh can observe on-disk changes the editor did not make.
       projectResultEpoch.current++;
       setProjectTestResult(null);
+      invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderEntries(result.files);
       setFolderListingLimited(result.truncated);
@@ -1225,6 +1244,126 @@ export default function App() {
     editorInstance.focus();
   }
 
+  async function searchSelectedProject(): Promise<void> {
+    const selection = selectedFolderRef.current;
+    if (!isTauri() || !selection) {
+      setError('Choose a Scarp project folder in the desktop app before searching.');
+      return;
+    }
+    if (!searchQuery || searchQuery.length > 120) {
+      setError('Enter a search term of at most 120 characters first.');
+      return;
+    }
+    if (filePickerInProgress.current || saveInProgress.current ||
+        selectionInProgress.current || commandInProgress.current ||
+        nativeDialogGate.current.isActive) {
+      setError('Finish the current file or compiler operation before project search.');
+      return;
+    }
+    const snapshot = liveEditor.current;
+    const ticket = ++projectSearchEpoch.current;
+    const current = () => ticket === projectSearchEpoch.current &&
+      selection === selectedFolderRef.current &&
+      snapshot.sessionRevision === liveEditor.current.sessionRevision;
+    const options = { caseSensitive: searchCaseSensitive, wholeWord: searchWholeWord };
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setProjectSearchResult(null);
+    setError(null);
+    try {
+      const result = await searchListedProjectSources(
+        selection.files, snapshot.documents, searchQuery, options,
+        (path, maxBytes) => readScarpSource(path, maxBytes), current,
+      );
+      if (!result || !current()) return;
+      if (result.error) {
+        setError('Could not search the project: ' + result.error);
+        return;
+      }
+      setProjectSearchResult({ selection, query: searchQuery, result });
+      setNotice('Project search: ' + result.hits.length + ' match(es) in ' +
+        result.searchedFiles + ' source(s)' +
+        (result.truncated ? ' (incomplete)' : ''));
+    } catch (caught) {
+      if (current()) setError('Project search failed: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function goToProjectSearchHit(
+    hit: ProjectSearchHit, selection: { path: string; files: FolderEntry[] },
+  ): Promise<void> {
+    if (selectedFolderRef.current !== selection) {
+      setError('The selected project listing changed. Search the project again.');
+      return;
+    }
+    const decision = resolveListedProjectOpen(
+      hit.path, selection.files, liveEditor.current.documents,
+    );
+    if (decision.kind === 'not-listed') {
+      setError('This source is no longer listed. Refresh Explorer and search again.');
+      return;
+    }
+    if (decision.kind === 'activate') {
+      const live = liveEditor.current.documents.find((item) => item.id === decision.documentId);
+      if (!live || (hit.fromOpenTab
+        ? !isCurrentSearchHit(live, hit.match)
+        : live.content !== hit.match.sourceContent ||
+          live.savedContent !== hit.match.sourceContent)) {
+        setError('This project search result is stale. Search again before navigating.');
+        return;
+      }
+      goToSearchMatch({ ...hit.match, documentId: live.id, sourceRevision: live.revision });
+      return;
+    }
+    // A saved source may have been edited externally since search. Reopen
+    // through the SAME scoped listing and require exact content before jumping.
+    if (hit.fromOpenTab || filePickerInProgress.current ||
+        saveInProgress.current || selectionInProgress.current ||
+        commandInProgress.current || nativeDialogGate.current.isActive) {
+      setError('The source or editor state changed. Search again to navigate safely.');
+      return;
+    }
+    const snapshot = liveEditor.current;
+    const activeAtStart = snapshot.activeId;
+    const activeSnapshot = currentActiveDocument(snapshot);
+    const ticket = projectSearchEpoch.current;
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const content = await readFolderSource(decision.path, selection.files);
+      if (ticket !== projectSearchEpoch.current ||
+          !hasUnchangedEditorSession(snapshot, liveEditor.current) ||
+          !isCurrentListedSourceRead(
+            selection, selectedFolderRef.current, activeAtStart,
+            activeSnapshot, liveEditor.current,
+          )) {
+        setError('The project or editor changed while opening this search hit. Search again.');
+        return;
+      }
+      if (content !== hit.match.sourceContent) {
+        setError('This Scarp source changed on disk after the search. Search again.');
+        return;
+      }
+      activateOpenedFile(decision.path, content);
+      const opened = currentActiveDocument(liveEditor.current);
+      if (opened?.path && sameFilePath(opened.path, decision.path)) {
+        // Use the new editor ID/revision, never the temporary search snapshot.
+        pendingSearchLocation.current = {
+          ...hit.match, documentId: opened.id, sourceRevision: opened.revision,
+        };
+      }
+    } catch (caught) {
+      setError('Could not open project search result: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
   function previewOpenFileReplacement(): void {
     setError(null);
     try {
@@ -1719,13 +1858,13 @@ export default function App() {
                   maxLength={121}
                   value={searchQuery}
                   placeholder="Search open .srp documents"
-                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onChange={(event) => { invalidateProjectSearch(); setSearchQuery(event.target.value); }}
                 />
                 <label className="search-option">
                   <input
                     type="checkbox"
                     checked={searchCaseSensitive}
-                    onChange={(event) => setSearchCaseSensitive(event.target.checked)}
+                    onChange={(event) => { invalidateProjectSearch(); setSearchCaseSensitive(event.target.checked); }}
                   />
                   Match case
                 </label>
@@ -1733,10 +1872,16 @@ export default function App() {
                   <input
                     type="checkbox"
                     checked={searchWholeWord}
-                    onChange={(event) => setSearchWholeWord(event.target.checked)}
+                    onChange={(event) => { invalidateProjectSearch(); setSearchWholeWord(event.target.checked); }}
                   />
                   Whole word
                 </label>
+                <button type="button" onClick={() => void searchSelectedProject()}
+                  disabled={!isTauri() || !folderPath || !searchQuery || busy ||
+                    compilerBusy || compilerSelecting || compilerScanning}
+                  title="Explicit read-only search of up to 24 already-listed project sources">
+                  Search Project
+                </button>
                 <button type="button" onClick={() => setSearchOpen(false)}
                   aria-label="Close open-file search">Close</button>
               </div>
@@ -1814,6 +1959,38 @@ export default function App() {
                     <p className="sidebar-note">No matches in open files.</p>
                   )}
                 </div>
+              )}
+              {projectSearchResult && projectSearchResult.query === searchQuery &&
+                projectSearchResult.selection === selectedFolderRef.current && (
+                <section className="project-search-results" aria-label="Read-only selected project search">
+                  <div className="search-status" role="status">
+                    Project (read-only): {projectSearchResult.result.hits.length} match(es) ·
+                    {' '}{projectSearchResult.result.searchedFiles} / {projectSearchResult.result.totalListedFiles} listed .srp files searched
+                    {projectSearchResult.result.truncated && (
+                      <strong> · Incomplete ({projectSearchResult.result.skippedFiles} omitted/unreadable).</strong>
+                    )}
+                    {' '}No files changed.
+                  </div>
+                  <div className="search-results" role="list" aria-label="Matches in selected Scarp project">
+                    {projectSearchResult.result.hits.map((hit) => (
+                      <div role="listitem"
+                        key={hit.path + ':' + hit.match.offset + ':' + hit.match.sourceRevision}>
+                        <button className="search-result-row" type="button"
+                          onClick={() => void goToProjectSearchHit(hit, projectSearchResult.selection)}
+                          title={hit.name + ' at ' + hit.match.line + ':' + hit.match.column}>
+                          <span className="search-result-location">
+                            {hit.name} · {hit.match.line}:{hit.match.column}
+                            {hit.fromOpenTab && ' · open buffer'}
+                          </span>
+                          <span className="search-result-preview">{hit.match.preview}</span>
+                        </button>
+                      </div>
+                    ))}
+                    {!projectSearchResult.result.hits.length && (
+                      <p className="sidebar-note">No matches among the searched project sources.</p>
+                    )}
+                  </div>
+                </section>
               )}
             </section>
           )}
