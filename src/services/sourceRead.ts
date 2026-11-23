@@ -12,13 +12,28 @@ const READ_CHUNK_BYTES = 16 * 1024;
  * JavaScript-side 4 MiB check. Every path (Open, Reload, Explorer and external
  * modification detection before Save) goes through this reader.
  */
-export async function readScarpSource(path: string): Promise<string> {
+export async function readScarpSource(
+  path: string, maxBytes = MAX_SCARP_SOURCE_BYTES,
+): Promise<string> {
+  // Normal Open/Save/Reload keeps the 4 MiB source budget. Explicit project
+  // search can ask this same safe native reader for a smaller bounded snapshot.
+  // Reject invalid limits before opening a native file handle.
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 ||
+      maxBytes > MAX_SCARP_SOURCE_BYTES) {
+    throw new Error('Invalid Scarp source read limit.');
+  }
+  const requireLimit = (size: number): void => {
+    assertScarpSourceBytes(size);
+    if (size > maxBytes) {
+      throw new Error('Scarp source exceeds the bounded read limit for this operation.');
+    }
+  };
   if (!isScarpPath(path)) throw new Error('Only .srp sources may be read in Scarp Studio.');
   const file = await open(path, { read: true });
   try {
     const info = await file.stat();
     if (!info.isFile) throw new Error('Scarp source must be a regular file.');
-    assertScarpSourceBytes(info.size);
+    requireLimit(info.size);
 
     let bytesRead = 0;
     const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
@@ -26,7 +41,7 @@ export async function readScarpSource(path: string): Promise<string> {
     for (;;) {
       // Request at most one more byte past the limit, to detect file growth
       // without loading the rest of the source or trusting stale metadata.
-      const remaining = MAX_SCARP_SOURCE_BYTES - bytesRead;
+      const remaining = maxBytes - bytesRead;
       const buffer = new Uint8Array(Math.min(READ_CHUNK_BYTES, remaining + 1));
       const count = await file.read(buffer);
       if (count === null) break;
@@ -34,7 +49,7 @@ export async function readScarpSource(path: string): Promise<string> {
         throw new Error('Scarp source reader returned an invalid byte count.');
       }
       bytesRead += count;
-      assertScarpSourceBytes(bytesRead);
+      requireLimit(bytesRead);
       pieces.push(decoder.decode(buffer.subarray(0, count), { stream: true }));
     }
     // `fatal` rejects invalid or incomplete UTF-8, rather than silently

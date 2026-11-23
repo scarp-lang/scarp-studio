@@ -62,6 +62,34 @@ describe('bounded Scarp source reading through one scoped handle', () => {
     expect(handle.close).toHaveBeenCalledTimes(1);
   });
 
+  it('supports a smaller exact project-search byte cap without affecting the normal 4 MiB default', async () => {
+    const atLimit = mockFile(encoder.encode('hello'));
+    await expect(readScarpSource('C:/project/short.srp', 5)).resolves.toBe('hello');
+    expect(atLimit.close).toHaveBeenCalledTimes(1);
+
+    const overLimit = mockFile(encoder.encode('hello!'));
+    await expect(readScarpSource('C:/project/long.srp', 5))
+      .rejects.toThrow('bounded read limit');
+    expect(overLimit.read).not.toHaveBeenCalled();
+    expect(overLimit.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid smaller caps before opening a native file', async () => {
+    for (const limit of [0, -1, NaN, Infinity, 1.5, MAX_SCARP_SOURCE_BYTES + 1]) {
+      await expect(readScarpSource('C:/project/main.srp', limit))
+        .rejects.toThrow('Invalid Scarp source read limit');
+    }
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('rejects growth beyond a smaller project-search cap even with stale metadata', async () => {
+    const handle = mockFile(encoder.encode('changed-during-read'), { size: 3 });
+    await expect(readScarpSource('C:/project/growing.srp', 5))
+      .rejects.toThrow('bounded read limit');
+    expect(handle.read.mock.calls.every(([buffer]) => buffer.byteLength <= 6)).toBe(true);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
   it('allows a file exactly at the 4 MiB byte boundary', async () => {
     const contents = 'a'.repeat(MAX_SCARP_SOURCE_BYTES);
     const handle = mockFile(encoder.encode(contents));
