@@ -19,8 +19,8 @@ function fixture() {
   const json = (path, value) => write(path, JSON.stringify(value));
   const candidate = {
     version: '0.0.2-alpha.1', tag: 'v0.0.2-alpha.1', channel: 'prerelease',
-    target: 'windows-x64', compilerCompatibilityVersion: '0.0.6-alpha.18',
-    compilerWindowsZipSha256: '1dbd8e9f6dbb3e727fb765b5a1bf184f8574c8b139289269b65a7d889d60e6b0',
+    target: 'windows-x64', compilerCompatibilityVersion: '0.0.6-alpha.19',
+    compilerWindowsZipSha256: 'e00ec9bfd2447fc2c54ae8101933da3c6899251300711627115db5239e559023',
     manualWindowsAcceptanceRequired: true, publicationAuthorized: false,
   };
   json(candidatePath, candidate);
@@ -45,7 +45,7 @@ describe('read-only Scarp Studio prerelease gate', () => {
     assert.deepEqual(checkReleaseCandidate(root), {
       version: '0.0.2-alpha.1',
       tag: 'v0.0.2-alpha.1',
-      compilerVersion: '0.0.6-alpha.18',
+      compilerVersion: '0.0.6-alpha.19',
     });
   });
 

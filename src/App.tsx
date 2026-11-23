@@ -1057,7 +1057,7 @@ export default function App() {
         nativeDialogGate.current.isActive) return;
     try {
       await openCompilerDownloads();
-      setNotice('Opened the official Scarp alpha.18 download; extract it and scan for the compiler.');
+      setNotice('Opened the official Scarp alpha.19 download; extract it and scan for the compiler.');
     } catch (caught) {
       setError('Could not open official compiler download: ' + toMessage(caught));
     }
@@ -2237,7 +2237,7 @@ export default function App() {
                 </button>
                 <button type="button" onClick={() => void downloadCompiler()}
                   disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
-                  title="Open the official Scarp alpha.18 ZIP. Verify its published SHA-256 before trusting the extracted executable.">Download Compiler</button>
+                  title="Open the official Scarp alpha.19 ZIP. Verify its published SHA-256 before trusting the extracted executable.">Download Compiler</button>
                 <button onClick={() => void selectCompiler()} disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
                   title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
                   {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}

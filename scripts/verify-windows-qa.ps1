@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Exercise checked-in Scarp Studio Windows manual-QA source fixtures with an
-  independently trusted official Scarp alpha.17 or alpha.18 compiler.
+  independently trusted official Scarp alpha.17, alpha.18 or alpha.19 compiler.
 .DESCRIPTION
   Source-only and non-interactive. The test of input_boolean uses a supplied
   local stdin fixture and never reads personal data or launches Studio.
@@ -13,8 +13,8 @@ param(
   [Parameter(Mandatory = $true)]
   [ValidateNotNullOrEmpty()]
   [string]$CompilerPath,
-  [ValidateSet('0.0.6-alpha.17', '0.0.6-alpha.18')]
-  [string]$ExpectedVersion = '0.0.6-alpha.18'
+  [ValidateSet('0.0.6-alpha.17', '0.0.6-alpha.18', '0.0.6-alpha.19')]
+  [string]$ExpectedVersion = '0.0.6-alpha.19'
 )
 
 Set-StrictMode -Version Latest
@@ -70,7 +70,7 @@ foreach ($fixture in @(
   }
 }
 
-if ($ExpectedVersion -eq '0.0.6-alpha.18') {
+if ($ExpectedVersion -in @('0.0.6-alpha.18', '0.0.6-alpha.19')) {
   $source = 'qa/windows/05-array-update.srp'
   if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing QA fixture: $source" }
   [void](Assert-ScarpCommand -Name "Verify $source" -Arguments @(

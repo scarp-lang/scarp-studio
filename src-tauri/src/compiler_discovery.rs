@@ -290,10 +290,10 @@ pub async fn scarp_detect() -> Result<Vec<String>, String> {
 /// This is not an unattended binary installer.
 #[tauri::command]
 pub fn scarp_download_page() -> Result<(), String> {
-    // The Windows button points to the published SHA-256-pinned alpha.18 CLI tested in CI.
+    // The Windows button points to the published SHA-256-pinned alpha.19 CLI tested in CI.
     // Other platforms use the official releases page until platform-specific flows are tested.
     #[cfg(windows)]
-    const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.18/scarp-0.0.6-alpha.18-x86_64-pc-windows-msvc.zip";
+    const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.19/scarp-0.0.6-alpha.19-x86_64-pc-windows-msvc.zip";
     #[cfg(not(windows))]
     const RELEASES: &str = "https://github.com/scarp-lang/scarp/releases";
     #[cfg(windows)]
@@ -497,7 +497,7 @@ mod tests {
     #[test]
     fn archive_version_hints_compare_numeric_alpha_versions() {
         assert!(
-            archive_version_hint("Scarp-v0.0.6-alpha.18")
+            archive_version_hint("Scarp-v0.0.6-alpha.19")
                 > archive_version_hint("scarp-0.0.6-alpha.9")
         );
         assert!(
@@ -528,6 +528,7 @@ mod tests {
         fs::create_dir_all(&downloads).unwrap();
         let versions = [
             "0.0.6-alpha.2",
+            "0.0.6-alpha.19",
             "0.0.6-alpha.18",
             "0.0.5-alpha.100",
             "0.0.6-alpha.9",
@@ -548,10 +549,10 @@ mod tests {
         let candidates = scan_directories(&[(downloads.clone(), 3, false)]);
         assert_eq!(candidates.len(), MAX_CANDIDATES_PER_ROOT);
         let expected = [
+            "0.0.6-alpha.19",
             "0.0.6-alpha.18",
             "0.0.6-alpha.17",
             "0.0.6-alpha.10",
-            "0.0.6-alpha.9",
         ];
         for (actual, version) in candidates.iter().zip(expected) {
             let path = fs::canonicalize(
@@ -582,6 +583,7 @@ mod tests {
         let versions = [
             "0.0.6-alpha.9",
             "0.0.6-alpha.1",
+            "0.0.6-alpha.19",
             "0.0.6-alpha.18",
             "0.0.6-alpha.10",
             "0.0.6-alpha.17",
@@ -599,10 +601,10 @@ mod tests {
         let found = scan_directories(&[(installed.clone(), 2, true)]);
         assert_eq!(found.len(), MAX_CANDIDATES_PER_ROOT);
         for (candidate, version) in found.iter().zip([
+            "0.0.6-alpha.19",
             "0.0.6-alpha.18",
             "0.0.6-alpha.17",
             "0.0.6-alpha.10",
-            "0.0.6-alpha.9",
         ]) {
             let expected = fs::canonicalize(
                 installed
