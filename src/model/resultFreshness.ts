@@ -20,6 +20,11 @@ export interface ProjectResultIdentity {
   listing: object | null;
 }
 
+/** Provenance for a successful project output still visible after execution. */
+export interface CompletedProjectOutput extends ProjectResultIdentity {
+  action: ScarpProjectAction;
+}
+
 export interface ProjectResultFreshness {
   stale: boolean;
   allowStructuredTests: boolean;
@@ -46,4 +51,21 @@ export function projectResultFreshness(
         ' was running. The output below describes an earlier saved-on-disk state; save edits and rerun.]'
       : null,
   };
+}
+
+/** A result may become obsolete AFTER the CLI has finished, not just during
+ * the command. Call this again on every UI render to avoid presenting old
+ * project output as a result for newly edited sources or a new Explorer scan.
+ */
+export function completedProjectOutputWarning(
+  completed: CompletedProjectOutput | null,
+  current: ProjectResultIdentity,
+): string | null {
+  if (!completed || !projectResultFreshness(completed.action, completed, current).stale) {
+    return null;
+  }
+  return '[Scarp project ' + completed.action +
+    ' output is now stale. Selected project sources or Explorer changed after ' +
+    'this result was produced. The output below describes an earlier saved-on-disk ' +
+    'state; save changes and rerun.]';
 }

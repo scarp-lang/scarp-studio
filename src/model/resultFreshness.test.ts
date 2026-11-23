@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createUntitled, type StudioDocument } from './documents';
 import { editorReducer, initialEditorState } from './editorState';
 import { captureVerifiedSource } from './verifiedSource';
-import { projectResultFreshness, sourceResultIsStale } from './resultFreshness';
+import {
+  completedProjectOutputWarning, projectResultFreshness, sourceResultIsStale,
+} from './resultFreshness';
 import type { ScarpProjectAction } from '../services/project';
 
 function source(): StudioDocument {
@@ -94,4 +96,31 @@ describe('project compiler result freshness', () => {
     expect(projectResultFreshness('info',
       { epoch: 0, listing: null }, { epoch: 0, listing }).stale).toBe(true);
   });
+  it('keeps a completed project report visibly stale after subsequent edits or Explorer refresh', () => {
+    const completed = { action: 'run-tests' as const, epoch: 12, listing };
+    expect(completedProjectOutputWarning(null, completed)).toBeNull();
+    expect(completedProjectOutputWarning(completed, {
+      epoch: 12, listing,
+    })).toBeNull();
+
+    // A command can finish successfully, then source content changes later.
+    // This must not revive a clean-looking old PASS report in the output pane.
+    const edited = completedProjectOutputWarning(completed, {
+      epoch: 13, listing,
+    });
+    expect(edited).toContain('now stale');
+    expect(edited).toContain('after this result was produced');
+    expect(edited).toContain('run-tests');
+
+    // Reselecting the same folder pathname still yields a new listing identity.
+    const refreshed = completedProjectOutputWarning(completed, {
+      epoch: 12, listing: { ...listing },
+    });
+    expect(refreshed).toContain('Explorer changed');
+    // Switching to a different selected project is also stale.
+    expect(completedProjectOutputWarning(completed, {
+      epoch: 12, listing: null,
+    })).not.toBeNull();
+  });
+
 });

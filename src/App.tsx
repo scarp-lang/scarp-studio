@@ -44,7 +44,10 @@ import {
   dirtyProjectSourceNames, projectActionRequiresSavedSources,
   projectSourceBuffersChanged,
 } from './model/projectSourceState';
-import { projectResultFreshness, sourceResultIsStale } from './model/resultFreshness';
+import {
+  completedProjectOutputWarning, projectResultFreshness, sourceResultIsStale,
+  type CompletedProjectOutput,
+} from './model/resultFreshness';
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
 import { AutoSaveReviewGate } from './model/autoSaveReviewGate';
@@ -226,6 +229,10 @@ export default function App() {
     'Select a trusted official Scarp executable to enable Run and Verify.\n' +
     'Source files are never executed automatically.',
   );
+  // Keep successful CLI output tied to its original source/listing generation.
+  // Later edits or project switches must display an explicit stale warning.
+  const [completedProjectOutput, setCompletedProjectOutput] =
+    useState<CompletedProjectOutput | null>(null);
   const [compilerBusy, setCompilerBusy] = useState(false);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
@@ -249,6 +256,10 @@ export default function App() {
     () => folderPath ? dirtyProjectSourceNames(documents, folderPath) : [],
     [documents, folderPath],
   );
+  const laterProjectOutputWarning = completedProjectOutputWarning(completedProjectOutput, {
+    epoch: projectResultEpoch.current,
+    listing: selectedFolderRef.current,
+  });
   const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
   const diagnosticPosition = isCurrentVerifiedSource(compilerOutputSource, active) && active?.path
     ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
@@ -976,6 +987,7 @@ export default function App() {
     setCompilerOutputSource(null);
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
+    setCompletedProjectOutput(null);
     setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
     setNotice('Scarp compiler approved for this session');
     return true;
@@ -1138,6 +1150,7 @@ export default function App() {
     setCompilerOutputSource(verifiedSnapshot);
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
+    setCompletedProjectOutput(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(
@@ -1239,6 +1252,7 @@ export default function App() {
     setCompilerDiagnosticStderr(null);
     setCompilerOutputSource(null);
     setProjectTestResult(null);
+    setCompletedProjectOutput(null);
     setCompilerOutput('Scarp project ' + action + '…');
     try {
       const output = await scarpProjectAction(
@@ -1254,6 +1268,11 @@ export default function App() {
       setCompilerOutput(freshness.warning
         ? freshness.warning + '\n\n' + output.output
         : output.output);
+      // A fresh result can still become obsolete after completion: retain
+      // source generation and listing identity for a live output warning.
+      setCompletedProjectOutput(freshness.stale ? null : {
+        action, epoch: reportEpoch, listing: reportSelection,
+      });
       // Trust the schema, requested command AND exact native process exit.
       // An incongruent test report cannot present a fabricated pass/fail.
       const structured = freshness.allowStructuredTests
@@ -2321,7 +2340,8 @@ export default function App() {
                 {diagnostic.help && <span className="compiler-diagnostic-help">{diagnostic.help}</span>}
               </div>
             )}
-            <pre className="compiler-output" role="log" aria-live="polite">{compilerOutput}</pre>
+            <pre className="compiler-output" role="log" aria-live="polite">{laterProjectOutputWarning
+                    ? laterProjectOutputWarning + '\n\n' + compilerOutput : compilerOutput}</pre>
           </section>
         </main>
       </div>
