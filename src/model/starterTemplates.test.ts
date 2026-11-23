@@ -4,9 +4,9 @@ import { getScarpStarterTemplate, scarpStarterTemplates } from './starterTemplat
 describe('Scarp-only starter templates', () => {
   it('offers independent real Scarp learning scenarios', () => {
     expect(scarpStarterTemplates.map(({ id }) => id)).toEqual([
-      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput', 'records', 'variants', 'collections', 'arrayupdates', 'optionresult',
+      'hello', 'bindings', 'functions', 'decisions', 'loops', 'whilecontrol', 'nestedloops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput', 'records', 'variants', 'collections', 'arrayupdates', 'optionresult',
     ]);
-    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(17);
+    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(19);
   });
 
   it('uses only .srp snippets that can be edited in an untitled buffer', () => {
@@ -18,6 +18,20 @@ describe('Scarp-only starter templates', () => {
       expect(starter.source).not.toContain('fn main(');
       expect(starter.source).not.toMatch(/\b(?:class|let|mut|def|async|await)\b/);
     }
+  });
+
+  it('includes compiler-backed while, break, continue and nested loop starters', () => {
+    const simple = getScarpStarterTemplate('whilecontrol');
+    const nested = getScarpStarterTemplate('nestedloops');
+    expect(simple?.source).toContain('while index < 10');
+    expect(simple?.source).toContain('continue;');
+    expect(simple?.source).toContain('break;');
+    expect(simple?.source).toContain('assert(total == 12');
+    expect(simple?.source).toContain('SCARP_STUDIO_GUI_WHILE_OK');
+    expect(nested?.source).toContain('repeat 3 as outer');
+    expect(nested?.source).toContain('while inner < 5');
+    expect(nested?.source).toContain('assert(total == 18');
+    expect(nested?.source).toContain('SCARP_STUDIO_GUI_NESTED_LOOP_OK');
   });
 
   it('includes an explicit saved-source compiler input example', () => {

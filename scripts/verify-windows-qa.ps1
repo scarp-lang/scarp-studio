@@ -55,7 +55,9 @@ function Assert-ScarpCommand {
 
 foreach ($fixture in @(
   @{ Path = 'qa/windows/01-run-square.srp'; Marker = 'SCARP_STUDIO_GUI_RUN_OK' },
-  @{ Path = 'qa/windows/02-fixed-array.srp'; Marker = 'SCARP_STUDIO_GUI_ARRAY_OK' }
+  @{ Path = 'qa/windows/02-fixed-array.srp'; Marker = 'SCARP_STUDIO_GUI_ARRAY_OK' },
+  @{ Path = 'qa/windows/06-while-control.srp'; Marker = 'SCARP_STUDIO_GUI_WHILE_OK' },
+  @{ Path = 'qa/windows/07-nested-loop.srp'; Marker = 'SCARP_STUDIO_GUI_NESTED_LOOP_OK' }
 )) {
   $source = $fixture.Path
   if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing QA fixture: $source" }

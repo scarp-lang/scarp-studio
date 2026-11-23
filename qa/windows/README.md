@@ -27,6 +27,8 @@ must be independently checked and explicitly approved before use.
 | --- | --- | --- |
 | `01-run-square.srp` | Open, Verify, Run | Verify succeeds; Run prints `SCARP_STUDIO_GUI_RUN_OK` |
 | `02-fixed-array.srp` | Open, Verify, Run | Verify succeeds; Run prints `SCARP_STUDIO_GUI_ARRAY_OK` |
+| `06-while-control.srp` | Open, Verify, Run, then choose **While, Break and Continue** in Examples | Verify succeeds; Run prints `SCARP_STUDIO_GUI_WHILE_OK`; the same source appears as an editable Scarp starter template |
+| `07-nested-loop.srp` | Open, Verify, Run, then choose **Nested Repeat and While** in Examples | Verify succeeds; Run prints `SCARP_STUDIO_GUI_NESTED_LOOP_OK`; the same source appears as an editable Scarp starter template |
 | `05-array-update.srp` | Open, Verify, Run with Scarp alpha.18 or later | Verify succeeds; Run prints `SCARP_STUDIO_GUI_ARRAY_UPDATE_OK` and original fixed-array values remain unchanged |
 | `03-boolean-input.srp` | Enable **prompt mode**, paste the contents of `03-boolean-input.stdin` into **Program Input**, then Run | Output includes `SCARP_STUDIO_GUI_BOOLEAN_OK`; input is preloaded, **not a live terminal** |
 | `04-invalid-diagnostic.srp` | Verify, then select the diagnostic or press F8 | Verify fails with a genuine compiler error; navigation points to the unchanged offending source |
@@ -75,6 +77,10 @@ $scarp = "C:\Path\To\Trusted\scarp.exe"
 & $scarp exec --diagnostic-format=json -- qa/windows/01-run-square.srp
 & $scarp verify --diagnostic-format=json -- qa/windows/02-fixed-array.srp
 & $scarp exec --diagnostic-format=json -- qa/windows/02-fixed-array.srp
+& $scarp verify --diagnostic-format=json -- qa/windows/06-while-control.srp
+& $scarp exec --diagnostic-format=json -- qa/windows/06-while-control.srp
+& $scarp verify --diagnostic-format=json -- qa/windows/07-nested-loop.srp
+& $scarp exec --diagnostic-format=json -- qa/windows/07-nested-loop.srp
 & $scarp verify --diagnostic-format=json -- qa/windows/05-array-update.srp
 & $scarp exec --diagnostic-format=json -- qa/windows/05-array-update.srp
 & $scarp exec --interactive --input-file qa/windows/03-boolean-input.stdin -- qa/windows/03-boolean-input.srp

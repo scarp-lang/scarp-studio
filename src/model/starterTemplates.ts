@@ -1,3 +1,6 @@
+import whileLoopSource from '../../qa/windows/06-while-control.srp?raw';
+import nestedLoopSource from '../../qa/windows/07-nested-loop.srp?raw';
+
 /** Small, explicitly created Scarp-only starter programs.
  * No template runs, saves, or accesses the filesystem automatically.
  */
@@ -38,6 +41,19 @@ export const scarpStarterTemplates: readonly ScarpStarterTemplate[] = [
     title: 'Repeat Loops',
     description: 'Counted repeat with an index',
     source: '// Repeat a counted body.\nvar total = 0;\nrepeat 5 as index {\n    total += index;\n}\nprint(total);\n',
+  },
+  {
+    id: 'whilecontrol',
+    title: 'While, Break and Continue',
+    description: 'Use a boolean while guard with explicit loop control',
+    // Exact compiler-verified QA fixture, embedded statically in the app.
+    source: whileLoopSource,
+  },
+  {
+    id: 'nestedloops',
+    title: 'Nested Repeat and While',
+    description: 'Control the nearest loop with break and continue',
+    source: nestedLoopSource,
   },
   {
     id: 'bigint',

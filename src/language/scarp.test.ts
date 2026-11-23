@@ -49,6 +49,15 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     }
   });
 
+  it('highlights published while and repeat flow control without inventing for loops', () => {
+    const provider = captureProvider();
+    for (const word of ['while', 'repeat', 'break', 'continue']) {
+      expect(provider.keywords).toContain(word);
+      expect(provider.typeKeywords).not.toContain(word);
+    }
+    expect(provider.keywords).not.toContain('for');
+  });
+
   it('keeps unsupported proposals and ordinary intrinsic calls out of keywords', () => {
     const provider = captureProvider();
     for (const name of ['for', 'ask', 'class', 'read_line']) {

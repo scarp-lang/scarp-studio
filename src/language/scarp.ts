@@ -4,7 +4,7 @@ import {
   type ScarpCompletion,
 } from './assist';
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.18.
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.19.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco): void {

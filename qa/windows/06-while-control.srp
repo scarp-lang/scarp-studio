@@ -1,0 +1,11 @@
+// While rechecks a boolean guard; continue skips this iteration.
+var index = 0;
+var total = 0;
+while index < 10 {
+    index += 1;
+    if index == 3 { continue; }
+    if index > 5 { break; }
+    total += index;
+}
+assert(total == 12, "skip 3 and stop after 5");
+print("SCARP_STUDIO_GUI_WHILE_OK");
