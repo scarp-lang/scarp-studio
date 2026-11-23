@@ -1837,6 +1837,28 @@ export default function App() {
             />
             Wrap long lines
           </label>
+          <label className="editor-setting-checkbox" htmlFor="editor-minimap">
+            <input
+              id="editor-minimap"
+              type="checkbox"
+              checked={editorPreferences.minimap}
+              onChange={(event) => setEditorPreferences((current) => ({
+                ...current, minimap: event.target.checked,
+              }))}
+            />
+            Show code minimap
+          </label>
+          <label className="editor-setting-checkbox" htmlFor="editor-whitespace">
+            <input
+              id="editor-whitespace"
+              type="checkbox"
+              checked={editorPreferences.showWhitespace}
+              onChange={(event) => setEditorPreferences((current) => ({
+                ...current, showWhitespace: event.target.checked,
+              }))}
+            />
+            Show spaces and tabs
+          </label>
           <button
             className="settings-reset"
             type="button"
@@ -2213,7 +2235,8 @@ export default function App() {
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
                 options={{
                   automaticLayout: true, fontSize: editorPreferences.fontSize, fontFamily: 'Consolas, monospace',
-                  minimap: { enabled: false }, scrollBeyondLastLine: false,
+                  minimap: { enabled: editorPreferences.minimap }, scrollBeyondLastLine: false,
+                  renderWhitespace: editorPreferences.showWhitespace ? 'all' : 'none',
                   tabSize: editorPreferences.tabSize, wordWrap: editorPreferences.wordWrap ? 'on' : 'off', detectIndentation: false,
                 }}
               />

@@ -18,10 +18,14 @@ describe('Scarp Studio full Settings reset', () => {
     first.autoSave.delay = 1000;
     first.editor.fontSize = 24;
     first.editor.wordWrap = false;
+    first.editor.minimap = true;
+    first.editor.showWhitespace = true;
     const again = restoreStudioDefaults();
     expect(again.autoSave.enabled).toBe(false);
     expect(again.autoSave.delay).toBe(3000);
     expect(again.editor.fontSize).toBe(DEFAULT_EDITOR_PREFERENCES.fontSize);
     expect(again.editor.wordWrap).toBe(true);
+    expect(again.editor.minimap).toBe(false);
+    expect(again.editor.showWhitespace).toBe(false);
   });
 });

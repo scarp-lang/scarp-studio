@@ -49,6 +49,9 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   display: flex; align-items: center; flex-wrap: wrap; gap: 9px;
   padding: 9px 14px; border-bottom: 1px solid var(--border);
   background: var(--surface); font-size: 12px;
+  /* Extra appearance controls should never squeeze the code editor out of
+     a short Windows viewport. The Settings panel scrolls independently. */
+  max-height: min(36vh, 240px); overflow-y: auto; overscroll-behavior: contain;
 }
 .editor-settings label { color: var(--text); white-space: nowrap; }
 .editor-settings select, .settings-reset {

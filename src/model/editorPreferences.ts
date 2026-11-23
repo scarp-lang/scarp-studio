@@ -6,12 +6,16 @@ export interface EditorPreferences {
   fontSize: (typeof FONT_SIZES)[number];
   tabSize: (typeof TAB_SIZES)[number];
   wordWrap: boolean;
+  minimap: boolean;
+  showWhitespace: boolean;
 }
 
 export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   fontSize: 14,
   tabSize: 4,
   wordWrap: true,
+  minimap: false,
+  showWhitespace: false,
 };
 
 /** Persisted settings are untrusted and may be stale or malformed. */
@@ -30,6 +34,10 @@ export function parseEditorPreferences(stored: string | null): EditorPreferences
         DEFAULT_EDITOR_PREFERENCES.tabSize,
       wordWrap: typeof value.wordWrap === 'boolean'
         ? value.wordWrap : DEFAULT_EDITOR_PREFERENCES.wordWrap,
+      minimap: typeof value.minimap === 'boolean'
+        ? value.minimap : DEFAULT_EDITOR_PREFERENCES.minimap,
+      showWhitespace: typeof value.showWhitespace === 'boolean'
+        ? value.showWhitespace : DEFAULT_EDITOR_PREFERENCES.showWhitespace,
     };
   } catch {
     return { ...DEFAULT_EDITOR_PREFERENCES };
