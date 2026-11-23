@@ -96,6 +96,23 @@ describe('project test result freshness', () => {
       { ...unrelated, content: 'new text', revision: 1 }], folder)).toBe(false);
   });
 
+  it('invalidates old project results if a new dirty in-project tab appears', () => {
+    const newlyAdded = tab('new.srp', 'C:/Work/Scarp/tests/new.srp');
+    const clean = tab('clean.srp', 'C:/Work/Scarp/examples/clean.srp', false);
+    const outside = tab('outside.srp', 'C:/Other/tests/outside.srp');
+    // This guards future session restore/batched editor additions. Existing
+    // clean source opens remain normal, non-staling source navigation.
+    expect(projectSourceBuffersChanged([project], [project, newlyAdded], folder)).toBe(true);
+    expect(projectSourceBuffersChanged([project], [project, clean], folder)).toBe(false);
+    expect(projectSourceBuffersChanged([project], [project, outside], folder)).toBe(false);
+    expect(projectSourceBuffersChanged([project], [project, tab('Untitled.srp', null)], folder)).toBe(false);
+    // An otherwise clean tab whose buffer later changes is already tracked
+    // by the existing identity+generation comparison.
+    expect(projectSourceBuffersChanged([project, clean], [
+      project, { ...clean, content: 'edited', revision: 1 },
+    ], folder)).toBe(true);
+  });
+
   it('invalidates structured project reports when a project source tab closes', () => {
     const projectAlias = tab('alias.srp', String.raw`C:\Work\Scarp\src\..\main.srp`, false);
     expect(projectSourceBuffersChanged([project], [], folder)).toBe(true);

@@ -42,6 +42,21 @@ describe('bounded read-only selected-project search', () => {
     expect(editorChangeInvalidatesProjectSearch(before, otherChanged, null)).toBe(false);
   });
 
+  it('retires a project search when a newly inserted selected-project tab is already dirty', () => {
+    const original = openFile('src/main.srp', 'needle');
+    const added = openFile('tests/new.srp', 'new needle');
+    const cleanAdded = { ...added, savedContent: added.content };
+    expect(editorChangeInvalidatesProjectSearch(
+      [original], [original, added], 'C:/project',
+    )).toBe(true);
+    expect(editorChangeInvalidatesProjectSearch(
+      [original], [original, cleanAdded], 'C:/project',
+    )).toBe(false);
+    expect(editorChangeInvalidatesProjectSearch(
+      [original], [original, { ...added, path: 'C:/other/new.srp' }], 'C:/project',
+    )).toBe(false);
+  });
+
   it('invalidates completed search hits after in-project edits, saves, closes and Save As', () => {
     const selected = openFile('src/main.srp', 'needle');
     const before = [selected];

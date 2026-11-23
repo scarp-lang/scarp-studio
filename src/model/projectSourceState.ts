@@ -98,6 +98,15 @@ export function projectSourceBuffersChanged(
   const root = pathParts(folderPath);
   if (!root) return false;
   const currentById = new Map(after.map((document) => [document.id, document]));
+  const previousIds = new Set(before.map((document) => document.id));
+  // Opening an ordinary clean project source is navigation, not a mutation.
+  // A previously absent DIRTY project tab, however, cannot inherit an old
+  // test/search report: its unsaved buffer was not present when that report
+  // was created. This also covers future batched session-restore operations.
+  if (after.some((current) => !previousIds.has(current.id) &&
+      belongsToProject(current.path, root) && isDirty(current))) {
+    return true;
+  }
   return before.some((previous) => {
     const current = currentById.get(previous.id);
     const previouslyInProject = belongsToProject(previous.path, root);
