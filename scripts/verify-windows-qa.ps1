@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Exercise checked-in Scarp Studio Windows manual-QA source fixtures with an
-  independently trusted official Scarp alpha.17 compiler.
+  independently trusted official Scarp alpha.17 or alpha.18 compiler.
 .DESCRIPTION
   Source-only and non-interactive. The test of input_boolean uses a supplied
   local stdin fixture and never reads personal data or launches Studio.
@@ -12,7 +12,9 @@
 param(
   [Parameter(Mandatory = $true)]
   [ValidateNotNullOrEmpty()]
-  [string]$CompilerPath
+  [string]$CompilerPath,
+  [ValidateSet('0.0.6-alpha.17', '0.0.6-alpha.18')]
+  [string]$ExpectedVersion = '0.0.6-alpha.18'
 )
 
 Set-StrictMode -Version Latest
@@ -26,8 +28,8 @@ if (-not (Test-Path -LiteralPath $CompilerPath -PathType Leaf)) {
 }
 
 $actualVersion = (& $CompilerPath --version | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $actualVersion -ne 'scarp 0.0.6-alpha.17') {
-  throw "Windows QA requires the separately validated official Scarp alpha.17 CLI, got: $actualVersion"
+if ($LASTEXITCODE -ne 0 -or $actualVersion -ne "scarp $ExpectedVersion") {
+  throw "Windows QA requires the separately validated official Scarp $ExpectedVersion CLI, got: $actualVersion"
 }
 
 function Assert-ScarpCommand {
@@ -68,6 +70,20 @@ foreach ($fixture in @(
   }
 }
 
+if ($ExpectedVersion -eq '0.0.6-alpha.18') {
+  $source = 'qa/windows/05-array-update.srp'
+  if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing QA fixture: $source" }
+  [void](Assert-ScarpCommand -Name "Verify $source" -Arguments @(
+    'verify', '--diagnostic-format=json', '--', $source
+  ) -ExpectedExitCode 0)
+  $ran = Assert-ScarpCommand -Name "Run $source" -Arguments @(
+    'exec', '--diagnostic-format=json', '--', $source
+  ) -ExpectedExitCode 0 -ExpectedMarker 'SCARP_STUDIO_GUI_ARRAY_UPDATE_OK'
+  if ($ran -ne 'SCARP_STUDIO_GUI_ARRAY_UPDATE_OK') {
+    throw "Scarp QA Run $source produced additional unexpected output: $ran"
+  }
+}
+
 $booleanSource = 'qa/windows/03-boolean-input.srp'
 $booleanInput = 'qa/windows/03-boolean-input.stdin'
 if (-not (Test-Path -LiteralPath $booleanInput -PathType Leaf)) {
@@ -102,4 +118,4 @@ Write-Host 'SCARP QA PASS: Expected JSON diagnostic on invalid source'
 # Clear only that expected status after its JSON error has been validated;
 # unexpected failure above still throws and fails the workflow.
 $global:LASTEXITCODE = 0
-Write-Host 'All checked-in Scarp alpha.17 CLI smoke fixtures passed. Windows GUI acceptance is still required.'
+Write-Host 'All checked-in Scarp $ExpectedVersion CLI smoke fixtures passed. Windows GUI acceptance is still required.'

@@ -355,6 +355,11 @@ const templates: readonly ScarpCompletion[] = [
     insertText: 'array_get_or(${1:values}, ${2:index}, ${3:fallback})',
   },
   {
+    label: 'array_set', kind: 'function', detail: 'Immutable fixed-array update (alpha.18+)',
+    documentation: 'Since alpha.18 (interpreter): return a new fixed array with one checked index replaced by a same-type value. The original array and its aliases remain unchanged. Out-of-range indices report E0063; bounded array allocations still apply. Requires an alpha.18+ compiler.',
+    insertText: 'array_set(${1:values}, ${2:index}, ${3:replacement})',
+  },
+  {
     label: 'input_boolean', kind: 'function', detail: 'Boolean prompt (alpha.17+)',
     documentation: 'Since alpha.17 (interpreter): read exactly lowercase true or false. Requires interactive mode and a preloaded Program Input line in Studio. This is not a live interactive terminal; malformed or missing input reports a compiler diagnostic.',
     insertText: 'input_boolean("${1:Continue (true/false)? }")',

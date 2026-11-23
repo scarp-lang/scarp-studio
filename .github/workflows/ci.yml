@@ -499,22 +499,16 @@ jobs:
 
       # Published alpha.17 adds bounded fixed-array and interactive boolean
       # input intrinsics. This validates the external CLI, not Studio GUI input.
-      # Only this step uses the current candidate descriptor's pinned archive.
+      # Retain alpha.17 as a separately verified backward-compatibility gate.
       - name: Verify SHA-pinned Scarp alpha.17 CLI and native Studio integration
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $candidate = Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json
-          if ($candidate.compilerCompatibilityVersion -ne "0.0.6-alpha.17" -or
-              $candidate.publicationAuthorized -ne $false -or
-              $candidate.manualWindowsAcceptanceRequired -ne $true) {
-            throw "Alpha.17 candidate must be review-only and require Windows acceptance"
-          }
           $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.17/scarp-0.0.6-alpha.17-x86_64-pc-windows-msvc.zip"
           Invoke-WebRequest -Uri $url -OutFile scarp-alpha17.zip
           $actual = (Get-FileHash scarp-alpha17.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $official = "fa05e57675799d881ebe33ccd54f6eb769825632904adf99cd08c940383134b5"
-          if ($actual -ne $official -or $candidate.compilerWindowsZipSha256 -ne $official) {
+          if ($actual -ne $official) {
             throw "Official Scarp alpha.17 archive digest mismatch"
           }
           Expand-Archive -Path scarp-alpha17.zip -DestinationPath scarp-alpha17
@@ -571,6 +565,59 @@ jobs:
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler_discovery::tests::discovers_pinned_official_compiler_from_extracted_archive --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Studio failed to discover official alpha.17 extracted compiler" }
 
+      # Published alpha.18 retains the native CLI/JSON contract and adds
+      # immutable array_set plus no-argument exec entrypoint discovery.
+      # The current source candidate pins its official Windows release ZIP.
+      - name: Verify SHA-pinned Scarp alpha.18 CLI and native Studio integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $candidate = Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json
+          $official = "1dbd8e9f6dbb3e727fb765b5a1bf184f8574c8b139289269b65a7d889d60e6b0"
+          if ($candidate.compilerCompatibilityVersion -ne "0.0.6-alpha.18" -or
+              $candidate.compilerWindowsZipSha256 -ne $official -or
+              $candidate.publicationAuthorized -ne $false -or
+              $candidate.manualWindowsAcceptanceRequired -ne $true) {
+            throw "Alpha.18 candidate must pin the official compiler and remain review-only"
+          }
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.18/scarp-0.0.6-alpha.18-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha18.zip
+          $actual = (Get-FileHash scarp-alpha18.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $official) { throw "Official alpha.18 compiler archive digest mismatch" }
+          Expand-Archive -Path scarp-alpha18.zip -DestinationPath scarp-alpha18
+          $binaries = @(Get-ChildItem scarp-alpha18 -File -Recurse -Filter "scarp.exe")
+          if ($binaries.Count -ne 1) { throw "Expected exactly one Scarp alpha.18 executable" }
+          $binary = $binaries[0]
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.18") {
+            throw "Unexpected official Scarp alpha.18 version"
+          }
+          & $binary.FullName guide exec
+          if ($LASTEXITCODE -ne 0) { throw "Alpha.18 exec capability missing" }
+          & $binary.FullName guide verify
+          if ($LASTEXITCODE -ne 0) { throw "Alpha.18 verify capability missing" }
+          # A no-source exec must choose src/main.srp inside the working folder.
+          New-Item -ItemType Directory -Path scarp-alpha18-auto/src -Force | Out-Null
+          'print("SCARP_STUDIO_ALPHA18_AUTO_ENTRY_OK");' |
+            Set-Content -Path scarp-alpha18-auto/src/main.srp -Encoding utf8
+          Push-Location scarp-alpha18-auto
+          try {
+            $entryOutput = & $binary.FullName exec
+            if ($LASTEXITCODE -ne 0 -or
+                ($entryOutput -join [Environment]::NewLine).Trim() -ne "SCARP_STUDIO_ALPHA18_AUTO_ENTRY_OK") {
+              throw "Scarp alpha.18 working-directory entrypoint execution failed"
+            }
+          } finally {
+            Pop-Location
+          }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.18"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native service rejected Scarp alpha.18" }
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler_discovery::tests::discovers_pinned_official_compiler_from_extracted_archive --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio could not discover official alpha.18 extracted CLI" }
+          & ./scripts/verify-windows-qa.ps1 -CompilerPath $binary.FullName -ExpectedVersion '0.0.6-alpha.18'
+
       # Smoke the exact .srp sources provided for manual Windows 11 acceptance,
       # so QA instructions cannot silently drift from the official compiler.
       - name: Verify checked-in Scarp Studio Windows QA programs against alpha.17
@@ -585,7 +632,7 @@ jobs:
           # nonzero Verify exit. A successful PowerShell script can therefore
           # leave LASTEXITCODE=1 from that expected negative test; rely on its
           # explicit exceptions instead of treating that exit as runner failure.
-          & ./scripts/verify-windows-qa.ps1 -CompilerPath $binaries[0].FullName
+          & ./scripts/verify-windows-qa.ps1 -CompilerPath $binaries[0].FullName -ExpectedVersion '0.0.6-alpha.17'
 
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle

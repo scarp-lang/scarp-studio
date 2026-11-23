@@ -88,7 +88,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
   { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
   { id: 'scan-compiler', label: 'Scan for Installed Scarp Compiler', detail: 'Non-executing discovery' },
-  { id: 'download-compiler', label: 'Download Official Scarp Compiler', detail: 'Official alpha.17 Windows ZIP' },
+  { id: 'download-compiler', label: 'Download Official Scarp Compiler', detail: 'Official alpha.18 Windows ZIP' },
   { id: 'run-scarp', label: 'Run Current Scarp Source', detail: 'F5 · saved .srp only' },
   { id: 'verify-scarp', label: 'Verify Current Scarp Source', detail: 'Ctrl+F5 · static analysis' },
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
@@ -939,7 +939,7 @@ export default function App() {
         nativeDialogGate.current.isActive) return;
     try {
       await openCompilerDownloads();
-      setNotice('Opened the official Scarp alpha.17 download; extract it and scan for the compiler.');
+      setNotice('Opened the official Scarp alpha.18 download; extract it and scan for the compiler.');
     } catch (caught) {
       setError('Could not open official compiler download: ' + toMessage(caught));
     }

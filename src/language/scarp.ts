@@ -4,7 +4,7 @@ import {
   type ScarpCompletion,
 } from './assist';
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.17.
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.18.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco): void {
@@ -40,7 +40,7 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       'decimal_round', 'decimal_format', 'decimal_div_rounded', 'input_decimal',
       'list_len', 'list_push', 'list_set', 'list_remove',
       'map_len', 'map_keys', 'map_values', 'map_contains', 'map_get_or', 'map_set', 'map_remove',
-      'array_len', 'array_get_or', 'input_boolean',
+      'array_len', 'array_get_or', 'array_set', 'input_boolean',
     ],
     // Old declaration spellings are reserved but rejected by the current compiler.
     legacyKeywords: ['let', 'mut'],

@@ -123,6 +123,19 @@ describe('published Scarp alpha.17 fixed arrays and boolean input', () => {
   });
 });
 
+describe('published Scarp alpha.18 immutable fixed-array updates', () => {
+  it('offers the exact array_set syntax with a version and immutability warning', () => {
+    const update = scarpTokenHelp('array_set');
+    expect(update?.kind).toBe('function');
+    expect(update?.insertText).toBe('array_set(${1:values}, ${2:index}, ${3:replacement})');
+    expect(update?.documentation).toContain('alpha.18');
+    expect(update?.documentation).toContain('original array');
+    expect(update?.documentation).toContain('E0063');
+    expect(scarpCompletions('ARRAY_SET').some((item) => item.label === 'array_set')).toBe(true);
+    expect(scarpCompletions('array_set_invalid')).toEqual([]);
+  });
+});
+
 describe('lexical completion safety', () => {
   it('suppresses suggestions inside comments and quoted strings', () => {
     const line = 'print("https://test"); // trailing comment';
