@@ -48,6 +48,7 @@ import { projectResultFreshness, sourceResultIsStale } from './model/resultFresh
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
 import { AutoSaveReviewGate } from './model/autoSaveReviewGate';
+import { inspectDiskSnapshot, isCurrentDiskReview, type DiskReview } from './model/diskReview';
 import { restoreStudioDefaults } from './model/studioDefaults';
 import { CompilerDiscoveryRequests } from './model/compilerDiscoveryRequests';
 import {
@@ -78,6 +79,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'save-all', label: 'Save All Modified Scarp Files', detail: 'Ctrl+Alt+S' },
   { id: 'save-as', label: 'Save Current File As', detail: 'Ctrl+Shift+S' },
   { id: 'reload', label: 'Reload Current Scarp File from Disk', detail: 'Confirms before discarding unsaved edits' },
+  { id: 'compare-disk', label: 'Compare Current Scarp File with Disk', detail: 'Read-only preview before Reload or Save As' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
   { id: 'find-project', label: 'Find in Selected Scarp Project', detail: 'Read-only and bounded' },
@@ -148,6 +150,7 @@ export default function App() {
     const next = editorReducer(before, action);
     if (next === before) return;
     invalidateProjectSearch();
+    setDiskReview(null);
     const project = selectedFolderRef.current?.path;
     if (project && projectSourceBuffersChanged(before.documents, next.documents, project)) {
       projectResultEpoch.current++;
@@ -182,6 +185,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
   const [searchOpen, setSearchOpen] = useState(false);
+  const [diskReview, setDiskReview] = useState<{
+    snapshot: StudioDocument;
+    report: DiskReview;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
@@ -378,6 +385,7 @@ export default function App() {
       case 'save-all': void saveAllFiles(); break;
       case 'save-as': void saveFile(true); break;
       case 'reload': void reloadFile(); break;
+      case 'compare-disk': void compareActiveSourceWithDisk(); break;
       case 'close':
         if (liveEditor.current.activeId) void closeFile(liveEditor.current.activeId);
         break;
@@ -709,6 +717,52 @@ export default function App() {
       activateOpenedFile(decision.path, content);
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function compareActiveSourceWithDisk(): Promise<void> {
+    const snapshot = liveEditor.current;
+    const selected = currentActiveDocument(snapshot);
+    if (!selected?.path) {
+      setError('Save this .srp source before comparing it with disk.');
+      return;
+    }
+    if (!isTauri()) {
+      setError('Checking disk sources requires the Scarp Studio desktop application.');
+      return;
+    }
+    if (saveInProgress.current || filePickerInProgress.current ||
+        selectionInProgress.current || commandInProgress.current ||
+        nativeDialogGate.current.isActive) {
+      setError('Finish the current file, compiler or dialog operation before checking disk.');
+      return;
+    }
+    // Native read shares the picker/file operation gate: Auto Save cannot
+    // concurrently rewrite the comparison target. This never writes disk.
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setDiskReview(null);
+    setError(null);
+    try {
+      const diskContent = await readScarpSource(selected.path);
+      const activeNow = currentActiveDocument(liveEditor.current);
+      if (!hasUnchangedEditorSession(snapshot, liveEditor.current) ||
+          !isCurrentDiskReview(selected, activeNow)) {
+        setError('The editor changed during the disk comparison. Check the file again.');
+        return;
+      }
+      const report = inspectDiskSnapshot(selected, diskContent);
+      setDiskReview({ snapshot: selected, report });
+      setNotice(report.status === 'unchanged'
+        ? 'The saved disk source is unchanged since its last read/save.'
+        : report.status === 'disk-matches-editor'
+          ? 'Disk matches current editor text, but differs from its saved baseline.'
+          : 'External source changes detected. Review before Reload or Save As.');
+    } catch (caught) {
+      setError('Could not compare source with disk: ' + toMessage(caught));
     } finally {
       filePickerInProgress.current = false;
       setBusy(false);
@@ -1632,6 +1686,9 @@ export default function App() {
           <button onClick={() => void saveAllFiles()} disabled={busy || compilerBusy || compilerSelecting || !documents.some(isDirty)}
             title="Save All modified Scarp files (Ctrl+Alt+S)">Save All</button>
           <button onClick={() => void saveFile(true)} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save As (Ctrl+Shift+S)">Save As</button>
+          <button onClick={() => void compareActiveSourceWithDisk()}
+            disabled={!isTauri() || !active?.path || busy || compilerBusy || compilerSelecting || compilerScanning}
+            title="Read-only snapshot comparison with the current saved file; never overwrites source">Compare with Disk</button>
           <button onClick={() => void reloadFile()} disabled={!active?.path || busy || compilerBusy || compilerSelecting}
             title="Reload the saved Scarp source from disk, confirming before discarding edits">Reload</button>
         </nav>
@@ -1996,6 +2053,44 @@ export default function App() {
                   </div>
                 </section>
               )}
+            </section>
+          )}
+          {diskReview && isCurrentDiskReview(diskReview.snapshot, active) && (
+            <section className="disk-review" aria-label="Read-only disk comparison">
+              <div className="disk-review-heading">
+                <strong>COMPARE WITH DISK · READ-ONLY</strong>
+                <button type="button" onClick={() => setDiskReview(null)}
+                  aria-label="Dismiss disk comparison">Dismiss</button>
+              </div>
+              <p role="status" className="disk-review-summary">
+                {diskReview.report.status === 'unchanged'
+                  ? 'The disk file still matches its last loaded/saved source snapshot.'
+                  : diskReview.report.status === 'disk-matches-editor'
+                    ? 'The disk matches your current buffer, but differs from the last loaded/saved snapshot. Studio still treats that as an external change.'
+                    : diskReview.report.status === 'external-change'
+                      ? 'This file changed outside Studio. Reload to inspect the new disk version.'
+                      : 'Conflict: both your unsaved editor content and the disk file differ from the last saved snapshot. Use Save As with a different filename to preserve your edits before Reload.'}
+                {' '}Disk size: {diskReview.report.diskBytes} UTF-8 bytes.
+                {' '}This is a limited excerpt, not an automatic merge or overwrite approval.
+              </p>
+              {diskReview.report.externalLine !== null && (
+                <p className="disk-review-location">External difference near saved source line {diskReview.report.externalLine}.</p>
+              )}
+              {diskReview.report.editorLine !== null && (
+                <p className="disk-review-location">Editor/disk difference near editor line {diskReview.report.editorLine}.</p>
+              )}
+              <div className="disk-review-excerpts">
+                {diskReview.report.savedExcerpt !== null && (
+                  <div><strong>Last saved snapshot</strong><pre>{diskReview.report.savedExcerpt}</pre></div>
+                )}
+                {diskReview.report.editorExcerpt !== null && (
+                  <div><strong>Current editor buffer</strong><pre>{diskReview.report.editorExcerpt}</pre></div>
+                )}
+                {diskReview.report.diskExcerpt !== null && (
+                  <div><strong>Current disk snapshot</strong><pre>{diskReview.report.diskExcerpt}</pre></div>
+                )}
+              </div>
+              <p className="disk-review-hint">No file was written. Reload rereads disk independently and asks before discarding dirty edits; Save As uses the normal guarded destination picker. Disk files may change again after this comparison.</p>
             </section>
           )}
           {error && (
