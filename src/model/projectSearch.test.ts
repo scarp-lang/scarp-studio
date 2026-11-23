@@ -83,6 +83,20 @@ describe('bounded read-only selected-project search', () => {
     expect(result?.truncated).toBe(true);
   });
 
+  it('uses the exact UTF-8 byte cap for open Hindi/emoji buffers without allocating encoded copies', async () => {
+    // 262K Hindi scalars are fewer than 512K UTF-16 units but exceed 512K UTF-8 bytes.
+    const doc = openFile('src/main.srp',
+      'न'.repeat(Math.floor(MAX_PROJECT_SEARCH_READ_BYTES / 2)) + 'needle');
+    const read = vi.fn(async () => 'disk needle');
+    const result = await searchListedProjectSources([file('src/main.srp')], [doc],
+      'needle', options, read);
+    expect(result?.hits).toEqual([]);
+    expect(result?.searchedFiles).toBe(0);
+    expect(result?.skippedFiles).toBe(1);
+    expect(result?.truncated).toBe(true);
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it('caps the number of files and treats unsearched files as incomplete', async () => {
     const files = Array.from({ length: MAX_PROJECT_SEARCH_FILES + 8 }, (_, index) =>
       file('src/file-' + index + '.srp'));

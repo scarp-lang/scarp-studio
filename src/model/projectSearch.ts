@@ -1,5 +1,6 @@
 import { isScarpPath, sameFilePath, type StudioDocument } from './documents';
 import { searchOpenFiles, type OpenFileSearchHit, type SearchOptions } from './openFileSearch';
+import { utf8ByteLength } from './utf8Text';
 
 /** Explicit read-only search of ONLY the already-listed Scarp project sources.
  * A deliberately small I/O budget is distinct from the normal 4 MiB editor
@@ -126,7 +127,8 @@ export async function searchListedProjectSources(
     if (!isCurrent()) return null;
     // Enforce the cap again for an open buffer or an incorrectly implemented
     // read adapter, not merely through the Tauri source-read contract.
-    if (content.length > MAX_PROJECT_SEARCH_READ_BYTES) {
+    if (content.length > MAX_PROJECT_SEARCH_READ_BYTES ||
+        utf8ByteLength(content) > MAX_PROJECT_SEARCH_READ_BYTES) {
       skipped++;
       truncated = true;
       continue;

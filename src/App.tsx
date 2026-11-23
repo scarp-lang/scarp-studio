@@ -1533,6 +1533,8 @@ export default function App() {
       }
       if (paletteMode === null && event.key === 'Escape' && searchOpen) {
         event.preventDefault();
+        // A closed Find pane must not publish delayed native search results.
+        invalidateProjectSearch();
         setSearchOpen(false);
         return;
       }
@@ -1621,7 +1623,7 @@ export default function App() {
             title="Toggle Explorer (Ctrl+B)">Explorer</button>
           <button
             type="button"
-            onClick={() => setSearchOpen((open) => !open)}
+            onClick={() => { invalidateProjectSearch(); setSearchOpen((open) => !open); }}
             aria-expanded={searchOpen}
             aria-controls="open-file-search"
             title="Search all currently open Scarp buffers (Ctrl+Shift+F)"
@@ -1882,8 +1884,10 @@ export default function App() {
                   title="Explicit read-only search of up to 24 already-listed project sources">
                   Search Project
                 </button>
-                <button type="button" onClick={() => setSearchOpen(false)}
-                  aria-label="Close open-file search">Close</button>
+                <button type="button" onClick={() => {
+                  invalidateProjectSearch();
+                  setSearchOpen(false);
+                }} aria-label="Close open-file search">Close</button>
               </div>
               <div className="open-file-search-toolbar" aria-label="Literal replacement in open files">
                 <label htmlFor="open-file-replacement">Replace with</label>
