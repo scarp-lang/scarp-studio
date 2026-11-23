@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createUntitled, updateContent, type StudioDocument } from './documents';
 import {
   MAX_PROJECT_SEARCH_FILES, MAX_PROJECT_SEARCH_READ_BYTES,
-  MAX_PROJECT_SEARCH_TOTAL_UNITS, searchListedProjectSources,
+  MAX_PROJECT_SEARCH_TOTAL_BYTES, searchListedProjectSources,
   selectProjectSearchSources,
 } from './projectSearch';
 
@@ -111,10 +111,22 @@ describe('bounded read-only selected-project search', () => {
     const files = Array.from({ length: 8 }, (_, i) => file('file-' + i + '.srp'));
     const read = vi.fn(async () => 'a'.repeat(MAX_PROJECT_SEARCH_READ_BYTES));
     const result = await searchListedProjectSources(files, [], 'needle', options, read);
-    expect(result?.searchedFiles).toBe(MAX_PROJECT_SEARCH_TOTAL_UNITS / MAX_PROJECT_SEARCH_READ_BYTES);
+    expect(result?.searchedFiles).toBe(MAX_PROJECT_SEARCH_TOTAL_BYTES / MAX_PROJECT_SEARCH_READ_BYTES);
     expect(result?.truncated).toBe(true);
     expect(result?.skippedFiles).toBe(4);
     expect(read).toHaveBeenCalledTimes(5);
+  });
+
+  it('enforces the aggregate UTF-8 byte budget for multibyte project sources', async () => {
+    // 160K Hindi characters are under 512 KiB in a single source but need
+    // 480K UTF-8 bytes. The fifth source would exceed the 2 MiB total.
+    const files = Array.from({ length: 5 }, (_, i) => file('source-' + i + '.srp'));
+    const reader = vi.fn(async () => 'ह'.repeat(160_000));
+    const result = await searchListedProjectSources(files, [], 'needle', options, reader);
+    expect(result?.searchedFiles).toBe(4);
+    expect(result?.skippedFiles).toBe(1);
+    expect(result?.truncated).toBe(true);
+    expect(reader).toHaveBeenCalledTimes(5);
   });
 
   it('stops a superseded search after a delayed native read', async () => {

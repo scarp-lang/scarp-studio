@@ -8,7 +8,7 @@ import { utf8ByteLength } from './utf8Text';
  */
 export const MAX_PROJECT_SEARCH_FILES = 24;
 export const MAX_PROJECT_SEARCH_READ_BYTES = 512 * 1024;
-export const MAX_PROJECT_SEARCH_TOTAL_UNITS = 2 * 1024 * 1024;
+export const MAX_PROJECT_SEARCH_TOTAL_BYTES = 2 * 1024 * 1024;
 const MAX_LISTED_SOURCES = 200;
 
 export interface ProjectSearchSource {
@@ -102,7 +102,7 @@ export async function searchListedProjectSources(
   const selected = selectProjectSearchSources(listed);
   let skipped = listed.length - selected.length;
   let truncated = skipped > 0;
-  let totalUnits = 0;
+  let totalBytes = 0;
   const snapshots: StudioDocument[] = [];
   const mapping = new Map<string, { path: string; name: string; fromOpenTab: boolean }>();
 
@@ -127,18 +127,21 @@ export async function searchListedProjectSources(
     if (!isCurrent()) return null;
     // Enforce the cap again for an open buffer or an incorrectly implemented
     // read adapter, not merely through the Tauri source-read contract.
-    if (content.length > MAX_PROJECT_SEARCH_READ_BYTES ||
-        utf8ByteLength(content) > MAX_PROJECT_SEARCH_READ_BYTES) {
+    // Both limits count actual UTF-8 bytes, not just UTF-16 code units.
+    // This prevents Hindi/emoji content from multiplying memory/I/O budgets.
+    const sourceBytes = content.length <= MAX_PROJECT_SEARCH_READ_BYTES
+      ? utf8ByteLength(content) : MAX_PROJECT_SEARCH_READ_BYTES + 1;
+    if (sourceBytes > MAX_PROJECT_SEARCH_READ_BYTES) {
       skipped++;
       truncated = true;
       continue;
     }
-    if (totalUnits + content.length > MAX_PROJECT_SEARCH_TOTAL_UNITS) {
+    if (totalBytes + sourceBytes > MAX_PROJECT_SEARCH_TOTAL_BYTES) {
       skipped += selected.length - index;
       truncated = true;
       break;
     }
-    totalUnits += content.length;
+    totalBytes += sourceBytes;
     const document: StudioDocument = open ?? {
       id: 'project-search:' + index,
       name: source.name,
