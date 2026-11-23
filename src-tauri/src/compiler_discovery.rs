@@ -25,6 +25,63 @@ fn expected_file_name() -> &'static str {
     }
 }
 
+/// Parse a version *hint* from an extracted Scarp archive folder name.
+/// This is solely a non-executing discovery ordering hint, not proof that an
+/// executable is official or safe. The native probe still requires consent.
+fn archive_version_hint(name: &str) -> Option<(u32, u32, u32, u8, u32)> {
+    let lower = name.to_ascii_lowercase();
+    let version = lower.strip_prefix("scarp-")?;
+    let version = version.strip_prefix('v').unwrap_or(version);
+    let (major, tail) = version.split_once('.')?;
+    let (minor, tail) = tail.split_once('.')?;
+    let patch_digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+    if patch_digits == 0 {
+        return None;
+    }
+    let major: u32 = major.parse().ok()?;
+    let minor: u32 = minor.parse().ok()?;
+    let patch: u32 = tail[..patch_digits].parse().ok()?;
+    let suffix = &tail[patch_digits..];
+    let (stage, build) = if let Some(rest) = suffix.strip_prefix("-alpha.") {
+        (0, rest)
+    } else if let Some(rest) = suffix.strip_prefix("-beta.") {
+        (1, rest)
+    } else if let Some(rest) = suffix.strip_prefix("-rc.") {
+        (2, rest)
+    } else if suffix.is_empty() || suffix.starts_with("-x86_64")
+        || suffix.starts_with("-aarch64") {
+        return Some((major, minor, patch, 3, 0));
+    } else {
+        return None;
+    };
+    let digits = build.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 || (!build[digits..].is_empty() && !build[digits..].starts_with('-')) {
+        return None;
+    }
+    let build = build[..digits].parse().ok()?;
+    Some((major, minor, patch, stage, build))
+}
+
+/// Scarp-named directories precede unrelated Downloads clutter; amongst
+/// version-shaped directories prefer numerically newer compiler versions.
+/// Invalid or unversioned Scarp names still remain eligible after versioned
+/// directories. A normal sort never probes or executes candidates.
+fn download_entry_order(entry: &fs::DirEntry) -> (u8, Option<(u32, u32, u32, u8, u32)>, String) {
+    let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+    match entry.file_type() {
+        Ok(kind) if kind.is_dir() && name.contains("scarp") => {
+            (0, archive_version_hint(&name), name)
+        }
+        Ok(kind)
+            if (kind.is_file() || kind.is_symlink())
+                && name.eq_ignore_ascii_case(expected_file_name()) =>
+        {
+            (1, None, name)
+        }
+        _ => (2, None, name),
+    }
+}
+
 fn record_binary(
     path: &Path,
     found: &mut Vec<String>,
@@ -76,18 +133,13 @@ fn scan_directory(
     };
     let mut entries: Vec<_> = entries.flatten().take(lookahead).collect();
     if prioritize_scarp_archives {
-        entries.sort_by_key(|entry| {
-            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
-            match entry.file_type() {
-                Ok(kind) if kind.is_dir() && name.contains("scarp") => 0_u8,
-                Ok(kind)
-                    if (kind.is_file() || kind.is_symlink())
-                        && name.eq_ignore_ascii_case(expected_file_name()) =>
-                {
-                    1
-                }
-                _ => 2,
-            }
+        entries.sort_by(|left, right| {
+            let left = download_entry_order(left);
+            let right = download_entry_order(right);
+            left.0
+                .cmp(&right.0)
+                .then_with(|| right.1.cmp(&left.1))
+                .then_with(|| left.2.cmp(&right.2))
         });
     }
     for entry in entries {
@@ -437,6 +489,84 @@ mod tests {
                 .to_string_lossy()
                 .into_owned()]
         );
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn archive_version_hints_compare_numeric_alpha_versions() {
+        assert!(
+            archive_version_hint("Scarp-v0.0.6-alpha.18")
+                > archive_version_hint("scarp-0.0.6-alpha.9")
+        );
+        assert!(
+            archive_version_hint("scarp-0.0.7-alpha.1")
+                > archive_version_hint("scarp-0.0.6-alpha.99")
+        );
+        assert!(
+            archive_version_hint("scarp-0.0.6")
+                > archive_version_hint("scarp-0.0.6-rc.999")
+        );
+        assert!(
+            archive_version_hint("scarp-0.0.6-rc.1")
+                > archive_version_hint("scarp-0.0.6-beta.50")
+        );
+        assert_eq!(archive_version_hint("scarp-not-a-version"), None);
+        assert_eq!(archive_version_hint("not-scarp-0.0.6-alpha.18"), None);
+        assert_eq!(archive_version_hint("scarp-0.0.6-alpha.invalid"), None);
+        assert_eq!(archive_version_hint("scarp-0.0.6-alpha.18malformed"), None);
+    }
+
+    #[test]
+    fn newer_extracted_versions_win_the_bounded_download_candidate_slots() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = env::temp_dir().join(format!(
+            "studio-versioned-downloads-{}-{unique}",
+            std::process::id()
+        ));
+        let downloads = base.join("Downloads");
+        fs::create_dir_all(&downloads).unwrap();
+        let versions = [
+            "0.0.6-alpha.2",
+            "0.0.6-alpha.18",
+            "0.0.5-alpha.100",
+            "0.0.6-alpha.9",
+            "0.0.6-alpha.17",
+            "0.0.6-alpha.10",
+            "0.0.6-alpha.3",
+            "0.0.6-alpha.1",
+        ];
+        for version in versions {
+            let extracted = downloads.join(format!("Scarp-{version}")).join("bin");
+            fs::create_dir_all(&extracted).unwrap();
+            fs::write(
+                extracted.join(expected_file_name()),
+                b"fake discovery candidate, never launch",
+            )
+            .unwrap();
+        }
+        let candidates = scan_directories(&[(downloads.clone(), 3, false)]);
+        assert_eq!(candidates.len(), MAX_CANDIDATES_PER_ROOT);
+        let expected = [
+            "0.0.6-alpha.18",
+            "0.0.6-alpha.17",
+            "0.0.6-alpha.10",
+            "0.0.6-alpha.9",
+        ];
+        for (actual, version) in candidates.iter().zip(expected) {
+            let path = fs::canonicalize(
+                downloads
+                    .join(format!("Scarp-{version}"))
+                    .join("bin")
+                    .join(expected_file_name()),
+            )
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+            assert_eq!(actual, &path, "a stale archive hid a newer candidate");
+        }
         fs::remove_dir_all(base).unwrap();
     }
 
