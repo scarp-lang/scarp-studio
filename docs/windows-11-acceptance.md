@@ -9,15 +9,15 @@ This is a **manual verification worksheet** for the full IDE candidate consolida
   `pwsh -File scripts/verify-windows-artifacts.ps1 -ArtifactDirectory 'C:\\ScarpStudioAcceptance\\artifacts' -SourceCommit '<exact 40-digit commit SHA>' -RunUrl 'https://github.com/scarp-lang/scarp-studio/actions/runs/<exact run ID>'`.
   This checks for missing, duplicate and modified artifacts, but **cannot prove** that a manually supplied run URL or manifest is genuine; verify provenance in GitHub first. Record the exact run URL, commit and results.
 - Record: Scarp Studio source commit, CI run URL, candidate exe SHA-256, installer SHA-256, Windows build, and any code signing information. An unsigned installer is **not** a stable release. Respect Windows security warnings; investigate them rather than bypassing device protection.
-- Obtain the official Scarp `v0.0.6-alpha.18` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.18) and verify the Windows ZIP archive SHA-256 against its published GitHub release-asset digest:
+- Obtain the official Scarp `v0.0.6-alpha.19` Windows compiler separately from its [GitHub release](https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.19) and verify the Windows ZIP archive SHA-256 against its published GitHub release-asset digest:
   `1dbd8e9f6dbb3e727fb765b5a1bf184f8574c8b139289269b65a7d889d60e6b0`. The installer and compiler archives are distinct files; never compare their hashes interchangeably.
-- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.18`. Scarp Studio may automatically **detect** the compiler, but must require explicit trust confirmation of its **exact path** before executing even a version probe; the Download action opens the official ZIP **only on click**, without installing or launching any found executable automatically. Automated CI also checks alpha.10–alpha.15 backwards compatibility, but this manual pass is against alpha.18. CI retains a separate alpha.17 compatibility gate.
+- Check `scarp.exe --version` reports `scarp 0.0.6-alpha.19`. Scarp Studio may automatically **detect** the compiler, but must require explicit trust confirmation of its **exact path** before executing even a version probe; the Download action opens the official ZIP **only on click**, without installing or launching any found executable automatically. Automated CI also checks alpha.10–alpha.15 backwards compatibility, but this manual pass is against alpha.19. CI retains separate alpha.17 and alpha.18 compatibility gates.
 - Use only disposable `.srp` files in a test directory, e.g. `C:\\ScarpStudioAcceptance`; keep backups of any data you care about. Never test overwrite handling using real projects.
 
 A ready-to-run [Windows GUI smoke suite](../qa/windows/README.md) contains
 real `.srp` files for Run/Verify, fixed arrays, preloaded boolean input and
 an intentionally invalid diagnostic. The same source examples are executed
-by exact-head Windows CI against the SHA-pinned official alpha.18 compiler (with separate backwards-compatibility checks for alpha.17).
+by exact-head Windows CI against the SHA-pinned official alpha.19 compiler (with separate backwards-compatibility checks for alpha.17 and alpha.18).
 **CI only establishes CLI compatibility; mark GUI cases PASS only after
 actually testing the Studio desktop build.**
 
@@ -117,11 +117,11 @@ actually testing the Studio desktop build.**
 | P32 | In an instrumented disposable build, supply a schema-valid `mode=list` report in response to **Run Tests**, and a schema-valid `mode=run` report in response to **List Tests** | The raw compiler output stays visible but neither mismatched response creates structured test statuses or clickable test-source navigation; matching reports continue to work normally | NOT RUN |
 | P33 | In an instrumented disposable compiler bridge, return a valid all-PASS `mode=run` test report with exit code 1, a valid failing run report with exit code 0, and a valid List Tests discovery report with exit code 1; compare with real successful/failing suites | Inconsistent or abnormal exits preserve raw output but never create a structured PASS/FAIL report or Open Source navigation; genuine exit-0 successes and exit-1 failing test suites render matching structured results | NOT RUN |
 
-## Official compiler alpha.18 candidate (interpreter CLI; older Scarp sources remain supported)
+## Official compiler alpha.19 candidate (interpreter CLI; older Scarp sources remain supported)
 
 | ID | Action | Required outcome | Result / evidence |
 | --- | --- | --- | --- |
-| C01 | Explicitly select verified official alpha.18 `scarp.exe`, accept trust prompt | Studio reports version; remains idle until explicit Run or Verify | NOT RUN |
+| C01 | Explicitly select verified official alpha.19 `scarp.exe`, accept trust prompt | Studio reports version; remains idle until explicit Run or Verify | NOT RUN |
 | C02 | Create **Typed Records** starter; save, Verify, Run | Record syntax verified; result prints `Review` | NOT RUN |
 | C03 | Create **Tagged Variants** starter; save, Verify, Run | Exhaustive case match executes; output contains `42` | NOT RUN |
 | C04 | Create **Typed Lists and Maps** starter; save, Verify, Run | Interpreter evaluates immutable snapshots and typed map lookup | NOT RUN |
@@ -142,6 +142,7 @@ actually testing the Studio desktop build.**
 | C22 | With the independently SHA-256-verified alpha.18 CLI, open the `05-array-update.srp` QA fixture, Verify and Run it in Studio, then run `scarp exec` without an explicit source in a disposable folder containing `src/main.srp` | Studio Verify/Run succeeds with `SCARP_STUDIO_GUI_ARRAY_UPDATE_OK` and demonstrates the unchanged original array; standalone CLI chooses the documented source entrypoint. No implicit Studio execution or live terminal is claimed | NOT RUN |
 | C23 | With more than 600 unrelated files in a disposable Downloads directory, extract the independently verified alpha.18 compiler inside a Scarp-named subfolder and click Scan Compiler | The Scarp executable is found within the bounded Downloads name lookahead, retains per-session exact-path trust and cannot execute before user approval | NOT RUN |
 | C24 | Extract independently verified Scarp alpha.9, alpha.10, alpha.17 and alpha.18 compiler ZIPs in distinct version-named Downloads subfolders along with several older versions; repeat with a disposable versioned Scarp installation directory, then click **Scan Compiler** | The newer version-shaped archive and installation folders receive first priority within the four candidates allowed per root, even if Windows enumerates older folders first. The UI proposes exact executable paths but does not claim they are verified from filenames; no candidate is executed without explicit user confirmation | NOT RUN |
+| C25 | With the independently SHA-256-verified alpha.19 compiler, trust its exact path, Verify/Run `05-array-update.srp` and run `03-boolean-input.srp` with explicit preloaded prompt input | Existing source-level operations, array snapshots, boolean input and diagnostic navigation remain compatible; no source-level callable or closure support is inferred from the Rust-only alpha.19 embedding additions | NOT RUN |
 | C09 | Project Info, Verify Project, Run Project, List Tests, Run Tests in disposable project | Compiler output and structured test report match actual CLI support | NOT RUN |
 | C10 | Choose an older official compiler and attempt an alpha.12-only program | Unsupported syntax is reported; Studio does not claim that old CLI executed alpha.12 | NOT RUN |
 | C11 | With official alpha.18, Verify/Run a result-propagation example that prints a value on Ok and forwards an Err unchanged | Exactly the expected output, no automatic execution; native Stop still available | NOT RUN |

@@ -27,7 +27,7 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 
 The offline candidate checker validates versions in `package.json`, `package-lock.json` (top level and root package), Tauri, Cargo and Cargo.lock. Its manifest explicitly requires **manual Windows acceptance and no publication authorization**. Neither check command creates a tag, upload or release.
 
-GitHub Actions must additionally show a successful exact-head Windows run with the SHA-pinned **official Scarp alpha.18 Windows CLI** (while retaining separate alpha.10–alpha.15 and alpha.17 backwards-compatibility checks), frontend tests, native service tests, build, installer, SHA-256 and deliberate tamper rejection. The alpha.17 gate checks fixed-array reads, preloaded boolean input and JSON v1 diagnostics; the alpha.18 gate additionally checks immutable `array_set`, no-argument `exec` selecting `src/main.srp`, native process integration and compiler discovery; this does not imply Studio GUI prompt support.
+GitHub Actions must additionally show a successful exact-head Windows run with the SHA-pinned **official Scarp alpha.19 Windows CLI** (while retaining separate alpha.10–alpha.15 and alpha.17 backwards-compatibility checks), frontend tests, native service tests, build, installer, SHA-256 and deliberate tamper rejection. The alpha.17 gate checks fixed-array reads, preloaded boolean input and JSON v1 diagnostics; the alpha.18 gate additionally checks immutable `array_set`, no-argument `exec` selecting `src/main.srp`, native process integration and compiler discovery; the separate alpha.19 gate verifies the published official CLI version and digest, checked-in QA programs, and native execution/discovery; this does not imply Studio GUI prompt support.
 
 ## 3. Verify CI artifacts from the same run
 
@@ -83,4 +83,6 @@ Until then, share only GitHub Actions development artifacts as **unsigned test c
 - Compiler probe safety PR: https://github.com/scarp-lang/scarp-studio/pull/57
 - Test report freshness PR: https://github.com/scarp-lang/scarp-studio/pull/58
 - Windows acceptance worksheet: `docs/windows-11-acceptance.md`
-- Official compiler release: https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.18
+- Official compiler release: https://github.com/scarp-lang/scarp/releases/tag/v0.0.6-alpha.19
+
+**Alpha.19 scope:** the release adds Rust embedding callable handles and host usage ledgers, not first-class Scarp source functions. It preserves alpha.18's CLI surface. The alpha.19 candidate pin never authorizes Studio publication.
