@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import recordVariantFixture from '../../qa/windows/08-declaration-outline.srp?raw';
 import {
   isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS,
   MAX_SCARP_OUTLINE_HEADER_UNITS, MAX_SCARP_OUTLINE_SYMBOLS,
@@ -209,6 +210,17 @@ describe('lexical completion safety', () => {
 });
 
 describe('Scarp full declaration outline', () => {
+  it('indexes the same published record/variant source executed by Windows CLI QA', () => {
+    expect(scanScarpOutlineSymbols(recordVariantFixture)
+      .map(({ kind, name, line }) => [kind, name, line])).toEqual([
+      ['record', 'Task', 2],
+      ['variant', 'Lookup', 3],
+      ['function', 'is_done', 4],
+    ]);
+    expect(scanScarpFunctions(recordVariantFixture).map(({ name }) => name)).toEqual(['is_done']);
+    expect(recordVariantFixture).toContain('SCARP_STUDIO_GUI_DECLARATION_OK');
+  });
+
   it('shows public records, variants, and functions in source order', () => {
     const source = [
       '// pub record Hidden {',

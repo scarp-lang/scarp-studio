@@ -1,0 +1,14 @@
+// Source-level Scarp record and variant declarations (alpha.12+).
+pub record Task { title: string, done: boolean }
+pub variant Lookup { Missing, Found(integer) }
+pure funcra is_done(task: record Task) -> boolean {
+    return task->done;
+}
+bind task = new Task { title: "Review", done: true };
+assert(is_done(task), "record field access");
+bind lookup = new Lookup::Found(42);
+match on lookup {
+    case Missing { print("SCARP_STUDIO_UNEXPECTED_CASE"); }
+    case Found(value) { assert(value == 42, "variant payload"); }
+}
+print("SCARP_STUDIO_GUI_DECLARATION_OK");
