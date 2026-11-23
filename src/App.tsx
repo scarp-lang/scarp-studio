@@ -48,7 +48,10 @@ import { projectResultFreshness, sourceResultIsStale } from './model/resultFresh
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
 import { AutoSaveReviewGate } from './model/autoSaveReviewGate';
-import { inspectDiskSnapshot, isCurrentDiskReview, type DiskReview } from './model/diskReview';
+import {
+  inspectDiskSnapshot, isCurrentDiskReview, isCurrentDiskReviewOperation,
+  type DiskReview,
+} from './model/diskReview';
 import { restoreStudioDefaults } from './model/studioDefaults';
 import { CompilerDiscoveryRequests } from './model/compilerDiscoveryRequests';
 import {
@@ -748,9 +751,7 @@ export default function App() {
     setError(null);
     try {
       const diskContent = await readScarpSource(selected.path);
-      const activeNow = currentActiveDocument(liveEditor.current);
-      if (!hasUnchangedEditorSession(snapshot, liveEditor.current) ||
-          !isCurrentDiskReview(selected, activeNow)) {
+      if (!isCurrentDiskReviewOperation(snapshot, liveEditor.current, selected)) {
         setError('The editor changed during the disk comparison. Check the file again.');
         return;
       }

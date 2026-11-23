@@ -1,4 +1,7 @@
-import { isUnchangedSnapshot } from './editorState';
+import {
+  currentActiveDocument, hasUnchangedEditorSession, isUnchangedSnapshot,
+  type EditorState,
+} from './editorState';
 import type { StudioDocument } from './documents';
 import { lineBreakWidth, nextLineBreak } from './sourceLines';
 import { unicodeSafePreviewBounds, utf8ByteLength } from './utf8Text';
@@ -105,4 +108,17 @@ export function isCurrentDiskReview(
   snapshot: StudioDocument, activeDocument: StudioDocument | null,
 ): boolean {
   return activeDocument !== null && isUnchangedSnapshot(activeDocument, snapshot);
+}
+
+
+/** Native Compare returns for the exact *whole editor session* where it
+ * started, not merely for a tab that happens to contain the same text now.
+ * A→B→A focus changes, edits to other tabs and close/reopen cycles must all
+ * invalidate an asynchronous source read even if content is byte-identical.
+ */
+export function isCurrentDiskReviewOperation(
+  started: EditorState, current: EditorState, snapshot: StudioDocument,
+): boolean {
+  return hasUnchangedEditorSession(started, current) &&
+    isCurrentDiskReview(snapshot, currentActiveDocument(current));
 }

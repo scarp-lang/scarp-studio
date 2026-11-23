@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createUntitled, updateContent } from './documents';
-import { inspectDiskSnapshot, isCurrentDiskReview } from './diskReview';
+import { editorReducer, type EditorState } from './editorState';
+import {
+  inspectDiskSnapshot, isCurrentDiskReview, isCurrentDiskReviewOperation,
+} from './diskReview';
 import { assertWellFormedUtf16 } from './utf8Text';
 
 function loaded(text: string) {
@@ -90,6 +93,37 @@ describe('explicit, read-only external source comparison', () => {
     expect(deleted.externalLine).toBe(2);
     expect(deleted.diskExcerpt).toContain('end of file');
     expect(deleted.savedExcerpt).toContain('removed');
+  });
+
+  it('rejects delayed disk reads across tab-switch ABA and unrelated edits', () => {
+    const selected = loaded('print("saved");');
+    const other = { ...loaded('print("other");'), id: 'unrelated', name: 'other.srp' };
+    const initial: EditorState = {
+      documents: [selected, other],
+      activeId: selected.id,
+      nextUntitled: 2,
+      sessionRevision: 100,
+    };
+    expect(isCurrentDiskReviewOperation(initial, initial, selected)).toBe(true);
+    const switched = editorReducer(initial, { type: 'activate', id: other.id });
+    const restoredFocus = editorReducer(switched, { type: 'activate', id: selected.id });
+    expect(restoredFocus.activeId).toBe(initial.activeId);
+    expect(restoredFocus.documents[0].content).toBe(selected.content);
+    expect(isCurrentDiskReviewOperation(initial, restoredFocus, selected)).toBe(false);
+
+    const editedOther = editorReducer(initial, {
+      type: 'edit', id: other.id, content: 'print("new other");',
+    });
+    expect(editedOther.activeId).toBe(initial.activeId);
+    expect(isCurrentDiskReviewOperation(initial, editedOther, selected)).toBe(false);
+
+    const changed = editorReducer(initial, {
+      type: 'edit', id: selected.id, content: 'print("new");',
+    });
+    const backToSameBytes = editorReducer(changed, {
+      type: 'edit', id: selected.id, content: selected.content,
+    });
+    expect(isCurrentDiskReviewOperation(initial, backToSameBytes, selected)).toBe(false);
   });
 
   it('rejects stale tab identity, rename, edit and ABA restored text', () => {
