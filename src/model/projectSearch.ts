@@ -140,7 +140,17 @@ export async function searchListedProjectSources(
 
   for (let index = 0; index < selected.length; index++) {
     if (!isCurrent()) return null;
+    // Stop before another native read once the aggregate budget is consumed.
+    const remainingBytes = MAX_PROJECT_SEARCH_TOTAL_BYTES - totalBytes;
+    if (remainingBytes === 0) {
+      skipped += selected.length - index;
+      truncated = true;
+      break;
+    }
     const source = selected[index];
+    // Allow the bounded scoped reader to reject a source that exceeds the
+    // remaining budget before reading its contents from disk.
+    const readLimit = Math.min(MAX_PROJECT_SEARCH_READ_BYTES, remainingBytes);
     const open = openDocuments.find((item) =>
       item.path !== null && sameFilePath(item.path, source.path));
     let content: string;
@@ -148,7 +158,7 @@ export async function searchListedProjectSources(
       content = open.content;
     } else {
       try {
-        content = await readSource(source.path, MAX_PROJECT_SEARCH_READ_BYTES);
+        content = await readSource(source.path, readLimit);
       } catch {
         if (!isCurrent()) return null;
         skipped++;
@@ -157,21 +167,15 @@ export async function searchListedProjectSources(
       }
     }
     if (!isCurrent()) return null;
-    // Enforce the cap again for an open buffer or an incorrectly implemented
-    // read adapter, not merely through the Tauri source-read contract.
-    // Both limits count actual UTF-8 bytes, not just UTF-16 code units.
-    // This prevents Hindi/emoji content from multiplying memory/I/O budgets.
-    const sourceBytes = content.length <= MAX_PROJECT_SEARCH_READ_BYTES
-      ? utf8ByteLength(content) : MAX_PROJECT_SEARCH_READ_BYTES + 1;
-    if (sourceBytes > MAX_PROJECT_SEARCH_READ_BYTES) {
+    // Independently enforce both UTF-8 byte budgets for open buffers and
+    // even an incorrect native read adapter, without allocating encoded data.
+    const sourceBytes = content.length <= readLimit
+      ? utf8ByteLength(content) : readLimit + 1;
+    if (sourceBytes > readLimit) {
+      // A later, smaller source may still fit within remaining capacity.
       skipped++;
       truncated = true;
       continue;
-    }
-    if (totalBytes + sourceBytes > MAX_PROJECT_SEARCH_TOTAL_BYTES) {
-      skipped += selected.length - index;
-      truncated = true;
-      break;
     }
     totalBytes += sourceBytes;
     const document: StudioDocument = open ?? {

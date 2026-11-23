@@ -214,7 +214,42 @@ describe('bounded read-only selected-project search', () => {
     expect(result?.searchedFiles).toBe(MAX_PROJECT_SEARCH_TOTAL_BYTES / MAX_PROJECT_SEARCH_READ_BYTES);
     expect(result?.truncated).toBe(true);
     expect(result?.skippedFiles).toBe(4);
+    expect(read).toHaveBeenCalledTimes(4);
+  });
+
+  it('shrinks native read limits to the remaining aggregate budget', async () => {
+    const files = Array.from({ length: 5 }, (_, i) => file('part-' + i + '.srp'));
+    const read = vi.fn(async () => 'a'.repeat(400_000));
+    const result = await searchListedProjectSources(files, [], 'needle', options, read);
+    expect(result?.searchedFiles).toBe(5);
+    expect(result?.truncated).toBe(false);
     expect(read).toHaveBeenCalledTimes(5);
+    for (let i = 0; i < 4; i++) {
+      expect(read).toHaveBeenNthCalledWith(i + 1, files[i].path, MAX_PROJECT_SEARCH_READ_BYTES);
+    }
+    expect(read).toHaveBeenNthCalledWith(
+      5, files[4].path, MAX_PROJECT_SEARCH_TOTAL_BYTES - 4 * 400_000,
+    );
+  });
+
+  it('skips unfit sources while still searching smaller listed sources', async () => {
+    const files = Array.from({ length: 6 }, (_, i) => file('part-' + i + '.srp'));
+    const read = vi.fn(async (path: string) => {
+      const index = Number(path.slice(path.lastIndexOf('part-') + 5).split('.')[0]);
+      if (index < 3) return 'a'.repeat(MAX_PROJECT_SEARCH_READ_BYTES);
+      if (index === 3) return 'a'.repeat(400_000);
+      if (index === 4) return 'a'.repeat(200_000); // Adapter exceeds readLimit
+      return 'needle';
+    });
+    const result = await searchListedProjectSources(files, [], 'needle', options, read);
+    expect(result?.hits.map((hit) => hit.name)).toEqual(['part-5.srp']);
+    expect(result?.searchedFiles).toBe(5);
+    expect(result?.skippedFiles).toBe(1);
+    expect(result?.truncated).toBe(true);
+    const leftover = MAX_PROJECT_SEARCH_TOTAL_BYTES -
+      3 * MAX_PROJECT_SEARCH_READ_BYTES - 400_000;
+    expect(read).toHaveBeenNthCalledWith(5, files[4].path, leftover);
+    expect(read).toHaveBeenNthCalledWith(6, files[5].path, leftover);
   });
 
   it('enforces the aggregate UTF-8 byte budget for multibyte project sources', async () => {
