@@ -80,8 +80,12 @@ fn scan_directory(
             let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
             match entry.file_type() {
                 Ok(kind) if kind.is_dir() && name.contains("scarp") => 0_u8,
-                Ok(kind) if (kind.is_file() || kind.is_symlink())
-                    && name.eq_ignore_ascii_case(expected_file_name()) => 1,
+                Ok(kind)
+                    if (kind.is_file() || kind.is_symlink())
+                        && name.eq_ignore_ascii_case(expected_file_name()) =>
+                {
+                    1
+                }
                 _ => 2,
             }
         });
@@ -104,7 +108,16 @@ fn scan_directory(
                 .to_ascii_lowercase()
                 .contains("scarp");
             if descend_all || scarp_named {
-                scan_directory(&path, depth - 1, true, budget, found, seen, candidate_limit, false);
+                scan_directory(
+                    &path,
+                    depth - 1,
+                    true,
+                    budget,
+                    found,
+                    seen,
+                    candidate_limit,
+                    false,
+                );
             }
         }
     }
@@ -406,8 +419,11 @@ mod tests {
         // A plain 512-entry scan could miss the later versioned archive.
         // Discovery must not execute the fake candidate to find it.
         for index in 0..(MAX_ENTRIES_PER_ROOT + 100) {
-            fs::write(downloads.join(format!("unrelated-{index:04}.txt")), b"noise")
-                .unwrap();
+            fs::write(
+                downloads.join(format!("unrelated-{index:04}.txt")),
+                b"noise",
+            )
+            .unwrap();
         }
         let extracted = downloads.join("Scarp-0.0.6-alpha.18").join("bin");
         fs::create_dir_all(&extracted).unwrap();
