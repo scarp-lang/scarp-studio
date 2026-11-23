@@ -13,6 +13,21 @@ export function sourceResultIsStale(
   return !documents.some((document) => isCurrentVerifiedSource(source, document));
 }
 
+/** A completed single-source command remains tied to the exact previously
+ * saved editor generation. A later edit, Save, Save As or close/reopen must
+ * label retained raw output as historical, even though navigation markers
+ * have already been withdrawn.
+ */
+export function completedSourceOutputWarning(
+  source: VerifiedSourceSnapshot | null,
+  documents: readonly StudioDocument[],
+): string | null {
+  if (!source || !sourceResultIsStale(source, documents)) return null;
+  return '[Scarp source output is now stale. The saved source changed since ' +
+    'this result was produced. Output below describes an earlier source ' +
+    'snapshot; save changes and rerun Run or Verify.]';
+}
+
 export interface ProjectResultIdentity {
   /** Increments after an in-project buffer change or successful Explorer scan. */
   epoch: number;

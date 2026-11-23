@@ -45,8 +45,8 @@ import {
   projectSourceBuffersChanged,
 } from './model/projectSourceState';
 import {
-  completedProjectOutputWarning, projectResultFreshness, sourceResultIsStale,
-  type CompletedProjectOutput,
+  completedProjectOutputWarning, completedSourceOutputWarning,
+  projectResultFreshness, sourceResultIsStale, type CompletedProjectOutput,
 } from './model/resultFreshness';
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
 import { AutoSaveScheduler } from './model/autoSaveScheduler';
@@ -233,6 +233,10 @@ export default function App() {
   // Later edits or project switches must display an explicit stale warning.
   const [completedProjectOutput, setCompletedProjectOutput] =
     useState<CompletedProjectOutput | null>(null);
+  // Keep raw Run/Verify output associated with its source even after error
+  // navigation is invalidated by edits to that source.
+  const [completedSourceOutput, setCompletedSourceOutput] =
+    useState<VerifiedSourceSnapshot | null>(null);
   const [compilerBusy, setCompilerBusy] = useState(false);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
@@ -260,6 +264,8 @@ export default function App() {
     epoch: projectResultEpoch.current,
     listing: selectedFolderRef.current,
   });
+  const laterSourceOutputWarning = completedSourceOutputWarning(completedSourceOutput, documents);
+  const outputFreshnessWarning = laterSourceOutputWarning ?? laterProjectOutputWarning;
   const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
   const diagnosticPosition = isCurrentVerifiedSource(compilerOutputSource, active) && active?.path
     ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
@@ -988,6 +994,7 @@ export default function App() {
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
     setCompletedProjectOutput(null);
+    setCompletedSourceOutput(null);
     setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
     setNotice('Scarp compiler approved for this session');
     return true;
@@ -1151,6 +1158,7 @@ export default function App() {
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
     setCompletedProjectOutput(null);
+    setCompletedSourceOutput(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(
@@ -1167,6 +1175,9 @@ export default function App() {
         : result.output);
       setCompilerDiagnosticStderr(staleSource ? null : result.diagnosticStderr);
       if (staleSource) setCompilerOutputSource(null);
+      // If fresh on completion, edits AFTER this return still need a visible
+      // warning without offering stale diagnostic navigation.
+      setCompletedSourceOutput(staleSource ? null : verifiedSnapshot);
       setNotice(staleSource
         ? 'Scarp result is stale; save the changed source and rerun'
         : 'Scarp ' + mode + ' finished; see output');
@@ -1174,6 +1185,7 @@ export default function App() {
       const message = toMessage(caught);
       setCompilerOutputSource(null);
       setCompilerDiagnosticStderr(null);
+      setCompletedSourceOutput(null);
       setCompilerOutput('Scarp ' + mode + ' could not complete:\n' + message);
       setError(message);
     } finally {
@@ -1253,6 +1265,7 @@ export default function App() {
     setCompilerOutputSource(null);
     setProjectTestResult(null);
     setCompletedProjectOutput(null);
+    setCompletedSourceOutput(null);
     setCompilerOutput('Scarp project ' + action + '…');
     try {
       const output = await scarpProjectAction(
@@ -2340,8 +2353,8 @@ export default function App() {
                 {diagnostic.help && <span className="compiler-diagnostic-help">{diagnostic.help}</span>}
               </div>
             )}
-            <pre className="compiler-output" role="log" aria-live="polite">{laterProjectOutputWarning
-                    ? laterProjectOutputWarning + '\n\n' + compilerOutput : compilerOutput}</pre>
+            <pre className="compiler-output" role="log" aria-live="polite">{outputFreshnessWarning
+                    ? outputFreshnessWarning + '\n\n' + compilerOutput : compilerOutput}</pre>
           </section>
         </main>
       </div>

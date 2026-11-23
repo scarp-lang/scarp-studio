@@ -3,7 +3,8 @@ import { createUntitled, type StudioDocument } from './documents';
 import { editorReducer, initialEditorState } from './editorState';
 import { captureVerifiedSource } from './verifiedSource';
 import {
-  completedProjectOutputWarning, projectResultFreshness, sourceResultIsStale,
+  completedProjectOutputWarning, completedSourceOutputWarning,
+  projectResultFreshness, sourceResultIsStale,
 } from './resultFreshness';
 import type { ScarpProjectAction } from '../services/project';
 
@@ -39,6 +40,46 @@ describe('source compiler result freshness', () => {
     expect(sourceResultIsStale(snapshot, [{ ...saved, revision: 8 }])).toBe(true);
     expect(sourceResultIsStale(snapshot, [{ ...saved, path: 'C:/project/renamed.srp' }])).toBe(true);
     expect(sourceResultIsStale(snapshot, [])).toBe(true);
+  });
+
+  it('labels retained single-file output after a later source edit or save', () => {
+    const saved = source();
+    const snapshot = captureVerifiedSource(saved)!;
+    expect(completedSourceOutputWarning(null, [saved])).toBeNull();
+    expect(completedSourceOutputWarning(snapshot, [saved])).toBeNull();
+    expect(completedSourceOutputWarning(snapshot, [
+      createUntitled(1), { ...saved, path: String.raw`c:\\PROJECT\\MAIN.srp` },
+    ])).toBeNull();
+    const warning = completedSourceOutputWarning(snapshot, [
+      { ...saved, content: 'print("changed");', revision: saved.revision + 1 },
+    ]);
+    expect(warning).toContain('now stale');
+    expect(warning).toContain('earlier source snapshot');
+    expect(completedSourceOutputWarning(snapshot, [
+      { ...saved, revision: saved.revision + 1 },
+    ])).not.toBeNull();
+    expect(completedSourceOutputWarning(snapshot, [
+      { ...saved, path: 'C:/project/renamed.srp' },
+    ])).not.toBeNull();
+    expect(completedSourceOutputWarning(snapshot, [])).not.toBeNull();
+  });
+
+  it('rejects older completed output after A→B→A but accepts a fresh rerun', () => {
+    const before = editorReducer(initialEditorState, {
+      type: 'open', path: 'C:/project/test.srp', content: 'print(1);',
+    });
+    const selected = before.documents.at(-1)!;
+    const old = captureVerifiedSource(selected)!;
+    const changed = editorReducer(before, { type: 'edit', id: selected.id, content: 'print(2);' });
+    const restored = editorReducer(changed, { type: 'edit', id: selected.id, content: selected.content });
+    expect(completedSourceOutputWarning(old, restored.documents)).not.toBeNull();
+    const rerun = captureVerifiedSource(restored.documents.at(-1)!)!;
+    expect(completedSourceOutputWarning(rerun, restored.documents)).toBeNull();
+    const closed = editorReducer(before, { type: 'close', id: selected.id, snapshot: selected });
+    const reopened = editorReducer(closed, {
+      type: 'open', path: 'C:/project/test.srp', content: selected.content,
+    });
+    expect(completedSourceOutputWarning(old, reopened.documents)).not.toBeNull();
   });
 
   it('rejects same-byte A→B→A edits of a running saved source', () => {
