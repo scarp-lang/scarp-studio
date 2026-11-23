@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createUntitled, updateContent, type StudioDocument } from './documents';
+import {
+  createUntitled, markSaved, openedDocument, updateContent, type StudioDocument,
+} from './documents';
 import {
   MAX_PROJECT_SEARCH_FILES, MAX_PROJECT_SEARCH_READ_BYTES,
-  MAX_PROJECT_SEARCH_TOTAL_BYTES, searchListedProjectSources,
-  selectProjectSearchSources,
+  MAX_PROJECT_SEARCH_TOTAL_BYTES, editorChangeInvalidatesProjectSearch,
+  searchListedProjectSources, selectProjectSearchSources,
 } from './projectSearch';
 
 const options = { caseSensitive: false, wholeWord: false };
@@ -17,6 +19,46 @@ function openFile(name: string, content: string): StudioDocument {
 }
 
 describe('bounded read-only selected-project search', () => {
+  it('keeps completed results through source navigation and unrelated edits', () => {
+    const selected = openFile('src/main.srp', 'print("needle");');
+    const unrelated = {
+      ...openFile('unrelated.srp', 'other'),
+      id: 'other-tab', path: 'C:/other/unrelated.srp',
+    };
+    const before = [selected, unrelated];
+    const otherChanged = updateContent(before, unrelated.id, 'updated elsewhere');
+    const anotherTab = [...before, createUntitled(5)];
+    const openedListedSource = openedDocument(
+      before, 'C:/project/tests/example.srp', 'needle',
+    ).documents;
+    for (const next of [before, [...before].reverse(), otherChanged,
+      anotherTab, openedListedSource]) {
+      expect(editorChangeInvalidatesProjectSearch(
+        before, next, 'C:/project',
+      )).toBe(false);
+    }
+    // Changes to search terms and Explorer membership are handled by the
+    // caller's separate invalidation gates, not this editor-only guard.
+    expect(editorChangeInvalidatesProjectSearch(before, otherChanged, null)).toBe(false);
+  });
+
+  it('invalidates completed search hits after in-project edits, saves, closes and Save As', () => {
+    const selected = openFile('src/main.srp', 'needle');
+    const before = [selected];
+    const changed = updateContent(before, selected.id, 'new needle');
+    const reverted = updateContent(changed, selected.id, selected.content);
+    const saved = markSaved(before, selected.id, selected.path!, selected.content);
+    const relocated = markSaved(before, selected.id, 'C:/outside/moved.srp', selected.content);
+    for (const next of [changed, reverted, saved, relocated, []]) {
+      expect(editorChangeInvalidatesProjectSearch(
+        before, next, 'C:/project',
+      )).toBe(true);
+    }
+    expect(editorChangeInvalidatesProjectSearch(
+      before, changed, 'C:/other',
+    )).toBe(false);
+  });
+
   it('does not fetch paths for empty or invalid queries', async () => {
     const reader = vi.fn(async () => 'hello');
     const files = [file('src/main.srp')];

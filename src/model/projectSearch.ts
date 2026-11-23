@@ -1,6 +1,24 @@
 import { isScarpPath, sameFilePath, type StudioDocument } from './documents';
 import { searchOpenFiles, type OpenFileSearchHit, type SearchOptions } from './openFileSearch';
 import { utf8ByteLength } from './utf8Text';
+import { projectSourceBuffersChanged } from './projectSourceState';
+
+/** A completed project search should survive switching tabs and opening the
+ * result's own source, so users can inspect several matches without rescanning.
+ * In-project buffer mutations, Save As, close/reopen or replacements invalidate
+ * its snapshot. Project selection/refresh and changed search options are
+ * separately invalidated by the editor. In-flight searches still reject any
+ * whole-editor session change, even when completed results could be retained.
+ */
+export function editorChangeInvalidatesProjectSearch(
+  before: readonly StudioDocument[],
+  after: readonly StudioDocument[],
+  selectedProjectPath: string | null,
+): boolean {
+  return selectedProjectPath !== null &&
+    projectSourceBuffersChanged(before, after, selectedProjectPath);
+}
+
 
 /** Explicit read-only search of ONLY the already-listed Scarp project sources.
  * A deliberately small I/O budget is distinct from the normal 4 MiB editor

@@ -67,7 +67,8 @@ import {
 } from './model/openFileSearch';
 import { planOpenFileReplacement, type OpenFileReplacePlan } from './model/openFileReplace';
 import {
-  searchListedProjectSources, type ProjectSearchHit, type ProjectSearchResult,
+  editorChangeInvalidatesProjectSearch, searchListedProjectSources,
+  type ProjectSearchHit, type ProjectSearchResult,
 } from './model/projectSearch';
 import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplaceUndo } from './model/openFileReplaceUndo';
 
@@ -140,7 +141,8 @@ export default function App() {
   // successfully replaced. In-flight test reports must match this generation.
   const projectResultEpoch = useRef(0);
   const { documents, activeId } = editorState;
-  // Explicit project search never persists across a changed buffer or listing.
+  // Completed searches survive safe navigation but never selected-project
+  // source mutations, listing replacement or changed search options.
   const projectSearchEpoch = useRef(0);
   const [projectSearchResult, setProjectSearchResult] = useState<{
     selection: { path: string; files: FolderEntry[] };
@@ -155,9 +157,15 @@ export default function App() {
     const before = liveEditor.current;
     const next = editorReducer(before, action);
     if (next === before) return;
-    invalidateProjectSearch();
+    const project = selectedFolderRef.current?.path ?? null;
+    // Clicking a project-search hit opens/activates a source. Preserve the
+    // result list through navigation, but immediately retire it after a
+    // selected-project source edit/save/close (including ABA generations).
+    // An in-flight search separately checks sessionRevision after each read.
+    if (editorChangeInvalidatesProjectSearch(before.documents, next.documents, project)) {
+      invalidateProjectSearch();
+    }
     setDiskReview(null);
-    const project = selectedFolderRef.current?.path;
     if (project && projectSourceBuffersChanged(before.documents, next.documents, project)) {
       projectResultEpoch.current++;
       setProjectTestResult(null);
