@@ -19,7 +19,7 @@ import {
   parseEditorPreferences, type EditorPreferences,
 } from './model/editorPreferences';
 import {
-  clampLineLocation, cycleTabId, filterNavigationEntries, parseLineLocation,
+  clampLineLocation, cycleTabId, filterNavigationEntries, keyboardTabTarget, parseLineLocation,
   type NavigationEntry,
 } from './model/navigation';
 import { scanScarpFunctions, type ScarpFunctionSymbol } from './language/assist';
@@ -1669,12 +1669,25 @@ export default function App() {
                 key={document.id}
                 onClick={() => dispatch({ type: 'activate', id: document.id })}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
+                  // Close buttons own their keyboard events; never interpret
+                  // those as tab selection or arrow-navigation requests.
+                  if (event.target !== event.currentTarget) return;
+                  const ids = documents.map((item) => item.id);
+                  const next = keyboardTabTarget(ids, document.id, event.key);
+                  if (next !== null) {
+                    event.preventDefault();
+                    dispatch({ type: 'activate', id: next });
+                    const position = ids.indexOf(next);
+                    event.currentTarget.parentElement
+                      ?.querySelectorAll<HTMLElement>('[role="tab"]')
+                      .item(position)?.focus();
+                  } else if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     dispatch({ type: 'activate', id: document.id });
                   }
                 }}
-                tabIndex={0}
+                tabIndex={document.id === activeId ? 0 : -1}
+                aria-controls="scarp-editor-panel"
                 title={document.path || document.name}
               >
                 <span>{document.name}</span>
@@ -1810,7 +1823,8 @@ export default function App() {
               <button onClick={() => setError(null)} aria-label="Dismiss error">×</button>
             </div>
           )}
-          <div className="editor-panel">
+          <div id="scarp-editor-panel" className="editor-panel" role="tabpanel"
+            aria-label={active ? 'Scarp source editor: ' + active.name : 'Scarp source editor'}>
             {active ? (
               <Editor
                 key={active.id}
@@ -1875,7 +1889,7 @@ export default function App() {
                 </button>
                 <button type="button" onClick={() => void downloadCompiler()}
                   disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
-                  title="Open the official Scarp alpha.17 ZIP. Verify its published SHA-256 before trusting the extracted executable.">Download Compiler</button>
+                  title="Open the official Scarp alpha.18 ZIP. Verify its published SHA-256 before trusting the extracted executable.">Download Compiler</button>
                 <button onClick={() => void selectCompiler()} disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
                   title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
                   {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}

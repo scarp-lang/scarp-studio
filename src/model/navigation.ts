@@ -60,3 +60,20 @@ export function cycleTabId(
   if (current === -1) return direction === 1 ? ids[0] : ids[ids.length - 1];
   return ids[(current + direction + ids.length) % ids.length];
 }
+
+
+/** WAI-ARIA-style tablist keyboard movement. Invalid/stale tab IDs and other
+ * keys never activate another document. The UI owns focus and reducer state;
+ * this helper performs no side effects or file reads.
+ */
+export function keyboardTabTarget(
+  ids: readonly string[], focusedId: string, key: string,
+): string | null {
+  const current = ids.indexOf(focusedId);
+  if (current === -1) return null;
+  if (key === 'Home') return ids[0];
+  if (key === 'End') return ids[ids.length - 1];
+  if (key === 'ArrowRight') return ids[(current + 1) % ids.length];
+  if (key === 'ArrowLeft') return ids[(current + ids.length - 1) % ids.length];
+  return null;
+}

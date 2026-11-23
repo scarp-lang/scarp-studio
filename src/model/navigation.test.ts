@@ -74,3 +74,24 @@ describe('open-tab cycling', () => {
     expect(cycleTabId(['first', 'second'], null, -1)).toBe('second');
   });
 });
+
+describe('accessible tablist keyboard navigation', () => {
+  it('wraps ArrowLeft / ArrowRight and supports Home / End', async () => {
+    const { keyboardTabTarget } = await import('./navigation');
+    const tabs = ['main', 'new', 'third'];
+    expect(keyboardTabTarget(tabs, 'main', 'ArrowLeft')).toBe('third');
+    expect(keyboardTabTarget(tabs, 'third', 'ArrowRight')).toBe('main');
+    expect(keyboardTabTarget(tabs, 'new', 'Home')).toBe('main');
+    expect(keyboardTabTarget(tabs, 'new', 'End')).toBe('third');
+    expect(keyboardTabTarget(tabs, 'main', 'ArrowRight')).toBe('new');
+  });
+
+  it('never activates stale or missing tabs or interprets unrelated keys', async () => {
+    const { keyboardTabTarget } = await import('./navigation');
+    expect(keyboardTabTarget([], 'main', 'ArrowRight')).toBeNull();
+    expect(keyboardTabTarget(['main'], 'closed', 'Home')).toBeNull();
+    expect(keyboardTabTarget(['main'], 'main', 'Delete')).toBeNull();
+    expect(keyboardTabTarget(['main'], 'main', 'ArrowLeft')).toBe('main');
+    expect(keyboardTabTarget(['main'], 'main', 'End')).toBe('main');
+  });
+});
