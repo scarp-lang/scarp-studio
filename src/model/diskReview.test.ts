@@ -85,6 +85,11 @@ describe('explicit, read-only external source comparison', () => {
     expect(appended.externalLine).toBe(2);
     expect(appended.savedExcerpt).toContain('end of file');
     expect(appended.diskExcerpt).toContain('new');
+
+    const deleted = inspectDiskSnapshot(loaded('line\nremoved'), 'line\n');
+    expect(deleted.externalLine).toBe(2);
+    expect(deleted.diskExcerpt).toContain('end of file');
+    expect(deleted.savedExcerpt).toContain('removed');
   });
 
   it('rejects stale tab identity, rename, edit and ABA restored text', () => {

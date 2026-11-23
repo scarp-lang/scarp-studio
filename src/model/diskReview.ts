@@ -61,7 +61,11 @@ function excerpt(content: string, offset: number): string {
   const text = content.slice(start, end)
     .replace(/\r\n|\r|\n/g, ' ↵ ')
     .replace(/\t/g, ' ⇥ ');
+  // When an insertion/deletion begins exactly at EOF, a contextual excerpt
+  // still includes preceding source text. Label that boundary explicitly
+  // instead of showing a seemingly identical snippet on both sides.
   return (start > 0 ? '…' : '') + (text || '(end of file)') +
+    (offset === content.length ? ' [end of file]' : '') +
     (end < content.length ? '…' : '');
 }
 
