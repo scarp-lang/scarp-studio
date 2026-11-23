@@ -100,6 +100,17 @@ export const scarpStarterTemplates: readonly ScarpStarterTemplate[] = [
     source: "// Requires official Scarp v0.0.6-alpha.12+ (interpreter).\nbind names: list<string> = [list: \"alpha\", \"beta\"];\nbind expanded = list_push(names, \"gamma\");\nbind counts = [map: \"ready\": 2, \"pending\": 1];\nprint(list_len(expanded), map_get_or(counts, \"ready\", 0));\n",
   },
   {
+    id: 'arrayupdates',
+    title: 'Immutable Array Updates (alpha.18+)',
+    description: 'Update a fixed array without mutating the original snapshot',
+    source: '// Requires official Scarp v0.0.6-alpha.18+ (interpreter).\n' +
+      'bind original = [array: 5, 8, 13];\n' +
+      'bind changed = array_set(original, 1, 99);\n' +
+      'assert(original[1] == 8, "original stays immutable");\n' +
+      'assert(changed[1] == 99, "replacement is visible");\n' +
+      'print(original[1], changed[1]);\n',
+  },
+  {
     id: "optionresult",
     title: "Option Propagation (alpha.12+)",
     description: "Early-return an absent optional value safely",

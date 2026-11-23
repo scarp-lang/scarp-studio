@@ -4,9 +4,9 @@ import { getScarpStarterTemplate, scarpStarterTemplates } from './starterTemplat
 describe('Scarp-only starter templates', () => {
   it('offers independent real Scarp learning scenarios', () => {
     expect(scarpStarterTemplates.map(({ id }) => id)).toEqual([
-      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput', 'records', 'variants', 'collections', 'optionresult',
+      'hello', 'bindings', 'functions', 'decisions', 'loops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput', 'records', 'variants', 'collections', 'arrayupdates', 'optionresult',
     ]);
-    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(16);
+    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(17);
   });
 
   it('uses only .srp snippets that can be edited in an untitled buffer', () => {
@@ -65,6 +65,15 @@ describe('Scarp-only starter templates', () => {
     expect(getScarpStarterTemplate('variants')?.source).toContain('match on hit');
     expect(getScarpStarterTemplate('collections')?.source).toContain('map_get_or(');
     expect(getScarpStarterTemplate('optionresult')?.source).toContain('value?');
+  });
+
+  it('offers an alpha.18 immutable array update starter with explicit compiler gate', () => {
+    const starter = getScarpStarterTemplate('arrayupdates');
+    expect(starter?.source).toContain('alpha.18');
+    expect(starter?.source).toContain('array_set(original, 1, 99)');
+    expect(starter?.source).toContain('original[1] == 8');
+    expect(starter?.source).toContain('changed[1] == 99');
+    expect(starter?.description).toContain('without mutating');
   });
 
   it('looks up only registered templates without accepting arbitrary source', () => {
