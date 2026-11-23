@@ -366,9 +366,16 @@ const templates: readonly ScarpCompletion[] = [
   },
 ];
 
+/** Scarp's published built-in names are short. Avoid normalizing an enormous
+ * identifier copied into a Monaco buffer on every completion request. */
+export const MAX_COMPLETION_PREFIX_UNITS = 128;
+
 export function scarpCompletions(prefix: string): ScarpCompletion[] {
-  const needle = prefix.trim().toLocaleLowerCase();
-  return templates.filter((entry) => entry.label.toLocaleLowerCase().startsWith(needle)).slice(0, 40);
+  if (prefix.length > MAX_COMPLETION_PREFIX_UNITS) return [];
+  // Invariant across OS UI locales: INPUT_BOOLEAN must find input_boolean
+  // even when Windows is configured with Turkish dotted/dotless I rules.
+  const needle = prefix.trim().toLowerCase();
+  return templates.filter((entry) => entry.label.toLowerCase().startsWith(needle)).slice(0, 40);
 }
 
 export function scarpTokenHelp(token: string): ScarpCompletion | undefined {

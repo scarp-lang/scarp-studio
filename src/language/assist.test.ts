@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { isScarpCodePosition, scanScarpFunctions, scarpCompletions, scarpTokenHelp } from './assist';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  isScarpCodePosition, MAX_COMPLETION_PREFIX_UNITS, scanScarpFunctions,
+  scarpCompletions, scarpTokenHelp,
+} from './assist';
 
 describe('Scarp completion catalog', () => {
   it('returns compiler-aligned function, loop, and binding snippets', () => {
@@ -10,6 +13,27 @@ describe('Scarp completion catalog', () => {
     expect(funcra.insertText).toContain('-> integer');
     expect(funcra.insertText).toContain('${1:name}');
     expect(scarpTokenHelp('repeat')?.insertText).toContain(' as ${2:index}');
+  });
+
+  it('matches English compiler builtin spellings independent of OS locale', () => {
+    const original = String.prototype.toLocaleLowerCase;
+    const localeMock = vi.spyOn(String.prototype, 'toLocaleLowerCase')
+      .mockImplementation(function (this: string) { return original.call(this, 'tr'); });
+    try {
+      expect('INPUT_BOOLEAN'.toLocaleLowerCase()).toBe('ınput_boolean');
+      expect(scarpCompletions('INPUT_BOOLEAN').some((entry) =>
+        entry.label === 'input_boolean')).toBe(true);
+      expect(scarpCompletions('BIGINT').some((entry) =>
+        entry.label === 'bigint')).toBe(true);
+    } finally {
+      localeMock.mockRestore();
+    }
+  });
+
+  it('rejects unusually long completion prefixes before normalization', () => {
+    expect(scarpCompletions('i'.repeat(MAX_COMPLETION_PREFIX_UNITS + 1))).toEqual([]);
+    expect(scarpCompletions('input_boolean').some((entry) =>
+      entry.label === 'input_boolean')).toBe(true);
   });
 
   it('excludes unsupported generic language constructs', () => {
