@@ -626,8 +626,8 @@ jobs:
           $ErrorActionPreference = "Stop"
           $binaries = @(Get-ChildItem scarp-alpha17 -File -Recurse -Filter "scarp.exe")
           if ($binaries.Count -ne 1) { throw "Verified official alpha.17 compiler binary missing" }
-          # The previous step independently verifies the official ZIP SHA-256
-          # and the exact CLI version. This runner reports which fixture fails.
+          # The earlier alpha.17 step independently verifies its ZIP SHA-256
+          # and exact version; this runner reports which fixture fails.
           # The script intentionally runs one invalid source and checks its
           # nonzero Verify exit. A successful PowerShell script can therefore
           # leave LASTEXITCODE=1 from that expected negative test; rely on its

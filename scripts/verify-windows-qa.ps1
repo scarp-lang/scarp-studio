@@ -118,4 +118,4 @@ Write-Host 'SCARP QA PASS: Expected JSON diagnostic on invalid source'
 # Clear only that expected status after its JSON error has been validated;
 # unexpected failure above still throws and fails the workflow.
 $global:LASTEXITCODE = 0
-Write-Host 'All checked-in Scarp $ExpectedVersion CLI smoke fixtures passed. Windows GUI acceptance is still required.'
+Write-Host "All checked-in Scarp $ExpectedVersion CLI smoke fixtures passed. Windows GUI acceptance is still required."
