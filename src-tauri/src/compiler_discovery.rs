@@ -48,8 +48,7 @@ fn archive_version_hint(name: &str) -> Option<(u32, u32, u32, u8, u32)> {
         (1, rest)
     } else if let Some(rest) = suffix.strip_prefix("-rc.") {
         (2, rest)
-    } else if suffix.is_empty() || suffix.starts_with("-x86_64")
-        || suffix.starts_with("-aarch64") {
+    } else if suffix.is_empty() || suffix.starts_with("-x86_64") || suffix.starts_with("-aarch64") {
         return Some((major, minor, patch, 3, 0));
     } else {
         return None;
@@ -505,13 +504,9 @@ mod tests {
             archive_version_hint("scarp-0.0.7-alpha.1")
                 > archive_version_hint("scarp-0.0.6-alpha.99")
         );
+        assert!(archive_version_hint("scarp-0.0.6") > archive_version_hint("scarp-0.0.6-rc.999"));
         assert!(
-            archive_version_hint("scarp-0.0.6")
-                > archive_version_hint("scarp-0.0.6-rc.999")
-        );
-        assert!(
-            archive_version_hint("scarp-0.0.6-rc.1")
-                > archive_version_hint("scarp-0.0.6-beta.50")
+            archive_version_hint("scarp-0.0.6-rc.1") > archive_version_hint("scarp-0.0.6-beta.50")
         );
         assert_eq!(archive_version_hint("scarp-not-a-version"), None);
         assert_eq!(archive_version_hint("not-scarp-0.0.6-alpha.18"), None);
