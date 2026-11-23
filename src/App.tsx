@@ -45,7 +45,8 @@ import {
   projectSourceBuffersChanged,
 } from './model/projectSourceState';
 import {
-  completedProjectOutputWarning, completedSourceOutputWarning,
+  completedProjectOutputWarning, completedRunInputWarning,
+  completedSourceOutputWarning, isCurrentRunInputGeneration,
   projectResultFreshness, sourceResultIsStale, type CompletedProjectOutput,
 } from './model/resultFreshness';
 import { isCurrentSingleSaveRequest } from './model/saveSnapshotGuard';
@@ -245,6 +246,10 @@ export default function App() {
   // navigation is invalidated by edits to that source.
   const [completedSourceOutput, setCompletedSourceOutput] =
     useState<VerifiedSourceSnapshot | null>(null);
+  // No input text is retained after Run: only the session-local change
+  // generation is needed to label old results if inputs are edited later.
+  const [completedRunInputGeneration, setCompletedRunInputGeneration] =
+    useState<number | null>(null);
   const [compilerBusy, setCompilerBusy] = useState(false);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
@@ -252,6 +257,9 @@ export default function App() {
   // This input is session-local, not persisted or stored in source files.
   const [stdinText, setStdinText] = useState('');
   const [promptInputMode, setPromptInputMode] = useState(false);
+  // Increment synchronously in input handlers; an async first-Run trust
+  // dialog must never launch a CLI with an older preloaded input snapshot.
+  const inputRevision = useRef(0);
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -273,7 +281,14 @@ export default function App() {
     listing: selectedFolderRef.current,
   });
   const laterSourceOutputWarning = completedSourceOutputWarning(completedSourceOutput, documents);
-  const outputFreshnessWarning = laterSourceOutputWarning ?? laterProjectOutputWarning;
+  const laterRunInputWarning = completedRunInputWarning(
+    completedRunInputGeneration, inputRevision.current,
+  );
+  // Source/project changes and altered Run inputs are independent reasons
+  // for retaining output as historical. Display both if both are stale.
+  const outputFreshnessWarning = [
+    laterSourceOutputWarning, laterProjectOutputWarning, laterRunInputWarning,
+  ].filter((warning) => warning !== null).join('\n\n');
   const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
   const diagnosticPosition = isCurrentVerifiedSource(compilerOutputSource, active) && active?.path
     ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
@@ -1003,6 +1018,7 @@ export default function App() {
     setProjectTestResult(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
+    setCompletedRunInputGeneration(null);
     setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
     setNotice('Scarp compiler approved for this session');
     return true;
@@ -1093,6 +1109,8 @@ export default function App() {
       setError('Finish saving before running the compiler.');
       return;
     }
+    // Captured before any optional compiler scan/trust/probe awaits.
+    const inputGenerationAtStart = inputRevision.current;
     let source: string;
     let expectedContent: string;
     let verifiedSnapshot: VerifiedSourceSnapshot;
@@ -1159,6 +1177,12 @@ export default function App() {
       setError('The Scarp source changed during compiler setup. Review and click Run or Verify again.');
       return;
     }
+    if (mode === 'exec' &&
+        !isCurrentRunInputGeneration(inputGenerationAtStart, inputRevision.current)) {
+      setError('Program Input or prompt mode changed during compiler setup. ' +
+        'Review the latest replies and click Run again; no source was executed.');
+      return;
+    }
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
@@ -1167,6 +1191,7 @@ export default function App() {
     setProjectTestResult(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
+    setCompletedRunInputGeneration(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
     try {
       const result = await executeScarp(
@@ -1186,6 +1211,7 @@ export default function App() {
       // If fresh on completion, edits AFTER this return still need a visible
       // warning without offering stale diagnostic navigation.
       setCompletedSourceOutput(staleSource ? null : verifiedSnapshot);
+      setCompletedRunInputGeneration(mode === 'exec' ? inputGenerationAtStart : null);
       setNotice(staleSource
         ? 'Scarp result is stale; save the changed source and rerun'
         : 'Scarp ' + mode + ' finished; see output');
@@ -1194,6 +1220,7 @@ export default function App() {
       setCompilerOutputSource(null);
       setCompilerDiagnosticStderr(null);
       setCompletedSourceOutput(null);
+      setCompletedRunInputGeneration(null);
       setCompilerOutput('Scarp ' + mode + ' could not complete:\n' + message);
       setError(message);
     } finally {
@@ -1264,6 +1291,7 @@ export default function App() {
     // leave its disk-backed JSON report stale by the time the process exits.
     const reportEpoch = projectResultEpoch.current;
     const reportSelection = selectedFolderRef.current;
+    const inputGenerationAtStart = inputRevision.current;
     commandInProgress.current = true;
     setCompilerBusy(true);
     setError(null);
@@ -1274,6 +1302,7 @@ export default function App() {
     setProjectTestResult(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
+    setCompletedRunInputGeneration(null);
     setCompilerOutput('Scarp project ' + action + '…');
     try {
       const output = await scarpProjectAction(
@@ -1294,6 +1323,7 @@ export default function App() {
       setCompletedProjectOutput(freshness.stale ? null : {
         action, epoch: reportEpoch, listing: reportSelection,
       });
+      setCompletedRunInputGeneration(action === 'run' ? inputGenerationAtStart : null);
       // Trust the schema, requested command AND exact native process exit.
       // An incongruent test report cannot present a fabricated pass/fail.
       const structured = freshness.allowStructuredTests
@@ -2280,7 +2310,10 @@ export default function App() {
               <label htmlFor="scarp-stdin">Program input (Run / Run Project; preloaded UTF-8 lines)</label>
               <label className="compiler-input-mode">
                 <input type="checkbox" checked={promptInputMode} disabled={compilerBusy}
-                  onChange={(event) => setPromptInputMode(event.target.checked)} />
+                  onChange={(event) => {
+                    inputRevision.current++;
+                    setPromptInputMode(event.target.checked);
+                  }} />
                 Enable alpha.10 prompt functions (input/ask)
               </label>
               <div className="compiler-meta">
@@ -2292,7 +2325,10 @@ export default function App() {
                 id="scarp-stdin"
                 value={stdinText}
                 aria-invalid={stdinValidationError !== null}
-                onChange={(event) => setStdinText(event.target.value)}
+                onChange={(event) => {
+                  inputRevision.current++;
+                  setStdinText(event.target.value);
+                }}
                 disabled={compilerBusy}
                 maxLength={MAX_INPUT_BYTES}
                 rows={2}

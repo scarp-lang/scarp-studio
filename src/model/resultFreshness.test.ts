@@ -3,7 +3,8 @@ import { createUntitled, type StudioDocument } from './documents';
 import { editorReducer, initialEditorState } from './editorState';
 import { captureVerifiedSource } from './verifiedSource';
 import {
-  completedProjectOutputWarning, completedSourceOutputWarning,
+  completedProjectOutputWarning, completedRunInputWarning,
+  completedSourceOutputWarning, isCurrentRunInputGeneration,
   projectResultFreshness, sourceResultIsStale,
 } from './resultFreshness';
 import type { ScarpProjectAction } from '../services/project';
@@ -92,6 +93,24 @@ describe('source compiler result freshness', () => {
     const reverted = editorReducer(edited, { type: 'edit', id: first.id, content: first.content });
     expect(reverted.documents.at(-1)!.content).toBe(snapshot.content);
     expect(sourceResultIsStale(snapshot, reverted.documents)).toBe(true);
+  });
+});
+
+describe('session-local Run input provenance', () => {
+  it('rejects changed input generations even when the user restores identical text', () => {
+    expect(isCurrentRunInputGeneration(8, 8)).toBe(true);
+    expect(isCurrentRunInputGeneration(8, 9)).toBe(false);
+    // A→B→A changes increment the UI generation twice; visible equality
+    // cannot make the old Run's input settings current again.
+    expect(isCurrentRunInputGeneration(8, 10)).toBe(false);
+  });
+
+  it('warns only for a completed Run with changed input or prompt settings', () => {
+    expect(completedRunInputWarning(null, 5)).toBeNull();
+    expect(completedRunInputWarning(5, 5)).toBeNull();
+    const stale = completedRunInputWarning(5, 6);
+    expect(stale).toContain('earlier input snapshot');
+    expect(stale).toContain('Run again');
   });
 });
 

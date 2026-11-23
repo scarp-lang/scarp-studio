@@ -28,6 +28,24 @@ export function completedSourceOutputWarning(
     'snapshot; save changes and rerun Run or Verify.]';
 }
 
+/** Only the session-local generation is retained, not Program Input text.
+ * Returning to identical input after an edit (A→B→A) cannot revive the
+ * earlier Run result. Verify and project inspection do not use runtime input.
+ */
+export function isCurrentRunInputGeneration(started: number, current: number): boolean {
+  return started === current;
+}
+
+export function completedRunInputWarning(
+  completedGeneration: number | null, currentGeneration: number,
+): string | null {
+  return completedGeneration === null ||
+    isCurrentRunInputGeneration(completedGeneration, currentGeneration)
+    ? null
+    : '[Program Input or prompt mode changed after this Run began. ' +
+      'Output below describes an earlier input snapshot; click Run again.]';
+}
+
 export interface ProjectResultIdentity {
   /** Increments after an in-project buffer change or successful Explorer scan. */
   epoch: number;
