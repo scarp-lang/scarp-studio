@@ -405,3 +405,22 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 @media (forced-colors: active) {
   .tab.active, .toolbar-group button[aria-expanded="true"] { outline: 1px solid Highlight; }
 }
+
+/* Welcome actions stay visible at short heights and never hide behind
+   an inflexible centered flex column. The editor's own guards still apply. */
+.welcome-screen { display: block; overflow: auto; padding: clamp(12px, 3vh, 30px); text-align: left; }
+.welcome-content { max-width: 540px; margin: auto; display: grid; gap: 10px; }
+.welcome-content .empty-mark { width: 42px; height: 42px; font-size: 25px; }
+.welcome-content h1 { font-size: 23px; margin: 0; }
+.welcome-content p { margin: 0; line-height: 1.5; }
+.welcome-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.welcome-actions button { display: flex; flex-direction: column; text-align: left; gap: 5px; padding: 11px 12px; min-height: 55px; }
+.welcome-actions button:hover, .welcome-compiler button:hover { border-color: var(--accent); }
+.welcome-actions button kbd, .welcome-actions button span { color: var(--muted); font: 11px/1.4 "Segoe UI", sans-serif; }
+.welcome-compiler { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.welcome-compiler strong { color: var(--text); }
+.welcome-compiler button { justify-self: start; }
+.welcome-content .welcome-footnote { font-size: 11px; color: var(--muted); }
+.compiler-action-guidance { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 0 0 auto; font-size: 11px; color: var(--muted); padding: 2px 12px 6px; overflow-wrap: anywhere; }
+.compiler-action-guidance button { font-size: 11px; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 7px; background: var(--raised); }
+.compiler-action-guidance button:hover { border-color: var(--accent); }

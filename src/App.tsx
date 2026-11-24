@@ -28,7 +28,7 @@ import { scanScarpOutlineSymbols, type ScarpOutlineSymbol } from './language/ass
 import { buildDeclarationEntries, isCurrentDeclarationEntry, type DeclarationEntry } from './model/declarationNavigation';
 import { NativeDialogGate } from './model/dialogGate';
 import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterTemplates';
-import { runnableSource } from './model/compilerReadiness';
+import { runnableSource, compilerActionBlock, compilerActionHint } from './model/compilerReadiness';
 import {
   MAX_INPUT_BYTES, programInputBytes, programInputValidationError, validateProgramInput,
 } from './model/programInput';
@@ -287,6 +287,19 @@ export default function App() {
   const stdinValidationError = useMemo(
     () => programInputValidationError(stdinText), [stdinText],
   );
+  const actionState = {
+    native: isTauri(), busy: busy || compilerBusy || compilerSelecting || compilerScanning,
+    source: active, inputError: stdinValidationError,
+  };
+  const runBlock = compilerActionBlock(actionState, 'exec');
+  const verifyBlock = compilerActionBlock(actionState, 'verify');
+  const runHint = compilerActionHint(runBlock, stdinValidationError);
+  const verifyHint = compilerActionHint(verifyBlock, stdinValidationError);
+  function showCompilerSetup(): void {
+    setOutputPanelMode(revealOutputPanel);
+    setCompilerControlsOpen(true);
+  }
+
   // The same selected-project dirty-source policy governs both button state
   // and the guarded native action handler. Read-only Info stays available.
   const dirtySelectedProjectSources = useMemo(
@@ -508,7 +521,7 @@ export default function App() {
       case 'stop-scarp': void stopCompiler(); break;
       case 'toggle-output': setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle')); break;
       case 'expand-output': setOutputPanelMode('expanded'); break;
-      case 'compiler-controls': setOutputPanelMode(revealOutputPanel); setCompilerControlsOpen(true); break;
+      case 'compiler-controls': showCompilerSetup(); break;
     }
   }
 
@@ -1185,7 +1198,10 @@ export default function App() {
       verifiedSnapshot = captured;
       // First Run can locate an installed compiler; the user must approve its
       // exact path before we launch even a version probe.
-      if (mode === 'exec') validateProgramInput(stdinText);
+      if (mode === 'exec') {
+        if (stdinValidationError !== null) showCompilerSetup();
+        validateProgramInput(stdinText);
+      }
     } catch (caught) {
       setError(toMessage(caught));
       return;
@@ -1193,6 +1209,7 @@ export default function App() {
     setOutputPanelMode(revealOutputPanel);
     let binary = compilerPath;
     if (!binary) {
+      showCompilerSetup();
       // A first Run is one explicit user action, but it never implicitly
       // grants trust to discovered executables. The OS approval prompt names
       // the exact candidate and no source code runs before acceptance.
@@ -1324,6 +1341,7 @@ export default function App() {
         saveInProgress.current || filePickerInProgress.current ||
         nativeDialogGate.current.isActive) return;
     if (!compilerPath || !folderPath) {
+      if (!compilerPath) showCompilerSetup();
       setError('Select the official compiler and a Scarp project folder first.');
       return;
     }
@@ -2332,12 +2350,27 @@ export default function App() {
                 }}
               />
             ) : (
-              <div className="empty-state">
-                <div className="empty-mark">S</div>
-                <h1>Scarp Studio</h1>
-                <p>Open a .srp file or create a new one to begin.</p>
-                <button onClick={newFile}>New Scarp File</button>
-              </div>
+              <section className="empty-state welcome-screen" aria-label="Start working in Scarp Studio">
+                <div className="welcome-content">
+                  <div className="empty-mark" aria-hidden="true">S</div>
+                  <h1>Welcome to Scarp Studio</h1>
+                  <p>A local-first workspace for Scarp source code.</p>
+                  <div className="welcome-actions" role="group" aria-label="Start editing">
+                    <button type="button" onClick={newFile}><strong>New Scarp file</strong><kbd>Ctrl+N</kbd></button>
+                    <button type="button" onClick={() => void openFile()}><strong>Open source</strong><kbd>Ctrl+O</kbd></button>
+                    <button type="button" onClick={() => void openFolder()}><strong>Open project folder</strong><span>Explorer</span></button>
+                    <button type="button" onClick={showStarterTemplates}><strong>Browse starter examples</strong><span>Scarp templates</span></button>
+                  </div>
+                  <div className="welcome-compiler">
+                    <strong>Compiler setup</strong>
+                    <span>{compilerPath ? 'Compiler approved for this session.' : automaticCompiler
+                      ? 'A compiler was detected. Approve its exact path before running.'
+                      : 'Install the separate official Scarp compiler to run saved .srp files.'}</span>
+                    <button type="button" onClick={showCompilerSetup}>Open compiler setup</button>
+                  </div>
+                  <p className="welcome-footnote">Source is never executed automatically. Save your work before Run or Verify.</p>
+                </div>
+              </section>
             )}
           </div>
           <section className={'compiler-panel output-' + outputPanelMode} aria-label="Scarp compiler output">
@@ -2348,12 +2381,14 @@ export default function App() {
               </div>
               <div className="compiler-actions">
                 <button onClick={() => void runCompiler('exec')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active) || stdinValidationError !== null}
+                  disabled={runBlock !== null}
                   className="compiler-run-primary"
-                  title={stdinValidationError ?? 'Execute the saved Scarp source using the official compiler (F5)'}>▶ Run</button>
+                  aria-describedby={runHint ? 'compiler-action-guidance' : undefined}
+                  title={runHint ?? 'Execute the saved Scarp source using the official compiler (F5)'}>▶ Run</button>
                 <button onClick={() => void runCompiler('verify')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
-                  title="Statically verify saved Scarp source without runtime execution">Verify</button>
+                  disabled={verifyBlock !== null}
+                  aria-describedby={verifyHint ? 'compiler-action-guidance' : undefined}
+                  title={verifyHint ?? 'Statically verify saved Scarp source without runtime execution'}>Verify</button>
                 <button onClick={() => void stopCompiler()} disabled={!compilerBusy && !compilerSelecting}
                   title="Stop a running Scarp process or compiler capability probe">Stop</button>
                 <button type="button"
@@ -2371,6 +2406,12 @@ export default function App() {
                   aria-controls="compiler-panel-body" onClick={() => setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle'))}
                   title="Toggle output panel (Ctrl+J)">{outputPanelMode === 'collapsed' ? 'Show output' : 'Hide output'}</button>
               </div>
+            </div>
+            <div id="compiler-action-guidance" className="compiler-action-guidance">
+              {runHint ? <span>{runHint}{runBlock === 'invalid-input' && verifyBlock === null ? ' Verify remains available.' : ''}</span>
+                : <span>{compilerPath ? 'Saved source ready. Run executes; Verify checks without execution.'
+                  : 'Saved source ready. First Run or Verify requires explicit compiler approval.'}</span>}
+              {runBlock === 'invalid-input' && <button type="button" onClick={showCompilerSetup}>Review input</button>}
             </div>
             <div id="compiler-panel-body" className="compiler-panel-body" hidden={outputPanelMode === 'collapsed'}>
             <div id="compiler-controls" className="compiler-controls" hidden={!compilerControlsOpen}>

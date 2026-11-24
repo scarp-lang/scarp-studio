@@ -127,3 +127,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Accessible navigation palette:** active-descendant combobox, visible keyboard selection, focus containment and restoration, and high-contrast selection indicators.
 
 - **Compact workspace chrome:** grouped scrollable toolbar, direct Quick Open entry, active-tab visibility and horizontally scrollable status information for smaller windows.
+
+- **First-run guidance:** welcome shortcuts, explicit compiler setup entry, and visible Run/Verify readiness explanations; no automatic trust or execution.
