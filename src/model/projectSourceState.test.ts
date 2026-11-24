@@ -29,6 +29,24 @@ describe('disk-backed project source awareness', () => {
     ], 'c:\\work\\scarp')).toEqual(['main.srp', 'tests.srp']);
   });
 
+  it('blocks only dirty sources inside the explicitly selected nested child project', () => {
+    const workspace = 'C:/Scarp-Practice';
+    const tuple = workspace + '/basic_tuple';
+    const loops = workspace + '/loops';
+    const documents = [
+      tab('tuple.srp', tuple + '/src/main.srp'),
+      tab('loop.srp', loops + '/src/main.srp'),
+      tab('unrelated.srp', 'C:/another/src/unrelated.srp'),
+    ];
+    expect(dirtyProjectSourceNames(documents, tuple)).toEqual(['tuple.srp']);
+    expect(dirtyProjectSourceNames(documents, loops)).toEqual(['loop.srp']);
+    expect(projectSourceBuffersChanged(
+      documents,
+      [documents[0], { ...documents[1], content: 'another edit', revision: 1 }, documents[2]],
+      tuple,
+    )).toBe(false);
+  });
+
   it('normalizes inside-project dot aliases but refuses outside-root traversal', () => {
     expect(dirtyProjectSourceNames([
       tab('other.srp', 'C:/project-old/other.srp'),

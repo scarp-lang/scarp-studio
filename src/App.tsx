@@ -380,6 +380,9 @@ export default function App() {
   const selectedProjectPath = projectDirectory
     ? projectRoots.find(root => root.directory === projectDirectory)?.path ?? null
     : folderPath;
+  const selectedProjectHasManifest = projectRoots.some(root =>
+    root.directory === projectDirectory &&
+    selectedProjectPath !== null && sameFilePath(root.path, selectedProjectPath));
   const dirtySelectedProjectSources = useMemo(
     () => selectedProjectPath ? dirtyProjectSourceNames(documents, selectedProjectPath) : [],
     [documents, selectedProjectPath],
@@ -1510,6 +1513,11 @@ export default function App() {
     if (!compilerPath || !selectedProjectPath) {
       if (!compilerPath) showCompilerSetup();
       setError('Select the official compiler and a Scarp project folder first.');
+      return;
+    }
+    if (!selectedProjectHasManifest) {
+      setError('The chosen project folder has no discovered scarp.project manifest. ' +
+        'Select a manifest-bearing project target or refresh the Explorer.');
       return;
     }
     if (projectActionRequiresSavedSources(action)) {
@@ -2668,8 +2676,8 @@ export default function App() {
             </div>
             <div className="project-actions" aria-label="Selected Scarp project commands">
               <span>PROJECT</span>
-              {folderPath && <label htmlFor="studio-project-root">Project target</label>}
-              {folderPath && <select id="studio-project-root" aria-label="Choose Scarp project root"
+              {folderPath && <label htmlFor="studio-project-root" className="project-target-label">Project target</label>}
+              {folderPath && <select id="studio-project-root" className="project-target-select" aria-label="Choose Scarp project root"
                 value={projectDirectory}
                 disabled={busy || compilerBusy || compilerSelecting || !isTauri()}
                 title="Choose a manifest-bearing nested project for Info, Verify, Run and Tests"
@@ -2687,25 +2695,31 @@ export default function App() {
                   <option key={root.directory} value={root.directory}>{root.directory}/</option>)}
               </select>}
               <button type="button" onClick={() => void runProjectAction('info')}
-                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath}
                 title="Inspect the chosen project's manifest and entrypoint">Info</button>
               <button type="button" onClick={() => void runProjectAction('verify')}
-                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
                   dirtySelectedProjectSources.length > 0}
                 title="Verify the chosen Scarp project without executing code; save edited project sources first">Verify Project</button>
               <button type="button" onClick={() => void runProjectAction('run')}
-                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
                   dirtySelectedProjectSources.length > 0 || stdinValidationError !== null}
                 title={stdinValidationError ?? 'Execute the project entrypoint with preloaded input; save modified files in this project first'}>Run Project</button>
               <button type="button" onClick={() => void runProjectAction('list-tests')}
-                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
                   dirtySelectedProjectSources.length > 0}
                 title="List saved project tests without executing them; save edited project sources first">List Tests</button>
               <button type="button" onClick={() => void runProjectAction('run-tests')}
-                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
                   dirtySelectedProjectSources.length > 0}
                 title="Explicitly execute saved project tests; save edited project sources first">Run Tests</button>
               <span>{selectedProjectPath ? fileName(selectedProjectPath) : 'Choose a Scarp project folder'}</span>
+              {folderPath && !selectedProjectHasManifest && (
+                <span className="project-dirty-warning" role="status">
+                  No Scarp project manifest detected at this target. Choose a manifest-bearing
+                  folder above or refresh the Explorer after creating one.
+                </span>
+              )}
               {dirtySelectedProjectSources.length > 0 && (
                 <span className="project-dirty-warning" role="status">
                   Save {dirtySelectedProjectSources.length} modified project source(s) before
