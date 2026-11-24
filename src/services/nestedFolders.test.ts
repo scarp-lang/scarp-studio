@@ -20,7 +20,7 @@ describe('nested Scarp-Practice workspaces', () => {
   it('discovers nested sources across projects and keeps empty folders visible', async () => {
     vi.mocked(readDir).mockImplementation(async path => {
       if (path === 'C:/Scarp-Practice') return [dir('basic_tuple'), dir('conditions'), dir('empty')];
-      if (path === 'C:/Scarp-Practice/basic_tuple') return [file('main.srp'), dir('examples')];
+      if (path === 'C:/Scarp-Practice/basic_tuple') return [file('main.srp'), file('scarp.project'), dir('examples')];
       if (path === 'C:/Scarp-Practice/basic_tuple/examples') return [file('tuple2.srp')];
       if (path === 'C:/Scarp-Practice/conditions') return [file('if.srp')];
       if (path === 'C:/Scarp-Practice/empty') return [];
@@ -33,6 +33,9 @@ describe('nested Scarp-Practice workspaces', () => {
       { name: 'conditions/if.srp', path: 'C:/Scarp-Practice/conditions/if.srp' },
     ]);
     expect(scanned.directories).toEqual(['basic_tuple', 'conditions', 'empty', 'basic_tuple/examples']);
+    expect(scanned.projectRoots).toEqual([
+      { directory: 'basic_tuple', path: 'C:/Scarp-Practice/basic_tuple' },
+    ]);
     expect(scanned.truncated).toBe(false);
     expect(scanned.unavailableFolders).toEqual([]);
   });
@@ -70,5 +73,26 @@ describe('nested Scarp-Practice workspaces', () => {
     expect(scanned.files).toHaveLength(63);
     expect(scanned.truncated).toBe(true);
     expect(readDir).toHaveBeenCalledTimes(64);
+  });
+});
+
+describe('manifest-root discovery in a multi-project practice workspace', () => {
+  it('includes only directories with a regular scarp.project or Scarp.project entry', async () => {
+    vi.mocked(readDir).mockImplementation(async path => {
+      if (path === 'C:/Scarp-Practice') return [dir('basic_tuple'), dir('loops'), dir('examples')];
+      if (path === 'C:/Scarp-Practice/basic_tuple') return [file('scarp.project'), file('main.srp')];
+      if (path === 'C:/Scarp-Practice/loops') return [file('Scarp.project'), file('main.srp')];
+      if (path === 'C:/Scarp-Practice/examples') return [
+        { name: 'scarp.project', isFile: true, isDirectory: false, isSymlink: true },
+      ];
+      return [];
+    });
+    const scanned = await scanSourceFolder('C:/Scarp-Practice');
+    expect(scanned.projectRoots).toEqual([
+      { directory: 'basic_tuple', path: 'C:/Scarp-Practice/basic_tuple' },
+      { directory: 'loops', path: 'C:/Scarp-Practice/loops' },
+    ]);
+    expect(scanned.files.map(item => item.name))
+      .toEqual(['basic_tuple/main.srp', 'loops/main.srp']);
   });
 });

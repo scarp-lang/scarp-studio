@@ -14,11 +14,18 @@ export interface FolderFile {
   name: string;
   path: string;
 }
+/** Manifest roots discovered from safe, already-read directory entries. */
+export interface ScarpProjectRoot {
+  directory: string;
+  path: string;
+}
 export interface ScarpFolderScan {
   path: string;
   files: FolderFile[];
   /** Safe relative folder names include empty folders. */
   directories: string[];
+  /** Discovered project roots; only directories with a regular manifest qualify. */
+  projectRoots: ScarpProjectRoot[];
   truncated: boolean;
   unavailableFolders: string[];
 }
@@ -39,6 +46,7 @@ export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
   ];
   const directoryPaths = new Map<string, string>([['', path]]);
   const directories: string[] = [];
+  const projectRoots: ScarpProjectRoot[] = [];
   const groups: ScarpProjectNameGroup[] = [];
   const unavailableFolders: string[] = [];
   let truncated = false;
@@ -52,6 +60,13 @@ export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
       if (!current.directory) throw error;
       unavailableFolders.push(current.directory);
       continue;
+    }
+    // Metadata-only manifest detection: never parse or execute a project
+    // manifest when opening a workspace. The native compiler independently
+    // validates the selected root and its manifest on explicit project action.
+    if (entries.some(entry => entry.isFile && !entry.isSymlink &&
+        (entry.name === 'scarp.project' || entry.name === 'Scarp.project'))) {
+      projectRoots.push({ directory: current.directory, path: current.absolute });
     }
     const listing = collectTopLevelScarpNames(entries);
     groups.push({ directory: current.directory, names: listing.names });
@@ -88,7 +103,7 @@ export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
     if (!parent) throw new Error('The Scarp Explorer listing is inconsistent.');
     return { name, path: await join(parent, name.slice(slash + 1)) };
   }));
-  return { path, files, directories, truncated, unavailableFolders };
+  return { path, files, directories, projectRoots, truncated, unavailableFolders };
 }
 
 /** Only currently listed Scarp paths can be opened through the Explorer. */

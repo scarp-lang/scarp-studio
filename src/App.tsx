@@ -11,7 +11,7 @@ import { canApplyReplacementSnapshots, currentActiveDocument, editorReducer, ini
 import { pickSourcePath, saveAllModifiedSources, writeSourceFile } from './services/files';
 import { decidePickedSourceOpen } from './model/pickedSourceOpen';
 import { readScarpSource } from './services/sourceRead';
-import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
+import { chooseSourceFolder, readFolderSource, scanSourceFolder, type ScarpProjectRoot } from './services/folders';
 import { disambiguateDocumentNames } from './model/documentLabels';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
@@ -209,8 +209,10 @@ export default function App() {
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [folderDirectories, setFolderDirectories] = useState<string[]>([]);
+  const [projectRoots, setProjectRoots] = useState<ScarpProjectRoot[]>([]);
+  const [projectDirectory, setProjectDirectory] = useState('');
   // Preserve exact folder-listing identity across asynchronous source reads.
-  const selectedFolderRef = useRef<{ path: string; files: FolderEntry[] } | null>(null);
+  const selectedFolderRef = useRef<{ path: string; files: FolderEntry[]; projectRoots: ScarpProjectRoot[] } | null>(null);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
   const [unavailableProjectFolders, setUnavailableProjectFolders] = useState<string[]>([]);
   const [preferredExplorerVisible, setExplorerVisible] = useState(true);
@@ -371,11 +373,15 @@ export default function App() {
     setCompilerControlsOpen(true);
   }
 
-  // The same selected-project dirty-source policy governs both button state
-  // and the guarded native action handler. Read-only Info stays available.
+  // The workspace is a browsing root. Project operations deliberately use
+  // a chosen manifest directory, which may be nested several levels down.
+  // The empty target preserves the old workspace-root behavior.
+  const selectedProjectPath = projectDirectory
+    ? projectRoots.find(root => root.directory === projectDirectory)?.path ?? null
+    : folderPath;
   const dirtySelectedProjectSources = useMemo(
-    () => folderPath ? dirtyProjectSourceNames(documents, folderPath) : [],
-    [documents, folderPath],
+    () => selectedProjectPath ? dirtyProjectSourceNames(documents, selectedProjectPath) : [],
+    [documents, selectedProjectPath],
   );
   const laterProjectOutputWarning = completedProjectOutputWarning(completedProjectOutput, {
     epoch: projectResultEpoch.current,
@@ -814,7 +820,9 @@ export default function App() {
       projectResultEpoch.current++;
       setProjectTestResult(null);
       invalidateProjectSearch();
-      selectedFolderRef.current = { path: result.path, files: result.files };
+      selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
+      setProjectRoots(result.projectRoots);
+      setProjectDirectory('');
       setFolderPath(result.path);
       setFolderEntries(result.files);
       setFolderDirectories(result.directories);
@@ -856,7 +864,9 @@ export default function App() {
       projectResultEpoch.current++;
       setProjectTestResult(null);
       invalidateProjectSearch();
-      selectedFolderRef.current = { path: result.path, files: result.files };
+      selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
+      setProjectRoots(result.projectRoots);
+      setProjectDirectory(current => current && !result.projectRoots.some(root => root.directory === current) ? '' : current);
       setFolderEntries(result.files);
       setFolderDirectories(result.directories);
       setFolderListingLimited(result.truncated);
@@ -1438,7 +1448,7 @@ export default function App() {
     const path = resolveListedTestSource(
       testPath, reportFolder, selectedFolderRef.current,
     );
-    if (!path || folderPath !== reportFolder) {
+    if (!path || !selectedProjectPath || !sameFilePath(selectedProjectPath, reportFolder)) {
       setError('This test source is not in the current Scarp Explorer listing. Refresh Explorer and try again.');
       return;
     }
@@ -1449,7 +1459,7 @@ export default function App() {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
         saveInProgress.current || filePickerInProgress.current ||
         nativeDialogGate.current.isActive) return;
-    if (!compilerPath || !folderPath) {
+    if (!compilerPath || !selectedProjectPath) {
       if (!compilerPath) showCompilerSetup();
       setError('Select the official compiler and a Scarp project folder first.');
       return;
@@ -1460,7 +1470,7 @@ export default function App() {
         // Disk-backed project actions cannot reflect unsaved source edits.
         // Only tabs belonging to this project matter; unrelated and untitled
         // documents should not prevent working with the selected project.
-        const dirtySources = dirtyProjectSourceNames(liveEditor.current.documents, folderPath);
+        const dirtySources = dirtyProjectSourceNames(liveEditor.current.documents, selectedProjectPath);
         if (dirtySources.length) {
           const names = dirtySources.slice(0, 3).join(', ');
           const remaining = dirtySources.length > 3 ? ' and ' + (dirtySources.length - 3) + ' more' : '';
@@ -1498,7 +1508,7 @@ export default function App() {
     setCompilerOutput('Scarp project ' + action + '…');
     try {
       const output = await scarpProjectAction(
-        compilerPath, folderPath, action,
+        compilerPath, selectedProjectPath, action,
         action === 'run' ? stdinText : '',
         action === 'run' && promptInputMode,
       );
@@ -1522,7 +1532,7 @@ export default function App() {
         ? parseScarpTestReportForAction(output.testReportJson, action, output.exitCode)
         : null;
       if (structured) {
-        setProjectTestResult({ folder: folderPath, report: structured });
+        setProjectTestResult({ folder: selectedProjectPath, report: structured });
       }
       setNotice(freshness.stale
         ? 'Scarp project ' + action + ' result is stale; save changed sources and rerun'
@@ -2610,6 +2620,24 @@ export default function App() {
             </div>
             <div className="project-actions" aria-label="Selected Scarp project commands">
               <span>PROJECT</span>
+              {folderPath && <label htmlFor="studio-project-root">Project target</label>}
+              {folderPath && <select id="studio-project-root" aria-label="Choose Scarp project root"
+                value={projectDirectory}
+                disabled={busy || compilerBusy || compilerSelecting || !isTauri()}
+                title="Choose a manifest-bearing nested project for Info, Verify, Run and Tests"
+                onChange={event => {
+                  const target = event.target.value;
+                  if (target && !projectRoots.some(root => root.directory === target)) return;
+                  if (target === projectDirectory) return;
+                  setProjectDirectory(target);
+                  projectResultEpoch.current++;
+                  setProjectTestResult(null);
+                  setNotice(target ? 'Selected Scarp project: ' + target : 'Selected workspace root for project commands');
+                }}>
+                <option value="">Workspace root{projectRoots.some(root => root.directory === '') ? ' (manifest)' : ' (no manifest detected)'}</option>
+                {projectRoots.filter(root => root.directory !== '').map(root =>
+                  <option key={root.directory} value={root.directory}>{root.directory}/</option>)}
+              </select>
               <button type="button" onClick={() => void runProjectAction('info')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
                 title="Inspect the chosen project's manifest and entrypoint">Info</button>
@@ -2629,7 +2657,7 @@ export default function App() {
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath ||
                   dirtySelectedProjectSources.length > 0}
                 title="Explicitly execute saved project tests; save edited project sources first">Run Tests</button>
-              <span>{folderPath ? fileName(folderPath) : 'Choose a Scarp project folder'}</span>
+              <span>{selectedProjectPath ? fileName(selectedProjectPath) : 'Choose a Scarp project folder'}</span>
               {dirtySelectedProjectSources.length > 0 && (
                 <span className="project-dirty-warning" role="status">
                   Save {dirtySelectedProjectSources.length} modified project source(s) before

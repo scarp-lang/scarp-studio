@@ -65,3 +65,34 @@ describe('project test report → current Explorer source navigation', () => {
     expect(resolveListedTestSource('tests/GREEN.srp', current.path, current)).toBeNull();
   });
 });
+
+
+describe('project test navigation in a multi-project Scarp workspace', () => {
+  const nested = {
+    path: 'C:/Scarp-Practice',
+    projectRoots: [
+      { directory: 'basic_tuple', path: 'C:/Scarp-Practice/basic_tuple' },
+      { directory: 'loops', path: 'C:/Scarp-Practice/loops' },
+    ],
+    files: [
+      { name: 'basic_tuple/tests/tuple.srp', path: 'C:/Scarp-Practice/basic_tuple/tests/tuple.srp' },
+      { name: 'loops/tests/loop.srp', path: 'C:/Scarp-Practice/loops/tests/loop.srp' },
+    ],
+  };
+  it('opens only test sources belonging to an explicitly scanned nested manifest root', () => {
+    expect(resolveListedTestSource('tests/tuple.srp',
+      'C:/Scarp-Practice/basic_tuple', nested)).toBe(nested.files[0].path);
+    expect(resolveListedTestSource('tests/loop.srp',
+      'c:\\scarp-practice\\loops', nested)).toBe(nested.files[1].path);
+  });
+  it('does not resolve another project, unknown root or report traversal', () => {
+    expect(resolveListedTestSource('tests/loop.srp',
+      'C:/Scarp-Practice/basic_tuple', nested)).toBeNull();
+    expect(resolveListedTestSource('tests/tuple.srp',
+      'C:/Scarp-Practice/other', nested)).toBeNull();
+    expect(resolveListedTestSource('../basic_tuple/tests/tuple.srp',
+      'C:/Scarp-Practice/basic_tuple', nested)).toBeNull();
+    expect(resolveListedTestSource('tests/tuple.srp',
+      'C:/Scarp-Practice/basic_tuple', { ...nested, projectRoots: [] })).toBeNull();
+  });
+});
