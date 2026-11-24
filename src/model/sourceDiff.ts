@@ -7,7 +7,7 @@
  */
 export const MAX_DIFF_SOURCE_UNITS = 512 * 1024;
 export const MAX_DIFF_SOURCE_LINES = 2400;
-export const MAX_DIFF_DYNAMIC_CELLS = 160_000;
+export const MAX_DIFF_DYNAMIC_CELLS = 400_000;
 export const MAX_DIFF_HUNKS = 32;
 export const MAX_DIFF_PREVIEW_LINES = 400;
 export const MAX_DIFF_LINE_PREVIEW_UNITS = 240;
