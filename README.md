@@ -137,3 +137,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Problems view:** Ctrl+Shift+M shows current structured compiler diagnostics and failed project tests, searchable by code/message/path/help, with snapshot-guarded source navigation and a separate raw Output view.
 
 - F8 can navigate to a verified background-tab compiler problem. The status bar opens Problems; stale source or input results lose active markers and navigation.
+
+- **Grouped project Explorer:** root, src/, tests/ and examples/ groups, natural ordering, main-source indicators, active/modified state, collapse controls and local filters over the existing bounded scoped listing.

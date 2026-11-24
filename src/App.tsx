@@ -38,6 +38,7 @@ import { parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
 import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
+import { ProjectExplorer } from './components/ProjectExplorer';
 import {
   captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
   type VerifiedSourceSnapshot,
@@ -2100,16 +2101,8 @@ export default function App() {
                   Check folder access permissions.
                 </p>
               )}
-              {folderEntries.length ? folderEntries.map((entry) => (
-                <button
-                  className="file-row"
-                  key={entry.path}
-                  title={entry.path}
-                  onClick={() => void openFolderFile(entry.path)}
-                >
-                  <span aria-hidden="true" className="file-glyph">S</span>{entry.name}
-                </button>
-              )) : <p className="sidebar-note">No .srp files found.</p>}
+              <ProjectExplorer key={folderPath} files={folderEntries} documents={documents} activeId={activeId}
+                busy={busy || compilerBusy || compilerSelecting} onOpen={path => void openFolderFile(path)} />
             </section>
           ) : (
             <div className="sidebar-note">Choose a folder to browse its .srp files.</div>
