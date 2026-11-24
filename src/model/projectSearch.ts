@@ -2,6 +2,7 @@ import { isDirty, isScarpPath, sameFilePath, type StudioDocument } from './docum
 import { searchOpenFiles, type OpenFileSearchHit, type SearchOptions } from './openFileSearch';
 import { utf8ByteLength } from './utf8Text';
 import { projectSourceBuffersChanged } from './projectSourceState';
+import { safeRelativeScarpSourceName } from './folderListing';
 
 /** A completed project search should survive switching tabs and opening the
  * result's own source, so users can inspect several matches without rescanning.
@@ -22,7 +23,8 @@ export function editorChangeInvalidatesProjectSearch(
 
 /** Explicit read-only search of ONLY the already-listed Scarp project sources.
  * A deliberately small I/O budget is distinct from the normal 4 MiB editor
- * limit. We never recursively crawl or apply replacements to files on disk.
+ * limit. Only the selected Explorer listing is searched; no additional
+ * recursive crawling or on-disk replacements occur during a search.
  */
 export const MAX_PROJECT_SEARCH_FILES = 24;
 export const MAX_PROJECT_SEARCH_READ_BYTES = 512 * 1024;
@@ -52,52 +54,65 @@ export interface ProjectSearchResult {
   error: string | null;
 }
 
-function sourceGroup(name: string): number {
-  if (name.startsWith('src/')) return 1;
-  if (name.startsWith('tests/')) return 2;
-  if (name.startsWith('examples/')) return 3;
-  return 0;
+/** Divide the capped, already-scoped listing fairly by actual directory.
+ * Preserve the familiar root/src/tests/examples priority while giving every
+ * additional Scarp practice folder its own search turn. */
+function sourceGroup(name: string): string {
+  const lastSlash = name.lastIndexOf('/');
+  return lastSlash < 0 ? '' : name.slice(0, lastSlash);
 }
 
-const safeListedName = /^(?:(?:src|tests|examples)\/)?[^/\\\0]+\.srp$/i;
-
-/** Round-robin the project root, src, tests and examples to avoid a crowded
- * directory hiding every other category. Give listed, dirty open buffers
- * priority *within each group* before main.srp and other on-disk sources.
- * Otherwise the 24-file scan cap could silently exclude the very unsaved
- * source the user is searching for when one directory is crowded.
- * A preferred path never grants access: only sanitized, listed entries enter
- * the groups and the filesystem reader retains its independent scoped checks.
+/** Round-robin the project root, standard subfolders, and all validated
+ * nested practice folders. Within each group, prefer listed dirty buffers
+ * before main.srp and other clean sources. Never construct native paths from
+ * filenames; the only paths used are the originals from the Explorer listing.
  */
 export function selectProjectSearchSources(
   listed: readonly ProjectSearchSource[],
   preferredPaths: readonly string[] = [],
 ): ProjectSearchSource[] {
-  const groups: ProjectSearchSource[][] = [[], [], [], []];
+  const groups = new Map<string, ProjectSearchSource[]>();
   const seen: string[] = [];
   for (const source of listed.slice(0, MAX_LISTED_SOURCES)) {
-    if (!safeListedName.test(source.name) || !isScarpPath(source.path) ||
-        seen.some((path) => sameFilePath(path, source.path))) continue;
+    if (!safeRelativeScarpSourceName(source.name) || !isScarpPath(source.path) ||
+        seen.some(path => sameFilePath(path, source.path))) continue;
     seen.push(source.path);
-    groups[sourceGroup(source.name)].push(source);
+    const directory = sourceGroup(source.name);
+    const existing = groups.get(directory) ?? [];
+    existing.push(source);
+    groups.set(directory, existing);
   }
+  const priority = ['', 'src', 'tests', 'examples'];
+  const directories = [...groups.keys()].sort((a, b) => {
+    const p = priority.indexOf(a);
+    const q = priority.indexOf(b);
+    if (p >= 0 || q >= 0) {
+      if (p < 0) return 1;
+      if (q < 0) return -1;
+      return p - q;
+    }
+    return a.localeCompare(b, 'en', { numeric: true });
+  });
   const isPreferred = (source: ProjectSearchSource): boolean =>
-    preferredPaths.some((path) => sameFilePath(path, source.path));
+    preferredPaths.some(path => sameFilePath(path, source.path));
   const isMain = (source: ProjectSearchSource): boolean =>
     source.name.toLowerCase().split('/').at(-1) === 'main.srp';
-  const ordered = groups.map((group) => [
-    ...group.filter(isPreferred),
-    ...group.filter((source) => !isPreferred(source) && isMain(source)),
-    ...group.filter((source) => !isPreferred(source) && !isMain(source)),
-  ]);
-  const next = [0, 0, 0, 0];
+  const ordered = directories.map(directory => {
+    const group = groups.get(directory)!;
+    return [
+      ...group.filter(isPreferred),
+      ...group.filter(source => !isPreferred(source) && isMain(source)),
+      ...group.filter(source => !isPreferred(source) && !isMain(source)),
+    ];
+  });
+  const next = ordered.map(() => 0);
   const selected: ProjectSearchSource[] = [];
   let hasMore = true;
   while (hasMore && selected.length < MAX_PROJECT_SEARCH_FILES) {
     hasMore = false;
-    for (let index = 0; index < ordered.length && selected.length < MAX_PROJECT_SEARCH_FILES; index++) {
-      if (next[index] >= ordered[index].length) continue;
-      selected.push(ordered[index][next[index]++]);
+    for (let i = 0; i < ordered.length && selected.length < MAX_PROJECT_SEARCH_FILES; i++) {
+      if (next[i] >= ordered[i].length) continue;
+      selected.push(ordered[i][next[i]++]);
       hasMore = true;
     }
   }

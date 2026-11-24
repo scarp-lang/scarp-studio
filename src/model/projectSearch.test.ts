@@ -97,7 +97,7 @@ describe('bounded read-only selected-project search', () => {
 
   it('rejects fabricated directory names, duplicate Windows paths, and non-Scarp entries', () => {
     const selected = selectProjectSearchSources([
-      file('../unsafe.srp'), file('random/deep.srp'), file('notes.txt'),
+      file('../unsafe.srp'), file('vendor/deep.srp'), file('notes.txt'),
       file('src/okay.srp'), { name: 'src/different.srp', path: 'c:\\project\\src\\OKAY.srp' },
       file('normal.srp'),
     ]);
@@ -328,5 +328,50 @@ describe('bounded read-only selected-project search', () => {
     expect(result?.hits[0].match.sourceRevision).toBe(5);
     expect(updateContent([original], original.id, 'nEEdle')[0].revision).toBe(6);
     expect(result?.hits[0].match.sourceContent).toBe('needle');
+  });
+});
+
+describe('search across multiple nested practice projects', () => {
+  it('searches sources listed under arbitrary nested Scarp directories', async () => {
+    const listed = [
+      file('basic_tuple/main.srp'),
+      file('basic_tuple/examples/tuple.srp'),
+      file('conditions/if.srp'),
+      file('vendor/excluded.srp'),
+    ];
+    const read = vi.fn(async (path: string) => path.endsWith('tuple.srp')
+      ? 'print("needle");' : 'print("no match");');
+    const result = await searchListedProjectSources(
+      listed, [], 'needle', options, read,
+    );
+    expect(result?.hits.map(hit => hit.name))
+      .toEqual(['basic_tuple/examples/tuple.srp']);
+    expect(read).toHaveBeenCalledWith('C:/project/basic_tuple/examples/tuple.srp', MAX_PROJECT_SEARCH_READ_BYTES);
+    expect(read).not.toHaveBeenCalledWith('C:/project/vendor/excluded.srp', MAX_PROJECT_SEARCH_READ_BYTES);
+  });
+
+  it('shares 24 search slots across crowded practice directories', () => {
+    const listed = [
+      ...Array.from({ length: 45 }, (_, i) => file('basic_tuple/file-' + i + '.srp')),
+      file('conditions/if.srp'),
+      file('loops/while.srp'),
+      file('functions/main.srp'),
+    ];
+    const selected = selectProjectSearchSources(listed);
+    expect(selected).toHaveLength(MAX_PROJECT_SEARCH_FILES);
+    expect(selected.map(item => item.name)).toContain('conditions/if.srp');
+    expect(selected.map(item => item.name)).toContain('loops/while.srp');
+    expect(selected.map(item => item.name)).toContain('functions/main.srp');
+  });
+
+  it('prefers a dirty nested source over clean main.srp in the same folder', () => {
+    const listed = [
+      file('basic_tuple/main.srp'), file('basic_tuple/example.srp'),
+      file('conditions/main.srp'),
+    ];
+    const selected = selectProjectSearchSources(
+      listed, [file('basic_tuple/example.srp').path],
+    );
+    expect(selected[0].name).toBe('basic_tuple/example.srp');
   });
 });
