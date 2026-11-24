@@ -38,7 +38,7 @@ describe('manifest-aware Explorer SSR layout and accessibility', () => {
       documents: [], activeId: null, busy: false,
       onOpen: noop, onSelectProject: noop,
     }));
-    expect(markup).toContain('Folder Project root');
+    expect(markup).toContain('aria-label="Folder Workspace root"');
     expect(markup).toContain('Project ✓');
     expect(markup).toContain('aria-label="Select Scarp project basic_tuple"');
   });
