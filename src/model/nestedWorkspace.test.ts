@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   safeRelativeScarpDirectory, safeRelativeScarpSourceName, collectBrowseableScarpFolders,
 } from './folderListing';
-import { buildExplorerGroups, filterExplorerGroups } from './explorerView';
+import { buildExplorerGroups, filterExplorerGroups, isHiddenByCollapsedExplorerAncestor } from './explorerView';
 import { buildQuickOpenEntries } from './projectQuickOpen';
 
 const file = (name: string) => ({ name, path: 'C:/Scarp-Practice/' + name });
@@ -39,6 +39,14 @@ describe('nested workspace presentation safety', () => {
     expect(filterExplorerGroups(groups, '', 'all')).toHaveLength(4);
     expect(filterExplorerGroups(groups, 'tuple', 'all').map(group => group.directory))
       .toEqual(['basic_tuple', 'basic_tuple/src']);
+  });
+
+  it('collapsing a parent directory hides its descendants without hiding siblings', () => {
+    const collapsed = new Set(['basic_tuple']);
+    expect(isHiddenByCollapsedExplorerAncestor('basic_tuple/src', collapsed)).toBe(true);
+    expect(isHiddenByCollapsedExplorerAncestor('basic_tuple/src/deep', collapsed)).toBe(true);
+    expect(isHiddenByCollapsedExplorerAncestor('basic_tuple', collapsed)).toBe(false);
+    expect(isHiddenByCollapsedExplorerAncestor('conditions/src', collapsed)).toBe(false);
   });
 
   it('Quick Open includes safe nested paths and excludes injected traversal', () => {

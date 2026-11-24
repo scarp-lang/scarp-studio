@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { buildExplorerGroups, filterExplorerGroups, type ExplorerDirectory, type ExplorerFilter } from '../model/explorerView';
+import { buildExplorerGroups, filterExplorerGroups, isHiddenByCollapsedExplorerAncestor, type ExplorerDirectory, type ExplorerFilter } from '../model/explorerView';
 import type { StudioDocument } from '../model/documents';
 import type { ListedProjectSource } from '../model/projectQuickOpen';
 
@@ -21,6 +21,8 @@ export function ProjectExplorer({ files, directories = [], documents, activeId, 
   const total = groups.reduce((sum, group) => sum + group.sources.length, 0);
   const shown = filtered.reduce((sum, group) => sum + group.sources.length, 0);
   const searching = query.trim().length > 0 || filter !== 'all';
+  const visibleGroups = searching ? filtered : filtered.filter(group =>
+    !isHiddenByCollapsedExplorerAncestor(group.directory, collapsed));
 
   function toggle(directory: ExplorerDirectory) {
     setCollapsed(current => {
@@ -48,7 +50,7 @@ export function ProjectExplorer({ files, directories = [], documents, activeId, 
       <button type="button" disabled={searching} onClick={() => setCollapsed(new Set())}>Expand all</button>
       <button type="button" disabled={searching} onClick={() => setCollapsed(new Set(groups.map(g => g.directory)))}>Collapse all</button>
     </div>
-    {filtered.map((group, index) => {
+    {visibleGroups.map((group, index) => {
       const expanded = searching || !collapsed.has(group.directory);
       const groupId = 'studio-explorer-group-' + index;
       return <section key={group.directory} className="explorer-group">

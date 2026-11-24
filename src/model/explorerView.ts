@@ -83,6 +83,19 @@ export function buildExplorerGroups(
     .sort((a, b) => compareDirectories(a.directory, b.directory));
 }
 
+/** Collapsing a parent folder also hides nested folder headings. Search
+ * temporarily reveals matches without mutating the collapsed state. */
+export function isHiddenByCollapsedExplorerAncestor(
+  directory: string, collapsed: ReadonlySet<string>,
+): boolean {
+  let separator = directory.lastIndexOf('/');
+  while (separator > 0) {
+    if (collapsed.has(directory.slice(0, separator))) return true;
+    separator = directory.lastIndexOf('/', separator - 1);
+  }
+  return false;
+}
+
 export function filterExplorerGroups(
   groups: readonly ExplorerGroup[], query: string, filter: ExplorerFilter,
 ): ExplorerGroup[] {
