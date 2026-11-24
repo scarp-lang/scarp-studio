@@ -5,11 +5,14 @@
 
 /** Returns the next CR/LF offset, or -1 if no line ending remains. */
 export function nextLineBreak(source: string, from: number): number {
-  const cr = source.indexOf('\r', from);
-  const lf = source.indexOf('\n', from);
-  if (cr < 0) return lf;
-  if (lf < 0) return cr;
-  return Math.min(cr, lf);
+  // A pair of indexOf calls repeatedly scans to EOF for the absent line
+  // ending on LF-only or CR-only documents. Scan each code unit once
+  // between successive breaks instead, keeping multi-line traversal linear.
+  for (let index = Math.max(0, from); index < source.length; index++) {
+    const unit = source.charCodeAt(index);
+    if (unit === 10 || unit === 13) return index;
+  }
+  return -1;
 }
 
 /** Called only on a CR or LF offset returned by nextLineBreak. */

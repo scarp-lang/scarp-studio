@@ -115,3 +115,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 **Official compiler:** https://github.com/scarp-lang/scarp
 
 - **Go to Declaration (Ctrl+Shift+O):** search the current Scarp buffer's function, record and variant outline; keyboard or mouse navigation, no implicit file reads or execution.
+
+- **Local Go to Definition (F12 / Ctrl+click):** conservative same-file lookup of uniquely named unqualified function calls. Imported symbols, ambiguous names and oversized sources are intentionally not resolved; use Verify for compiler validation.

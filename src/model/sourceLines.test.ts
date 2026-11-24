@@ -29,6 +29,20 @@ describe('Monaco-compatible source line boundaries', () => {
     expect(sourceLineAt(text, 4)).toBe('');
   });
 
+  it('walks large single-ending documents in forward order', () => {
+    for (const ending of ['\n', '\r', '\r\n']) {
+      const source = ('row' + ending).repeat(30_000) + 'last';
+      expect(sourceLineAt(source, 30_001)).toBe('last');
+      let start = 0;
+      for (let n = 0; n < 30_000; n++) {
+        const end = nextLineBreak(source, start);
+        expect(end).toBe(start + 3);
+        start = end + lineBreakWidth(source, end);
+      }
+      expect(nextLineBreak(source, start)).toBe(-1);
+    }
+  });
+
   it('rejects malformed or impossible source line numbers', () => {
     for (const line of [0, -2, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
       expect(sourceLineAt('first\nsecond', line)).toBeNull();

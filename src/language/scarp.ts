@@ -1,4 +1,5 @@
 import type * as Monaco from 'monaco-editor';
+import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAt } from './definition';
 import {
   isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
   type ScarpCompletion,
@@ -160,6 +161,22 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
           { value: '**Scarp: ' + item.label + '**' },
           { value: item.documentation },
         ],
+      };
+    },
+  });
+
+  monaco.languages.registerDefinitionProvider('scarp', {
+    provideDefinition(model, position, token) {
+      if (token.isCancellationRequested || !canAssistAtColumn(position.column) ||
+          model.getLineMaxColumn(position.lineNumber) > MAX_ASSIST_SCAN_UNITS + 1 ||
+          model.getValueLength() > MAX_DEFINITION_SOURCE_UNITS) return null;
+      const name = scarpCallNameAt(model.getLineContent(position.lineNumber), position.column);
+      if (!name) return null;
+      const target = findLocalFunctionDefinition(model.getValue(), name);
+      if (!target || token.isCancellationRequested) return null;
+      return {
+        uri: model.uri,
+        range: new monaco.Range(target.line, target.startColumn, target.line, target.endColumn),
       };
     },
   });

@@ -24,6 +24,7 @@ function captureProvider(): TokenProvider {
       registerCompletionItemProvider: vi.fn(),
       registerHoverProvider: vi.fn(),
       registerDocumentSymbolProvider: vi.fn(),
+      registerDefinitionProvider: vi.fn(),
       CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
     },
   };
@@ -199,6 +200,7 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
         registerCompletionItemProvider: vi.fn(),
         registerHoverProvider: vi.fn(),
         registerDocumentSymbolProvider: vi.fn(),
+      registerDefinitionProvider: vi.fn(),
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
       },
     };
@@ -213,6 +215,7 @@ describe('Scarp editor assistance registration', () => {
     const provideCompletion = vi.fn();
     const provideHover = vi.fn();
     const provideSymbols = vi.fn();
+    const provideDefinition = vi.fn();
     const mockMonaco = {
       Range: class {
         constructor(public startLineNumber: number, public startColumn: number,
@@ -226,13 +229,14 @@ describe('Scarp editor assistance registration', () => {
         registerCompletionItemProvider: provideCompletion,
         registerHoverProvider: provideHover,
         registerDocumentSymbolProvider: provideSymbols,
+        registerDefinitionProvider: provideDefinition,
         CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
         SymbolKind: { Function: 11, Enum: 9, Struct: 22 },
       },
     };
     registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
-    for (const spy of [provideCompletion, provideHover, provideSymbols]) {
+    for (const spy of [provideCompletion, provideHover, provideSymbols, provideDefinition]) {
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][0]).toBe('scarp');
     }
@@ -295,6 +299,25 @@ describe('Scarp editor assistance registration', () => {
       }).suggestions.find((item) => item.label === 'funcra');
       expect(suggestion?.range).toMatchObject({ startColumn: 1, endColumn: 4 });
     }
+    const definitions = provideDefinition.mock.calls[0][1] as {
+      provideDefinition: (model: unknown, position: unknown, token: unknown) => unknown;
+    };
+    const source = 'funcra add(a: integer) -> integer { return a; }\nprint(add(1));';
+    const uri = { path: '/unsaved.srp' };
+    const definitionModel = {
+      uri, getValue: () => source, getValueLength: () => source.length,
+      getLineContent: () => 'print(add(1));', getLineMaxColumn: () => 15,
+    };
+    expect(definitions.provideDefinition(definitionModel,
+      { lineNumber: 2, column: 7 }, { isCancellationRequested: false })).toEqual({
+      uri, range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 11 },
+    });
+    expect(definitions.provideDefinition(definitionModel,
+      { lineNumber: 2, column: 7 }, { isCancellationRequested: true })).toBeNull();
+    const oversized = { ...definitionModel, getValueLength: () => 1024 * 1024,
+      getValue: () => { throw new Error('large buffer must not be copied'); } };
+    expect(definitions.provideDefinition(oversized,
+      { lineNumber: 2, column: 7 }, { isCancellationRequested: false })).toBeNull();
     const outline = provideSymbols.mock.calls[0][1] as {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
     };
