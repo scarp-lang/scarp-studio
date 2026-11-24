@@ -25,6 +25,7 @@ function captureProvider(): TokenProvider {
       registerHoverProvider: vi.fn(),
       registerDocumentSymbolProvider: vi.fn(),
       registerDefinitionProvider: vi.fn(),
+      registerSignatureHelpProvider: vi.fn(),
       CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
     },
   };
@@ -201,6 +202,7 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
         registerHoverProvider: vi.fn(),
         registerDocumentSymbolProvider: vi.fn(),
       registerDefinitionProvider: vi.fn(),
+      registerSignatureHelpProvider: vi.fn(),
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
       },
     };
@@ -216,6 +218,7 @@ describe('Scarp editor assistance registration', () => {
     const provideHover = vi.fn();
     const provideSymbols = vi.fn();
     const provideDefinition = vi.fn();
+    const provideSignature = vi.fn();
     const mockMonaco = {
       Range: class {
         constructor(public startLineNumber: number, public startColumn: number,
@@ -230,13 +233,14 @@ describe('Scarp editor assistance registration', () => {
         registerHoverProvider: provideHover,
         registerDocumentSymbolProvider: provideSymbols,
         registerDefinitionProvider: provideDefinition,
+        registerSignatureHelpProvider: provideSignature,
         CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
         SymbolKind: { Function: 11, Enum: 9, Struct: 22 },
       },
     };
     registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
-    for (const spy of [provideCompletion, provideHover, provideSymbols, provideDefinition]) {
+    for (const spy of [provideCompletion, provideHover, provideSymbols, provideDefinition, provideSignature]) {
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][0]).toBe('scarp');
     }
@@ -318,6 +322,22 @@ describe('Scarp editor assistance registration', () => {
       getValue: () => { throw new Error('large buffer must not be copied'); } };
     expect(definitions.provideDefinition(oversized,
       { lineNumber: 2, column: 7 }, { isCancellationRequested: false })).toBeNull();
+    const signatures = provideSignature.mock.calls[0][1] as {
+      provideSignatureHelp: (model: unknown, position: unknown, token: unknown) => unknown;
+    };
+    const signatureSource = 'funcra add(a: integer, b: integer) -> integer {}\nadd(1, );';
+    const signatureModel = {
+      getValueLength: () => signatureSource.length, getValue: () => signatureSource,
+      getOffsetAt: () => signatureSource.lastIndexOf(')'),
+    };
+    expect(signatures.provideSignatureHelp(signatureModel, { lineNumber: 2, column: 8 },
+      { isCancellationRequested: false })).toMatchObject({
+      value: { activeSignature: 0, activeParameter: 1,
+        signatures: [{ label: 'add(a: integer, b: integer)',
+          parameters: [{ label: 'a: integer' }, { label: 'b: integer' }] }] },
+    });
+    expect(signatures.provideSignatureHelp(signatureModel, { lineNumber: 2, column: 8 },
+      { isCancellationRequested: true })).toBeNull();
     const outline = provideSymbols.mock.calls[0][1] as {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
     };

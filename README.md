@@ -117,3 +117,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Go to Declaration (Ctrl+Shift+O):** search the current Scarp buffer's function, record and variant outline; keyboard or mouse navigation, no implicit file reads or execution.
 
 - **Local Go to Definition (F12 / Ctrl+click):** conservative same-file lookup of uniquely named unqualified function calls. Imported symbols, ambiguous names and oversized sources are intentionally not resolved; use Verify for compiler validation.
+
+- **Local parameter hints (Ctrl+Shift+Space):** declared function parameter names and types, active argument tracking for nested and multiline calls; editor-only, no imported symbol resolution.

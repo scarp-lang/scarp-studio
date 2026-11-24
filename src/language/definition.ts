@@ -35,9 +35,13 @@ export function scarpCallNameAt(line: string, column: number): string | null {
  * including multiple declarations on one line and multiline headers. It never
  * returns a first match from a potentially incomplete or duplicate inventory.
  */
-export function indexLocalFunctionDefinitions(source: string): ScarpFunctionSymbol[] | null {
+export interface LocalFunctionHeader extends ScarpFunctionSymbol {
+  openOffset: number;
+}
+
+export function indexLocalFunctionHeaders(source: string): LocalFunctionHeader[] | null {
   if (source.length > MAX_DEFINITION_SOURCE_UNITS) return null;
-  const symbols: ScarpFunctionSymbol[] = [];
+  const symbols: LocalFunctionHeader[] = [];
   let offset = 0;
   let line = 1;
   let column = 1;
@@ -99,7 +103,7 @@ export function indexLocalFunctionDefinitions(source: string): ScarpFunctionSymb
       continue;
     }
     if (char === '(' && depth === 0 && pending) {
-      symbols.push(pending);
+      symbols.push({ ...pending, openOffset: offset });
       if (symbols.length >= MAX_SCARP_OUTLINE_SYMBOLS) return null;
     }
     pending = null;
@@ -112,6 +116,10 @@ export function indexLocalFunctionDefinitions(source: string): ScarpFunctionSymb
     advance();
   }
   return symbols;
+}
+
+export function indexLocalFunctionDefinitions(source: string): ScarpFunctionSymbol[] | null {
+  return indexLocalFunctionHeaders(source)?.map(({ openOffset: _openOffset, ...symbol }) => symbol) ?? null;
 }
 
 export function findLocalFunctionDefinition(

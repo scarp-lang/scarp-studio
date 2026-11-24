@@ -1,4 +1,5 @@
 import type * as Monaco from 'monaco-editor';
+import { localSignatureAt } from './signature';
 import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAt } from './definition';
 import {
   isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
@@ -161,6 +162,29 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
           { value: '**Scarp: ' + item.label + '**' },
           { value: item.documentation },
         ],
+      };
+    },
+  });
+
+  monaco.languages.registerSignatureHelpProvider('scarp', {
+    signatureHelpTriggerCharacters: ['(', ','],
+    signatureHelpRetriggerCharacters: [')'],
+    provideSignatureHelp(model, position, token) {
+      if (token.isCancellationRequested || !canAssistAtColumn(position.column) ||
+          model.getValueLength() > MAX_DEFINITION_SOURCE_UNITS) return null;
+      const signature = localSignatureAt(model.getValue(), model.getOffsetAt(position));
+      if (!signature || token.isCancellationRequested) return null;
+      return {
+        value: {
+          signatures: [{
+            label: signature.label,
+            documentation: 'Local Scarp declaration (editor-only assistance).',
+            parameters: signature.parameters.map(label => ({ label })),
+          }],
+          activeSignature: 0,
+          activeParameter: signature.activeParameter,
+        },
+        dispose() {},
       };
     },
   });
