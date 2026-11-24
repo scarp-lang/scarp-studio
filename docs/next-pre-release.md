@@ -43,6 +43,19 @@ GitHub Actions must additionally show a successful exact-head Windows run with t
   -RunUrl "https://github.com/scarp-lang/scarp-studio/actions/runs/<EXACT_RUN_ID>"
 ```
 
+To bind the locally calculated hashes to CI provenance, run the same verifier with `-AsJson` and save its output outside the three-file directory, then compare the two reports:
+
+```powershell
+./scripts/verify-windows-artifacts.ps1 `
+  -ArtifactDirectory "C:\scarp-studio-candidate" `
+  -SourceCommit "<EXACT_40_CHARACTER_COMMIT_SHA>" `
+  -RunUrl "https://github.com/scarp-lang/scarp-studio/actions/runs/<EXACT_RUN_ID>" `
+  -AsJson | Set-Content -Encoding utf8 C:\ScarpStudioAcceptance\verification.json
+node scripts/windows-acceptance-report.mjs verify-artifacts C:\ScarpStudioAcceptance\WINDOWS-CANDIDATE-PROVENANCE.json C:\ScarpStudioAcceptance\verification.json
+```
+
+The comparison rejects a report for another commit/run, mismatched sizes or SHA-256 hashes, duplicate or missing executable entries. It strips local full paths from its output. Confirm the run and provenance independently; this is not code signing and does not prove that a local report is genuine. Reverify immediately before using the binaries.
+
 The verifier rejects missing, extra, hidden, linked, mismatched or tampered candidates. An artifact ZIP's download checksum is **not** interchangeable with the individual EXE/installer hashes inside `SHA256SUMS.txt`. Do not mix files from different CI runs.
 
 ## 4. Perform real Windows 11 GUI acceptance

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createReport, checkReport, parseMatrix, matrixHash } from './windows-acceptance-report.mjs';
+import { createReport, checkReport, checkArtifactReport, parseMatrix, matrixHash } from './windows-acceptance-report.mjs';
 
 const matrix = readFileSync(new URL('../docs/windows-11-acceptance.md', import.meta.url), 'utf8');
 const provenance = {
@@ -98,4 +98,39 @@ test('even structurally complete synthetic evidence does not authorize publicati
   const result = checkReport(provenance, matrix, report);
   assert.equal(result.all_cases_recorded_pass, true);
   assert.equal(result.publication_authorized, false);
+});
+
+function verifiedArtifacts() {
+  return {
+    verified: true, source_commit: provenance.source_commit, ci_run: provenance.run_url,
+    files: provenance.files.map(file => ({ ...file, full_path: 'private local path' })),
+  };
+}
+test('fresh artifact verification matches exact provenance without exposing local paths', () => {
+  const result = checkArtifactReport(provenance, matrix, verifiedArtifacts());
+  assert.equal(result.artifact_report_matches_provenance, true);
+  assert.equal(result.publication_authorized, false);
+  assert.equal(result.source_commit, provenance.source_commit);
+  assert.equal(result.run_attempt, provenance.run_attempt);
+  assert.ok(result.files.every(file => !Object.hasOwn(file, 'full_path')));
+});
+test('reject wrong run, source, or unverified report even if binary checksums match', () => {
+  for (const patch of [
+    { verified: false }, { verified: 'true' }, { source_commit: 'c'.repeat(40) },
+    { ci_run: 'https://github.com/scarp-lang/scarp-studio/actions/runs/999' },
+  ]) assert.throws(() => checkArtifactReport(provenance, matrix, { ...verifiedArtifacts(), ...patch }), /source or run mismatch/);
+});
+test('reject changed, duplicated, extra or missing executable records', () => {
+  for (const mutate of [
+    files => { files[0].sha256 = '0'.repeat(64); },
+    files => { files[0].size_bytes++; },
+    files => { files[0].file = 'other.exe'; },
+    files => { files[1] = { ...files[0] }; },
+    files => files.pop(),
+    files => files.push({ ...files[0] }),
+  ]) {
+    const report = verifiedArtifacts();
+    mutate(report.files);
+    assert.throws(() => checkArtifactReport(provenance, matrix, report), /executable/);
+  }
 });

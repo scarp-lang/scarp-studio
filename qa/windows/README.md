@@ -12,7 +12,7 @@ must be independently checked and explicitly approved before use.
    Also download the separate Windows provenance JSON if present and compare its checked-out commit/tree and hashes with the run. Keep it outside the three-file verification folder.
    Check the two binaries and `SHA256SUMS.txt` using
    [the offline verifier](../../scripts/verify-windows-artifacts.ps1)
-   and record the source SHA + run URL. The installer is **unsigned**; do not
+   and record the source SHA + run URL. Use the verifier's `-AsJson` report and `node scripts/windows-acceptance-report.mjs verify-artifacts <provenance.json> <verification.json>` to compare both executable records with the CI provenance (see [verification plan](../../docs/next-pre-release.md)). The installer is **unsigned**; do not
    assume a Windows security warning is harmless.
 2. Independently obtain the official alpha.20 compiler. Its Windows ZIP SHA-256
    is `68a5ee47f24e2e36dd7fb1fcc6257feaea291d801048f7866bff1a7e4994aca2`.

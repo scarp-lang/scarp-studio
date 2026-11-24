@@ -74,6 +74,35 @@ function identity(provenance, text) {
     files,
   };
 }
+/** Bind a fresh local PowerShell checksum verification to the exact CI
+ * provenance. Neither JSON alone establishes authenticity, and this does
+ * not re-read the binaries or execute them. */
+export function checkArtifactReport(provenance, text, report) {
+  const candidate = identity(provenance, text);
+  insist(report && report.verified === true &&
+    report.source_commit === candidate.source_commit &&
+    report.ci_run === candidate.run_url,
+  'Artifact verification report source or run mismatch');
+  insist(Array.isArray(report.files) && report.files.length === 2,
+    'Artifact verification must contain exactly two executable records');
+  for (const expected of candidate.files) {
+    const found = report.files.filter(file => file && file.file === expected.file);
+    insist(found.length === 1 && found[0].sha256 === expected.sha256 &&
+      found[0].size_bytes === expected.size_bytes,
+    'Artifact verification executable mismatch: ' + expected.file);
+  }
+  return {
+    artifact_report_matches_provenance: true,
+    source_commit: candidate.source_commit,
+    source_tree: candidate.source_tree,
+    run_url: candidate.run_url,
+    run_attempt: candidate.run_attempt,
+    files: candidate.files,
+    publication_authorized: false,
+    note: 'Recorded checksums match CI provenance; independently confirm trusted origin and run the local verifier immediately before use.',
+  };
+}
+
 export function createReport(provenance, text) {
   return {
     schema_version: 1,
@@ -130,6 +159,10 @@ function main(args) {
     process.stdout.write(matrixHash(text) + '\n');
     return;
   }
+  if (args.length === 3 && args[0] === 'verify-artifacts') {
+    console.log(JSON.stringify(checkArtifactReport(readJson(args[1]), text, readJson(args[2])), null, 2));
+    return;
+  }
   if (args.length === 2 && args[0] === 'template') {
     console.log(JSON.stringify(createReport(readJson(args[1]), text), null, 2));
     return;
@@ -140,7 +173,7 @@ function main(args) {
     if (args[3] === '--require-pass' && !summary.all_cases_recorded_pass) process.exitCode = 1;
     return;
   }
-  throw new Error('Usage: matrix-hash | template <provenance.json> | check <provenance.json> <report.json> [--require-pass]');
+  throw new Error('Usage: matrix-hash | verify-artifacts <provenance.json> <verification.json> | template <provenance.json> | check <provenance.json> <report.json> [--require-pass]');
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try { main(process.argv.slice(2)); }

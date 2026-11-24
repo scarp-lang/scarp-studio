@@ -773,6 +773,12 @@ jobs:
             })
           }
           $provenance | ConvertTo-Json -Depth 5 | Set-Content -Path WINDOWS-CANDIDATE-PROVENANCE.json -Encoding utf8
+          # Exercise the same evidence-binding command a Windows tester uses.
+          # Store the report outside the three-file verification directory.
+          $localReport = Join-Path $env:RUNNER_TEMP "scarp-studio-local-verification.json"
+          $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $localReport -Encoding utf8
+          node scripts/windows-acceptance-report.mjs verify-artifacts WINDOWS-CANDIDATE-PROVENANCE.json $localReport
+          if ($LASTEXITCODE -ne 0) { throw 'Artifact provenance binding failed' }
           # Extra unverified files (including a second plausible installer)
           # must fail closed even when the original two hashes match.
           $strayExe = Join-Path $stage "old-build-setup.exe"
