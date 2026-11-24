@@ -22,6 +22,15 @@ Choose the **Scarp-Practice** parent folder once. Explorer headings include nest
 - Existing editor snapshot guards, 4 MiB source limits, external-modification protection, Save As checks and post-write read-back stay intact.
 - Scarp **project** compiler actions still act on the selected root; to run a standalone nested practice file, open that .srp source in the editor.
 
+## Generate a disposable Windows fixture
+
+For a new path that does not already exist, run the repository's
+`qa/windows/create-nested-practice-fixture.ps1` script with
+`-Destination "C:\Temp\Scarp-Practice"` from PowerShell. The script
+never deletes or overwrites existing files, executes Scarp code, or
+opens a compiler. Use `-WhatIf` to preview first. Choose the created
+parent folder in Scarp Studio and follow acceptance case P40.
+
 ## Windows 11 manual acceptance — NOT RUN
 
 1. Create the folder layout above, plus another nested source named tuple2.srp.
