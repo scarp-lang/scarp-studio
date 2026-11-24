@@ -77,7 +77,7 @@ import {
 import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplaceUndo } from './model/openFileReplaceUndo';
 
 import { nextOutputPanelMode, revealOutputPanel, type OutputPanelMode } from './model/outputPanelLayout';
-import { DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, clampLayoutSize, type LayoutDimension } from './model/workspaceLayout';
+import { DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, clampLayoutSize, EXPLORER_MIN, EXPLORER_MAX, OUTPUT_MIN, OUTPUT_MAX, type LayoutDimension } from './model/workspaceLayout';
 import { WorkspaceSplitter } from './components/WorkspaceSplitter';
 
 type Theme = 'dark' | 'light';
@@ -211,7 +211,7 @@ export default function App() {
     catch { return { ...DEFAULT_WORKSPACE_LAYOUT }; }
   });
   const studioMainElement = useRef<HTMLDivElement | null>(null);
-  const workspaceElement = useRef<HTMLElement | null>(null);
+  const editorOutputRegion = useRef<HTMLDivElement | null>(null);
   const [workspaceDimensions, setWorkspaceDimensions] = useState({ width: 1200, height: 700 });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
@@ -310,14 +310,16 @@ export default function App() {
   }
   useEffect(() => {
     // Coalesce pointer moves; write only the latest display preferences.
-    const timer = window.setTimeout(() => {
+    const persist = () => {
       try { localStorage.setItem('studio.workspaceLayout', JSON.stringify(workspaceLayout)); } catch { /* unavailable */ }
-    }, 200);
-    return () => window.clearTimeout(timer);
+    };
+    const timer = window.setTimeout(persist, 200);
+    window.addEventListener('pagehide', persist);
+    return () => { window.clearTimeout(timer); window.removeEventListener('pagehide', persist); };
   }, [workspaceLayout]);
   useEffect(() => {
     const main = studioMainElement.current;
-    const workspace = workspaceElement.current;
+    const workspace = editorOutputRegion.current;
     if (!main || !workspace) return;
     const measure = () => setWorkspaceDimensions(current => {
       const width = main.clientWidth;
@@ -330,6 +332,12 @@ export default function App() {
     measure();
     return () => observer.disconnect();
   }, []);
+  function resetWorkspaceLayout(): void {
+    setWorkspaceLayout({ ...DEFAULT_WORKSPACE_LAYOUT });
+    setOutputPanelMode('normal');
+    setExplorerVisible(true);
+    setCompilerControlsOpen(true);
+  }
   function showCompilerSetup(): void {
     setOutputPanelMode(revealOutputPanel);
     setCompilerControlsOpen(true);
@@ -1992,6 +2000,19 @@ export default function App() {
             />
             Show spaces and tabs
           </label>
+          <fieldset className="workspace-settings">
+            <legend>Workspace layout</legend>
+            <label htmlFor="studio-explorer-width">Explorer width <output>{workspaceLayout.explorerWidth}px</output></label>
+            <input id="studio-explorer-width" type="range" min={EXPLORER_MIN} max={EXPLORER_MAX} step={1}
+              value={workspaceLayout.explorerWidth}
+              onChange={event => setWorkspaceLayout(current => ({ ...current, explorerWidth: Number(event.target.value) }))} />
+            <label htmlFor="studio-output-height">Output height <output>{workspaceLayout.outputHeight}px</output></label>
+            <input id="studio-output-height" type="range" min={OUTPUT_MIN} max={OUTPUT_MAX} step={1}
+              value={workspaceLayout.outputHeight}
+              onChange={event => updateWorkspaceDimension('outputHeight', Number(event.target.value))} />
+            <button type="button" className="settings-reset" onClick={resetWorkspaceLayout}>Reset layout only</button>
+            <span className="workspace-settings-hint">Preferred sizes are limited by available editor space.</span>
+          </fieldset>
           <button
             className="settings-reset"
             type="button"
@@ -2002,10 +2023,7 @@ export default function App() {
               autoSaveEnabledRef.current = false;
               setAutoSavePreferences(restored.autoSave);
               setEditorPreferences(restored.editor);
-              setWorkspaceLayout({ ...DEFAULT_WORKSPACE_LAYOUT });
-              setOutputPanelMode('normal');
-              setExplorerVisible(true);
-              setCompilerControlsOpen(true);
+              resetWorkspaceLayout();
               setNotice('Restored Studio Settings defaults; Auto Save is off.');
             }}
             title="Reset editor appearance and disable Auto Save"
@@ -2102,7 +2120,7 @@ export default function App() {
           available={workspaceDimensions.width} controls="scarp-explorer"
           onChange={size => updateWorkspaceDimension('explorerWidth', size)}
           onReset={() => updateWorkspaceDimension('explorerWidth', DEFAULT_WORKSPACE_LAYOUT.explorerWidth)} />}
-        <main className="workspace" ref={workspaceElement}>
+        <main className="workspace">
           <div className="tabs" role="tablist" aria-label="Open source files">
             {documents.map((document) => (
               <div
@@ -2346,6 +2364,7 @@ export default function App() {
               <button onClick={() => setError(null)} aria-label="Dismiss error">×</button>
             </div>
           )}
+          <div className="editor-output-region" ref={editorOutputRegion}>
           <div id="scarp-editor-panel" className="editor-panel" role="tabpanel"
             aria-labelledby={active ? 'studio-tab-' + active.id : undefined}
             aria-label={active ? undefined : 'Scarp source editor'}>
@@ -2633,6 +2652,7 @@ export default function App() {
             </div>
             </div>
           </section>
+          </div>
         </main>
       </div>
       {paletteMode !== null && (

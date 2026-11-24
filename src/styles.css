@@ -440,3 +440,27 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .sidebar { min-width: 0; }
 @media (max-width: 690px) { .splitter-vertical { display: none; } }
 @media (forced-colors: active) { .workspace-splitter:focus-visible { outline-color: Highlight; } }
+
+/* Measure the editor/output region after tabs, search and disk-review
+   banners take their space, instead of sizing output against the whole
+   workspace. When very short, scroll the workspace rather than burying
+   the editor behind a fixed-height output panel. */
+.workspace { overflow-y: auto; }
+.editor-output-region { display: flex; flex-direction: column; flex: 1 0 300px; min-width: 0; min-height: 300px; }
+.editor-output-region > .editor-panel { flex: 1 1 0; min-height: 100px; }
+.editor-output-region > .compiler-panel.output-normal { max-height: none; }
+.editor-output-region > .compiler-panel.output-expanded { max-height: calc(100% - 100px); }
+.workspace-settings {
+  display: grid; grid-template-columns: auto minmax(100px, 160px) auto minmax(100px, 160px) auto;
+  gap: 7px 10px; align-items: center; flex-basis: 100%; min-width: 0;
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px 8px;
+}
+.workspace-settings legend { color: var(--muted); font-size: 11px; padding: 0 4px; }
+.workspace-settings label { display: flex; gap: 6px; align-items: baseline; }
+.workspace-settings output { color: var(--muted); font-variant-numeric: tabular-nums; }
+.workspace-settings input { width: 100%; min-width: 0; accent-color: var(--accent); }
+.workspace-settings-hint { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+@media (max-width: 1000px) {
+  .workspace-settings { grid-template-columns: minmax(0, auto) minmax(100px, 1fr); }
+  .workspace-settings > button { justify-self: start; }
+}

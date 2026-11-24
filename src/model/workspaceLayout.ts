@@ -10,13 +10,16 @@ export const OUTPUT_MIN = 180;
 export const OUTPUT_MAX = 680;
 export const EDITOR_MIN_WIDTH = 320;
 export const EDITOR_MIN_HEIGHT = 120;
+export const MIN_EDITOR_OUTPUT_REGION = 300;
 export type LayoutDimension = keyof WorkspaceLayout;
 
 export function clampLayoutSize(value: number, dimension: LayoutDimension, available = Infinity): number {
   const min = dimension === 'explorerWidth' ? EXPLORER_MIN : OUTPUT_MIN;
   const max = dimension === 'explorerWidth' ? EXPLORER_MAX : OUTPUT_MAX;
   const reserve = dimension === 'explorerWidth' ? EDITOR_MIN_WIDTH : EDITOR_MIN_HEIGHT;
-  const upper = Math.max(min, Math.min(max, Number.isFinite(available) ? Math.floor(available - reserve - 8) : max));
+  const effectiveAvailable = dimension === 'outputHeight' && Number.isFinite(available)
+    ? Math.max(MIN_EDITOR_OUTPUT_REGION, available) : available;
+  const upper = Math.max(min, Math.min(max, Number.isFinite(effectiveAvailable) ? Math.floor(effectiveAvailable - reserve - 8) : max));
   return Math.max(min, Math.min(upper, Math.round(Number.isFinite(value) ? value : DEFAULT_WORKSPACE_LAYOUT[dimension])));
 }
 

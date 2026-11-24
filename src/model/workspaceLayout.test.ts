@@ -15,6 +15,8 @@ describe('workspace layout preferences', () => {
     expect(clampLayoutSize(480, 'explorerWidth', 760)).toBe(432);
     expect(clampLayoutSize(680, 'outputHeight', 520)).toBe(392);
     expect(clampLayoutSize(680, 'outputHeight', 100)).toBe(180);
+    expect(clampLayoutSize(680, 'outputHeight', 380)).toBe(252);
+    expect(clampLayoutSize(680, 'outputHeight', 700)).toBe(572);
     expect(clampLayoutSize(NaN, 'explorerWidth')).toBe(245);
   });
   it('uses intuitive keyboard direction and bounded Home/End', () => {
