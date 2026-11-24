@@ -141,3 +141,29 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Nested practice workspace Explorer (unreleased draft):** select a parent folder such as `Scarp-Practice` to browse multiple projects (`basic_tuple/`, `loops/`, `conditions/`) and nested `.srp` files without separately opening each project. Empty folders stay visible; grouped headings have natural ordering, parent/child collapse controls, modified/open indicators and filters. Bounded breadth-first scanning permits up to 5 nested directory levels, 64 total directories including the selected root, and 200 displayed `.srp` files; it skips unsafe, hidden, linked and build/dependency folders. Duplicate `main.srp` tabs display their shortest distinct folder suffix. Search Project and Quick Open use the same listed nested sources. No source executes during folder scanning; standalone Run/Verify targets the current saved source, whereas project CLI actions still operate on the selected root. Hands-on Windows acceptance remains NOT RUN.
 
 - **Focus mode:** Ctrl+Alt+Z temporarily hides the Explorer and secondary toolbar, collapses the output body while retaining compiler controls, and restores previous workspace visibility on exit.
+
+
+### Multi-project workspace editing and project selection (unreleased)
+
+A selected parent directory such as `Scarp-Practice/` may contain
+`basic_tuple/`, `loops/` and other independent exercises. The directory
+picker requests a **recursive dynamic filesystem scope only for the folder
+you select**, allowing read access to nested listed files without granting
+global read permissions. The Explorer keeps the existing bounded scan,
+non-symlink safeguards, file caps and stale-read protection.
+
+Use **Project target** above the project buttons to choose a nested directory
+containing a regular `scarp.project` or `Scarp.project` manifest. Only
+manifest-bearing directories discovered by the same bounded scan appear in
+the nested-project menu. Project Info, Verify Project, Run Project, List Tests
+and Run Tests then target exactly that folder. Native Scarp still validates the
+manifest and compiler trust on explicit execution. Selecting another target
+retires prior structured test results; compiler tests navigate only to an
+already-listed file belonging to that specific nested project. Run (F5) and
+Verify (Ctrl+F5) on the current standalone saved `.srp` file are unchanged.
+
+A successful first Save or Save As with a changed destination automatically
+refreshes the selected Explorer once, so newly saved nested sources can appear.
+Normal saves do not rescan. A refresh failure does not cancel an already
+verified disk write, and a partial Save All failure still preserves the original
+error and any earlier successfully saved files.

@@ -1074,8 +1074,8 @@ export default function App() {
     saveInProgress.current = true;
     setBusy(true);
     setError(null);
+    let needsExplorerRefresh = false;
     try {
-      let needsExplorerRefresh = false;
       const result = await saveAllModifiedSources(
         ids,
         (id) => liveEditor.current.documents.find((document) => document.id === id),
@@ -1095,7 +1095,12 @@ export default function App() {
         ? '; Explorer could not refresh. Use Refresh Explorer to update the file list.'
         : ''));
     } catch (caught) {
-      setError(toMessage(caught));
+      // Save All may stop after writing earlier new files successfully.
+      // Preserve the original error and refresh the Explorer for the subset
+      // already committed; a failed refresh must never obscure a save error.
+      const refreshed = !needsExplorerRefresh || await updateExplorerAfterSave();
+      setError(toMessage(caught) + (refreshed ? ''
+        : ' Some earlier saves succeeded; refresh Explorer to see new files.'));
     } finally {
       saveInProgress.current = false;
       setBusy(false);

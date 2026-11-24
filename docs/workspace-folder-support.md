@@ -42,3 +42,30 @@ parent folder in Scarp Studio and follow acceptance case P40.
 6. Check inaccessible/symlinked directories and depth/count limit warnings, including more than 63 children.
 
 Automated checks are not evidence of actual Windows GUI acceptance.
+
+
+## Nested project commands
+
+Project commands operate on a specific manifest root, not necessarily the
+Explorer workspace root. Select the parent workspace once, then use the
+**Project target** selector to choose a discovered nested directory containing
+a regular `scarp.project` or `Scarp.project`. The scanner checks only native
+directory entry metadata; it does **not** parse or execute the manifest.
+The selected compiler validates the manifest on an explicit project action.
+
+The existing disposable P40 fixture intentionally contains standalone
+Scarp files rather than claiming to create valid official project manifests.
+For P41, create valid projects with the independently trusted official Scarp
+compiler's `init` command, then open their common parent. Switch the project
+selector and verify that project commands act on the chosen child directory,
+not the parent or sibling project. Confirm any structured test source link
+matches an exact currently listed test within that selected child project.
+
+## Save As and Explorer refresh
+
+After a successful verified first Save or changed-path Save As, Studio
+re-scans the current authorized workspace and updates the Explorer listing.
+Normal Ctrl+S of an existing source does not rescan. If the rescan fails, the
+source remains saved but the user sees a manual **Refresh Explorer** hint.
+If Save All stops after some successful new saves, the Explorer still attempts
+to refresh; the original failure remains visible and later tabs remain dirty.
