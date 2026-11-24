@@ -106,3 +106,12 @@ UI action: opening a file never silently changes the project to execute.
 Unlisted paths, unsafe source labels and paths from other workspaces cannot
 populate the action. Switching targets retires the previous project's
 structured test results and marks prior project output as historical.
+
+### Direct project selection from Explorer
+
+Every discovered manifest-bearing folder shows a compact **Use Project**
+control alongside its Explorer heading (or a **Project ✓** indicator when it
+is already selected). This only changes the target for later, explicitly
+requested project commands; it never runs code. Even an empty manifest-bearing
+workspace root remains visible as an Explorer group. The existing bounded
+scanner and current project-root membership are still authoritative.

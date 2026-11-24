@@ -2220,8 +2220,11 @@ export default function App() {
                   Check folder access permissions.
                 </p>
               )}
-              <ProjectExplorer key={folderPath} files={folderEntries} directories={folderDirectories} documents={documents} activeId={activeId}
-                busy={busy || compilerBusy || compilerSelecting} onOpen={path => void openFolderFile(path)} />
+              <ProjectExplorer key={folderPath} files={folderEntries} directories={folderDirectories}
+                projectRoots={projectRoots} selectedProjectDirectory={projectDirectory}
+                onSelectProject={chooseProjectTarget} documents={documents} activeId={activeId}
+                busy={busy || compilerBusy || compilerSelecting}
+                onOpen={path => void openFolderFile(path)} />
             </section>
           ) : (
             <div className="sidebar-note">Choose a folder to browse its .srp files.</div>

@@ -57,3 +57,15 @@ describe('hierarchical nested Explorer presentation', () => {
     expect(explorerSourceIndent('a/b/c/d/e/f')).toBe(78);
   });
 });
+
+describe('manifest-root Explorer headings', () => {
+  it('includes an empty workspace project root and an empty nested project folder', () => {
+    const groups = buildExplorerGroups([], [], null, [], ['', 'basic_tuple']);
+    expect(groups.map(group => group.directory)).toEqual(['', 'basic_tuple']);
+    expect(groups.every(group => group.sources.length === 0)).toBe(true);
+  });
+  it('does not trust forged manifest names as folder headings', () => {
+    const groups = buildExplorerGroups([], [], null, [], ['../outside', 'src/../escape']);
+    expect(groups).toEqual([]);
+  });
+});

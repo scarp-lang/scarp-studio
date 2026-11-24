@@ -51,10 +51,18 @@ function compareDirectories(a: string, b: string): number {
 export function buildExplorerGroups(
   files: readonly ListedProjectSource[], documents: readonly StudioDocument[],
   activeId: string | null, directories: readonly string[] = [],
+  projectRootDirectories: readonly string[] = [],
 ): ExplorerGroup[] {
   const groups = new Map<string, ExplorerGroup>();
   for (const directory of directories.slice(0, MAX_SCANNED_SCARP_DIRECTORIES - 1)) {
     if (safeRelativeScarpDirectory(directory) && !groups.has(directory)) {
+      groups.set(directory, { directory, sources: [] });
+    }
+  }
+  // A manifest-bearing root can be an empty project with no .srp source
+  // directly in its own directory. Keep it visible as a selectable project.
+  for (const directory of projectRootDirectories.slice(0, MAX_SCANNED_SCARP_DIRECTORIES)) {
+    if ((directory === '' || safeRelativeScarpDirectory(directory)) && !groups.has(directory)) {
       groups.set(directory, { directory, sources: [] });
     }
   }
@@ -78,7 +86,8 @@ export function buildExplorerGroups(
     });
   }
   return [...groups.values()].filter(group =>
-    group.sources.length > 0 || directories.includes(group.directory))
+    group.sources.length > 0 || directories.includes(group.directory) ||
+    projectRootDirectories.includes(group.directory))
     .map(group => ({ ...group, sources: group.sources.sort(compareNames) }))
     .sort((a, b) => compareDirectories(a.directory, b.directory));
 }
