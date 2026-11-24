@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { createUntitled, markSaved, updateContent } from './documents';
+import { openedDocument, updateContent } from './documents';
 import { captureVerifiedSource } from './verifiedSource';
 import { collectProblems, currentDiagnosticTarget, filterProblems, sameDiagnosticTarget, type ProblemInputs } from './problems';
 import type { ScarpDiagnostic } from './diagnostics';
 
-const initial = createUntitled(1);
-const saved = markSaved([initial], initial.id, 'C:/project/main.srp', 'A😀B')[0];
+const saved = openedDocument([], 'C:/project/main.srp', 'A😀B').documents[0];
 const snapshot = captureVerifiedSource(saved)!;
 const diagnostic: ScarpDiagnostic = { code: 'E0015', message: 'Wrong type', help: 'Use integer', path: 'main.srp', line: 1, column: 3, endLine: null, endColumn: null };
 const base: ProblemInputs = { diagnostic, snapshot, documents: [saved], testResult: null, selection: null, stale: false };
 
 describe('current structured problems', () => {
+  it('uses a genuinely clean, saved fixture rather than a pending save snapshot', () => {
+    expect(saved.content).toBe(saved.savedContent);
+    expect(snapshot).not.toBeNull();
+  });
   it('resolves a background saved source and converts scalar columns', () => {
     expect(collectProblems(base)[0].target).toMatchObject({ kind: 'source', lineNumber: 1, column: 4, snapshot });
   });
