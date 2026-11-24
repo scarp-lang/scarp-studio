@@ -48,6 +48,7 @@ import { SourceImportsPanel } from './components/SourceImportsPanel';
 import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
 import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
+import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import {
   createSourceBookmark, resolveSourceBookmarks, bookmarkTargetForCurrentSource,
   removeSourceBookmark, type SourceBookmark,
@@ -2359,6 +2360,9 @@ export default function App() {
             onActivate={id => dispatch({ type: 'activate', id })} />
           <CodeReferencesPanel documents={documents} activeId={activeId}
             cursor={cursor} busy={busy || compilerBusy || compilerSelecting}
+            onNavigate={jumpToSourceInsight} />
+          <WorkspaceTaskBoard documents={documents} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting}
             onNavigate={jumpToSourceInsight} />
         </aside>
 

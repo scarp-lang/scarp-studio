@@ -240,3 +240,19 @@ escaped; each **Go to reference** first verifies the document ID, current
 revision and exact matched code spelling, and the editor separately verifies
 its current Monaco snapshot. No disk reads, filesystem path inference,
 compiler execution or source edits are performed by this feature.
+
+
+## Workspace Task Board
+
+The collapsed **WORKSPACE TASKS** panel gathers only real line-comment task
+markers from currently-open Scarp buffers, excluding matching text in string
+literals. It supports filtering across tabs (or the active tab only) by
+TODO/FIXME/BUG/NOTE/REVIEW/HACK/XXX, priority and literal text, with priority
+or source-location ordering. Each **Go to task** verifies the current document
+revision and exact marker inside a true comment before navigating across tabs.
+No GitHub issues are created and no filesystem or network is accessed.
+
+The inventory is explicitly bounded to 24 open buffers, a 1.5 Mi UTF-16
+aggregate source budget and 300 listed tasks. Incomplete scans visibly
+say so rather than implying a complete task inventory. All task text is
+rendered as escaped source data, never executable markup or links.

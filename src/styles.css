@@ -822,3 +822,39 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 }
 .references-row > button:hover:not(:disabled) { border-color: var(--accent); }
 .references-row > button:disabled { opacity: .5; cursor: not-allowed; }
+
+
+/* Cross-tab task board: lexical comment navigation and bounded result list. */
+.workspace-task-board { border-top: 1px solid var(--border); }
+.workspace-task-content { padding: 4px 8px 12px; }
+.workspace-task-stats {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px;
+  font-size: 10px; font-weight: 600; padding: 3px 0;
+}
+.workspace-task-filters {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px;
+}
+.workspace-task-filters input, .workspace-task-filters select {
+  width: 100%; min-width: 0; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 5px; font-size: 10px;
+}
+.workspace-task-filters input { grid-column: 1 / -1; }
+.workspace-task-list { display: flex; flex-direction: column; gap: 5px; }
+.workspace-task-row {
+  padding: 6px; border: 1px solid var(--border);
+  border-inline-start-width: 3px; border-radius: 4px;
+}
+.workspace-task-high { border-inline-start-color: #d96871; }
+.workspace-task-normal { border-inline-start-color: var(--accent); }
+.workspace-task-low { border-inline-start-color: var(--muted); }
+.workspace-task-header {
+  display: flex; justify-content: space-between; gap: 4px; font-size: 10px;
+}
+.workspace-task-header span { color: var(--muted); overflow-wrap: anywhere; }
+.workspace-task-text { font-size: 11px; overflow-wrap: anywhere; padding: 5px 0; }
+.workspace-task-row button {
+  color: var(--text); background: var(--raised); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 6px; font-size: 10px;
+}
+.workspace-task-row button:hover:not(:disabled) { border-color: var(--accent); }
+.workspace-task-row button:disabled { opacity: .5; cursor: not-allowed; }
