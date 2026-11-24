@@ -18,7 +18,7 @@ const provenance = {
   manual_gui_acceptance: 'NOT RUN',
   files: [
     { file: 'scarp-studio.exe', sha256: 'c'.repeat(64), size_bytes: 100 },
-    { file: 'Scarp-Studio-setup.exe', sha256: 'd'.repeat(64), size_bytes: 200 },
+    { file: 'Scarp Studio_0.0.2-alpha.1_x64-setup.exe', sha256: 'd'.repeat(64), size_bytes: 200 },
   ],
 };
 const fresh = () => createReport(provenance, matrix);
@@ -49,6 +49,7 @@ test('reject stale provenance and old compiler or changed matrix', () => {
     { run_attempt: 0 },
     { source_commit: 'unknown' },
     { files: [provenance.files[0], provenance.files[0]] },
+    { files: [provenance.files[0], { ...provenance.files[1], file: 'Other-setup.exe' }] },
   ]) assert.throws(() => createReport({ ...provenance, ...patch }, matrix));
 });
 test('report is bound to exact commit, run attempt, compiler and binary hashes', () => {

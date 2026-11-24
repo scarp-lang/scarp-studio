@@ -54,7 +54,7 @@ function identity(provenance, text) {
   insist(Array.isArray(provenance.files) && provenance.files.length === 2, 'Exactly two executable records required');
   const files = provenance.files.map(file => {
     insist(file && typeof file.file === 'string' &&
-      /^(scarp-studio\.exe|[A-Za-z0-9_.-]+-setup\.exe)$/.test(file.file) &&
+      (file.file === 'scarp-studio.exe' || file.file === 'Scarp Studio_0.0.2-alpha.1_x64-setup.exe') &&
       typeof file.sha256 === 'string' && sha256.test(file.sha256) &&
       Number.isSafeInteger(file.size_bytes) && file.size_bytes > 0,
     'Invalid executable provenance record');
