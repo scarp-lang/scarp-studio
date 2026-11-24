@@ -91,3 +91,15 @@ export function keyboardTabTarget(
   if (key === 'ArrowLeft') return ids[(current + ids.length - 1) % ids.length];
   return null;
 }
+
+/** Selection remains valid when async source changes shrink the result set. */
+export function clampPaletteIndex(index: number, count: number): number {
+  if (!Number.isSafeInteger(count) || count <= 0) return 0;
+  if (!Number.isSafeInteger(index)) return 0;
+  return Math.max(0, Math.min(index, count - 1));
+}
+
+export function stepPaletteIndex(index: number, count: number, direction: -1 | 1): number {
+  if (!Number.isSafeInteger(count) || count <= 0) return 0;
+  return (clampPaletteIndex(index, count) + direction + count) % count;
+}

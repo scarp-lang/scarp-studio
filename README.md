@@ -123,3 +123,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Local function autocomplete:** typed declaration names and parameter labels, case-sensitive prefix matching, unique names only, and identifier-only insertion to preserve existing call syntax.
 
 - **Adjustable compiler output:** Ctrl+J collapse/show, expand/restore, separate setup and input controls, independent scroll regions and always-visible Run/Verify/Stop.
+
+- **Accessible navigation palette:** active-descendant combobox, visible keyboard selection, focus containment and restoration, and high-contrast selection indicators.

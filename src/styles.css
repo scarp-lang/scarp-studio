@@ -340,3 +340,16 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   .compiler-panel:not(.output-expanded):not(.output-collapsed) { flex-basis: 42%; }
   .compiler-heading { padding: 5px 8px; gap: 4px 8px; }
 }
+
+/* The selected result has a non-color-only marker; focus stays on the
+   combobox and its active descendant remains in view while navigating. */
+.nav-query-row:focus-within { box-shadow: inset 0 -2px 0 var(--accent); }
+.nav-result { border-inline-start: 3px solid transparent; }
+.nav-result.selected { border-inline-start-color: var(--accent); }
+.nav-result.selected .nav-result-name { font-weight: 600; }
+.nav-results { overscroll-behavior: contain; scroll-padding-block: 5px; }
+.nav-dismiss:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (forced-colors: active) {
+  .nav-result.selected { outline: 2px solid Highlight; outline-offset: -2px; }
+  .nav-query-row:focus-within { outline: 2px solid Highlight; }
+}

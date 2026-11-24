@@ -21,6 +21,7 @@ import {
 import {
   boundedNavigationQuery, clampLineLocation, cycleTabId, filterNavigationEntries,
   keyboardTabTarget, MAX_NAVIGATION_QUERY_UNITS, parseLineLocation,
+  clampPaletteIndex, stepPaletteIndex,
   type NavigationEntry,
 } from './model/navigation';
 import { scanScarpOutlineSymbols, type ScarpOutlineSymbol } from './language/assist';
@@ -275,6 +276,10 @@ export default function App() {
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
   const paletteInput = useRef<HTMLInputElement | null>(null);
+  const paletteDismiss = useRef<HTMLButtonElement | null>(null);
+  const paletteSelectedResult = useRef<HTMLButtonElement | null>(null);
+  const paletteReturnFocus = useRef<HTMLElement | null>(null);
+  const paletteRestoreOnClose = useRef(false);
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
@@ -366,23 +371,47 @@ export default function App() {
   const paletteResults = paletteMode === 'line'
     ? []
     : filterNavigationEntries(paletteEntries, paletteQuery);
+  const selectedPaletteIndex = clampPaletteIndex(paletteIndex, paletteResults.length);
+  const selectedPaletteId = paletteResults[selectedPaletteIndex]?.id;
 
   function showPalette(mode: PaletteMode): void {
+    if (paletteMode === null) {
+      paletteReturnFocus.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement : null;
+    }
+    paletteRestoreOnClose.current = false;
     setPaletteMode(mode);
     setPaletteQuery('');
     setPaletteIndex(0);
   }
 
-  function hidePalette(): void {
+  function hidePalette(restoreFocus = true): void {
+    paletteRestoreOnClose.current = restoreFocus;
     setPaletteMode(null);
     setPaletteQuery('');
     setPaletteIndex(0);
   }
 
   useEffect(() => {
-    if (paletteMode !== null) paletteInput.current?.focus();
-    else if (!searchOpen) editorHandle.current?.focus();
+    if (paletteMode !== null) {
+      paletteInput.current?.focus();
+      return;
+    }
+    const previous = paletteReturnFocus.current;
+    paletteReturnFocus.current = null;
+    const restore = paletteRestoreOnClose.current;
+    paletteRestoreOnClose.current = false;
+    if (restore && previous?.isConnected && !previous.closest('[hidden]') &&
+        !(previous instanceof HTMLButtonElement && previous.disabled)) {
+      previous.focus();
+    } else if (!searchOpen) editorHandle.current?.focus();
   }, [paletteMode, activeId, searchOpen]);
+
+  useEffect(() => {
+    if (paletteMode !== null && selectedPaletteId !== undefined) {
+      paletteSelectedResult.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }, [paletteMode, selectedPaletteIndex, selectedPaletteId]);
 
   function cycleTab(direction: 1 | -1): void {
     const state = liveEditor.current;
@@ -399,14 +428,14 @@ export default function App() {
     const monacoPosition = { lineNumber: position.line, column: position.column };
     editor.setPosition(monacoPosition);
     editor.revealPositionInCenter(monacoPosition);
-    hidePalette();
+    hidePalette(false);
     editor.focus();
     setNotice('Jumped to line ' + position.line + ', column ' + position.column);
   }
 
   function executePaletteEntry(entry: NavigationEntry): void {
     const mode = paletteMode;
-    hidePalette();
+    hidePalette(false);
     if (mode === 'files') {
       const target = entry as QuickOpenEntry;
       if (target.kind === 'tab') {
@@ -2501,11 +2530,25 @@ export default function App() {
           onMouseDown={(event) => { if (event.target === event.currentTarget) hidePalette(); }}
         >
           <section className="nav-dialog" role="dialog" aria-modal="true"
+            onKeyDown={(event) => {
+              if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey) return;
+              // The input owns listbox selection; only input and Close are
+              // in the modal tab order. Keep focus inside until dismissal.
+              event.preventDefault();
+              if (document.activeElement === paletteDismiss.current) paletteInput.current?.focus();
+              else paletteDismiss.current?.focus();
+            }}
             aria-label={paletteMode === 'files' ? 'Quick Open Scarp tabs and project sources' : paletteMode === 'commands' ? 'Scarp Studio commands' : paletteMode === 'symbols' ? 'Go to Scarp declaration' : 'Go to line'}>
             <div className="nav-query-row">
               <span aria-hidden="true">{paletteMode === 'files' ? '▤' : paletteMode === 'commands' ? '⌘' : paletteMode === 'symbols' ? 'ƒ' : ':'}</span>
               <input
                 ref={paletteInput}
+                role={paletteMode === 'line' ? undefined : 'combobox'}
+                aria-autocomplete={paletteMode === 'line' ? undefined : 'list'}
+                aria-expanded={paletteMode === 'line' ? undefined : true}
+                aria-controls={paletteMode === 'line' ? undefined : 'studio-navigation-results'}
+                aria-activedescendant={paletteMode !== 'line' && selectedPaletteId !== undefined
+                  ? 'studio-navigation-option-' + selectedPaletteIndex : undefined}
                 aria-label={paletteMode === 'files' ? 'Search open Scarp tabs and listed project files' : paletteMode === 'commands' ? 'Search editor commands' : paletteMode === 'symbols' ? 'Search declarations in the current Scarp file' : 'Line and optional column'}
                 placeholder={paletteMode === 'files' ? 'Find an open or project .srp file…' : paletteMode === 'commands' ? 'Type a Studio command…' : paletteMode === 'symbols' ? 'Find a function, record or variant…' : 'Line or line:column (e.g. 12:4)'}
                 value={paletteQuery}
@@ -2518,18 +2561,17 @@ export default function App() {
                   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                     event.preventDefault();
                     if (paletteMode !== 'line') {
-                      setPaletteIndex((current) => paletteResults.length
-                        ? (current + (event.key === 'ArrowDown' ? 1 : -1) + paletteResults.length) % paletteResults.length
-                        : 0);
+                      setPaletteIndex(current => stepPaletteIndex(current, paletteResults.length,
+                        event.key === 'ArrowDown' ? 1 : -1));
                     }
                   } else if (event.key === 'Enter') {
                     event.preventDefault();
                     if (paletteMode === 'line') goToLine();
-                    else if (paletteResults[paletteIndex]) executePaletteEntry(paletteResults[paletteIndex]);
+                    else if (paletteResults[selectedPaletteIndex]) executePaletteEntry(paletteResults[selectedPaletteIndex]);
                   }
                 }}
               />
-              <button type="button" className="nav-dismiss" onClick={hidePalette} aria-label="Close navigation">×</button>
+              <button type="button" ref={paletteDismiss} className="nav-dismiss" onClick={() => hidePalette()} aria-label="Close navigation">×</button>
             </div>
             {paletteMode === 'line' ? (
               <div className="nav-hint">
@@ -2538,10 +2580,13 @@ export default function App() {
                   : 'Enter a positive line number, optionally followed by :column.'}
               </div>
             ) : (
-              <div className="nav-results" role="listbox" aria-label="Navigation results">
+              <div id="studio-navigation-results" className="nav-results" role="listbox" aria-label="Navigation results">
                 {paletteResults.map((item, index) => (
-                  <button type="button" role="option" aria-selected={index === paletteIndex}
-                    key={item.id} className={'nav-result' + (index === paletteIndex ? ' selected' : '')}
+                  <button type="button" role="option" tabIndex={-1} aria-selected={index === selectedPaletteIndex}
+                    id={'studio-navigation-option-' + index}
+                    ref={index === selectedPaletteIndex ? paletteSelectedResult : undefined}
+                    key={item.id} className={'nav-result' + (index === selectedPaletteIndex ? ' selected' : '')}
+                    onMouseDown={event => event.preventDefault()}
                     onMouseEnter={() => setPaletteIndex(index)}
                     onClick={() => executePaletteEntry(item)}>
                     <span className="nav-result-name">{item.label}</span>
@@ -2553,7 +2598,10 @@ export default function App() {
                 {paletteMode === 'symbols' && <p className="nav-hint">Current file only · up to 500 declarations · up to 40 results. Refine the query to find more.</p>}
               </div>
             )}
-            <div className="nav-footer">↑ ↓ Navigate · Enter Select · Esc Close</div>
+            <div className="nav-footer">
+              {paletteMode !== 'line' && <span role="status">{paletteResults.length} result(s) · </span>}
+              ↑ ↓ Navigate · Enter Select · Esc Close
+            </div>
           </section>
         </div>
       )}

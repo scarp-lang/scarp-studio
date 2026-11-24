@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   boundedNavigationQuery, clampLineLocation, filterNavigationEntries,
+  clampPaletteIndex, stepPaletteIndex,
   MAX_NAVIGATION_QUERY_UNITS, parseLineLocation,
 } from './navigation';
 
@@ -128,5 +129,21 @@ describe('accessible tablist keyboard navigation', () => {
     expect(keyboardTabTarget(['main'], 'main', 'Delete')).toBeNull();
     expect(keyboardTabTarget(['main'], 'main', 'ArrowLeft')).toBe('main');
     expect(keyboardTabTarget(['main'], 'main', 'End')).toBe('main');
+  });
+});
+
+describe('navigation palette selection', () => {
+  it('clamps stale selection when the result set shrinks', () => {
+    expect(clampPaletteIndex(39, 2)).toBe(1);
+    expect(clampPaletteIndex(-1, 2)).toBe(0);
+    expect(clampPaletteIndex(NaN, 2)).toBe(0);
+    expect(clampPaletteIndex(5, 0)).toBe(0);
+  });
+  it('wraps keyboard selection in either direction after clamping', () => {
+    expect(stepPaletteIndex(0, 3, -1)).toBe(2);
+    expect(stepPaletteIndex(2, 3, 1)).toBe(0);
+    expect(stepPaletteIndex(39, 2, 1)).toBe(0);
+    expect(stepPaletteIndex(0, 0, -1)).toBe(0);
+    expect(stepPaletteIndex(0, 1, 1)).toBe(0);
   });
 });
