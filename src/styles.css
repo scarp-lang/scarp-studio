@@ -353,3 +353,55 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   .nav-result.selected { outline: 2px solid Highlight; outline-offset: -2px; }
   .nav-query-row:focus-within { outline: 2px solid Highlight; }
 }
+
+/* Two predictable toolbar rows rather than arbitrary wrapping. The action
+   strip can scroll horizontally at the minimum window size, including on
+   keyboard focus; no command is removed or made hover-only. */
+.toolbar {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 5px 10px; padding: 7px 12px 5px; flex: 0 0 auto; min-height: 0;
+}
+.identity { grid-column: 1; grid-row: 1; }
+.toolbar-quick-open {
+  grid-column: 2; grid-row: 1; justify-self: center; width: min(100%, 340px);
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  min-width: 0; background: var(--bg); color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 9px; font-size: 12px; white-space: nowrap;
+}
+.toolbar-quick-open > span:first-child { font-size: 16px; color: var(--accent); line-height: 1; }
+.toolbar-quick-open kbd { color: var(--muted); margin-left: auto; font: 10px/1.3 Consolas, monospace; }
+.toolbar-quick-open:hover { border-color: var(--accent); color: var(--text); }
+.settings-toggle { grid-column: 3; grid-row: 1; }
+.theme-button { grid-column: 4; grid-row: 1; margin-left: 0; }
+.toolbar-actions {
+  grid-column: 1 / -1; grid-row: 2; min-width: 0; flex-wrap: nowrap;
+  gap: 6px; overflow-x: auto; overscroll-behavior-x: contain;
+  scrollbar-width: thin; padding: 0 0 3px;
+}
+.toolbar-group { display: flex; flex: 0 0 auto; gap: 2px; align-items: center; }
+.toolbar-group + .toolbar-group { border-left: 1px solid var(--border); padding-left: 6px; }
+.toolbar-group button { min-height: 29px; white-space: nowrap; padding: 5px 9px; }
+.toolbar-group button[aria-expanded="true"] { background: var(--raised); border-color: var(--accent); }
+.tabs { flex: 0 0 auto; scrollbar-width: thin; overscroll-behavior-x: contain; }
+.tab { flex: 0 0 auto; min-width: 105px; min-height: 36px; border-top: 2px solid transparent; }
+.tab.active { border-top-color: var(--accent); }
+.tab-close { min-width: 24px; min-height: 24px; flex: 0 0 auto; }
+.status-bar { display: flex; flex: 0 0 auto; gap: 10px; min-width: 0; overflow: hidden; }
+.status-bar .status-notice { flex: 1 1 120px; min-width: 0; margin-right: 0; }
+.status-items {
+  display: flex; align-items: center; flex: 0 1 auto; min-width: 0; gap: 12px;
+  white-space: nowrap; overflow-x: auto; scrollbar-width: thin;
+}
+.status-items > * { flex: 0 0 auto; }
+.status-items > span:first-child { margin-right: 0; }
+.status-items .status-nav:focus-visible { outline-color: #fff; }
+@media (max-width: 900px) {
+  .toolbar { gap: 4px 8px; padding: 5px 8px 3px; }
+  .toolbar-quick-open kbd { display: none; }
+  .toolbar-group button { padding-inline: 7px; }
+  .status-items { gap: 8px; }
+  .status-bar .status-notice { flex-basis: 95px; }
+}
+@media (forced-colors: active) {
+  .tab.active, .toolbar-group button[aria-expanded="true"] { outline: 1px solid Highlight; }
+}

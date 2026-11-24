@@ -125,3 +125,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Adjustable compiler output:** Ctrl+J collapse/show, expand/restore, separate setup and input controls, independent scroll regions and always-visible Run/Verify/Stop.
 
 - **Accessible navigation palette:** active-descendant combobox, visible keyboard selection, focus containment and restoration, and high-contrast selection indicators.
+
+- **Compact workspace chrome:** grouped scrollable toolbar, direct Quick Open entry, active-tab visibility and horizontally scrollable status information for smaller windows.

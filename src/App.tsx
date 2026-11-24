@@ -278,6 +278,7 @@ export default function App() {
   const paletteInput = useRef<HTMLInputElement | null>(null);
   const paletteDismiss = useRef<HTMLButtonElement | null>(null);
   const paletteSelectedResult = useRef<HTMLButtonElement | null>(null);
+  const activeTabElement = useRef<HTMLDivElement | null>(null);
   const paletteReturnFocus = useRef<HTMLElement | null>(null);
   const paletteRestoreOnClose = useRef(false);
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -412,6 +413,10 @@ export default function App() {
       paletteSelectedResult.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }, [paletteMode, selectedPaletteIndex, selectedPaletteId]);
+
+  useEffect(() => {
+    activeTabElement.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [activeId]);
 
   function cycleTab(direction: 1 | -1): void {
     const state = liveEditor.current;
@@ -1803,10 +1808,17 @@ export default function App() {
           <span>Scarp <strong>Studio</strong></span>
           <span className="alpha-tag">ALPHA</span>
         </div>
+        <button type="button" className="toolbar-quick-open" onClick={() => showPalette('files')}
+          title="Quick Open tabs and project sources (Ctrl+P)">
+          <span aria-hidden="true">⌕</span><span>Quick Open</span><kbd>Ctrl+P</kbd>
+        </button>
         <nav className="toolbar-actions" aria-label="Editor actions">
+          <div className="toolbar-group" role="group" aria-label="File actions">
           <button onClick={newFile} title="New (Ctrl+N)">New</button>
           <button onClick={() => void openFile()} title="Open (Ctrl+O)">Open</button>
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
+          </div>
+          <div className="toolbar-group" role="group" aria-label="Navigation">
           <button onClick={() => showPalette('commands')} title="Commands (Ctrl+Shift+P)">Commands</button>
           <button onClick={showStarterTemplates} title="New Scarp starter source templates">Examples</button>
           <button onClick={() => setExplorerVisible((visible) => !visible)}
@@ -1819,6 +1831,8 @@ export default function App() {
             aria-controls="open-file-search"
             title="Search all currently open Scarp buffers (Ctrl+Shift+F)"
           >Find in Open Files</button>
+          </div>
+          <div className="toolbar-group" role="group" aria-label="Save and review">
           <button onClick={() => void saveFile()} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save (Ctrl+S)">Save</button>
           <button onClick={() => void saveAllFiles()} disabled={busy || compilerBusy || compilerSelecting || !documents.some(isDirty)}
             title="Save All modified Scarp files (Ctrl+Alt+S)">Save All</button>
@@ -1828,6 +1842,7 @@ export default function App() {
             title="Read-only snapshot comparison with the current saved file; never overwrites source">Compare with Disk</button>
           <button onClick={() => void reloadFile()} disabled={!active?.path || busy || compilerBusy || compilerSelecting}
             title="Reload the saved Scarp source from disk, confirming before discarding edits">Reload</button>
+          </div>
         </nav>
         <button
           className="settings-toggle"
@@ -1983,6 +1998,7 @@ export default function App() {
               <button
                 className={'file-row' + (document.id === activeId ? ' selected' : '')}
                 key={document.id}
+                aria-current={document.id === activeId ? 'true' : undefined}
                 onClick={() => dispatch({ type: 'activate', id: document.id })}
                 title={document.path || document.name}
               >
@@ -2028,6 +2044,8 @@ export default function App() {
             {documents.map((document) => (
               <div
                 role="tab"
+                ref={document.id === activeId ? activeTabElement : undefined}
+                id={'studio-tab-' + document.id}
                 aria-selected={document.id === activeId}
                 className={'tab' + (document.id === activeId ? ' active' : '')}
                 key={document.id}
@@ -2266,7 +2284,8 @@ export default function App() {
             </div>
           )}
           <div id="scarp-editor-panel" className="editor-panel" role="tabpanel"
-            aria-label={active ? 'Scarp source editor: ' + active.name : 'Scarp source editor'}>
+            aria-labelledby={active ? 'studio-tab-' + active.id : undefined}
+            aria-label={active ? undefined : 'Scarp source editor'}>
             {active ? (
               <Editor
                 key={active.id}
@@ -2606,7 +2625,8 @@ export default function App() {
         </div>
       )}
       <footer className="status-bar">
-        <span>{busy ? 'Working…' : notice}</span>
+        <span className="status-notice" role="status" title={busy ? 'Working…' : notice}>{busy ? 'Working…' : notice}</span>
+        <div className="status-items" aria-label="Editor status">
         <button className="status-nav" onClick={() => showPalette('line')} disabled={!active}
           title="Go to Line (Ctrl+G)">
           {active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}
@@ -2622,7 +2642,8 @@ export default function App() {
             ' · Review ' + autoSaveReview.current.reviewCount(documents)}
         </button>
         <span>Scarp · .srp</span>
-        <span>0.0.2-alpha.1 · development candidate</span>
+        <span className="status-version" title="Unreleased development candidate">0.0.2-alpha.1 · development candidate</span>
+        </div>
       </footer>
     </div>
   );
