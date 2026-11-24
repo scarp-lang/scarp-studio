@@ -129,3 +129,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Compact workspace chrome:** grouped scrollable toolbar, direct Quick Open entry, active-tab visibility and horizontally scrollable status information for smaller windows.
 
 - **First-run guidance:** welcome shortcuts, explicit compiler setup entry, and visible Run/Verify readiness explanations; no automatic trust or execution.
+
+- **Resizable workspace:** drag the Explorer and normal output dividers, or focus them and use arrows/Shift+arrows, Home/End; double-click restores the individual default. Local width/height preferences persist without source or input data.

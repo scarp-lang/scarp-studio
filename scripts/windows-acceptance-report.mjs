@@ -9,7 +9,7 @@ const sha256 = /^[a-f0-9]{64}$/;
 const runUrl = /^https:\/\/github\.com\/scarp-lang\/scarp-studio\/actions\/runs\/[1-9][0-9]*$/;
 const statuses = new Set(['NOT RUN', 'PASS', 'FAIL']);
 const requiredIds = [
-  ...Array.from({ length: 63 }, (_, i) => 'E' + String(i + 1).padStart(2, '0')).filter(id => id !== 'E49'),
+  ...Array.from({ length: 64 }, (_, i) => 'E' + String(i + 1).padStart(2, '0')).filter(id => id !== 'E49'),
   ...Array.from({ length: 39 }, (_, i) => 'P' + String(i + 1).padStart(2, '0')),
   ...Array.from({ length: 28 }, (_, i) => 'C' + String(i + 1).padStart(2, '0')),
   ...Array.from({ length: 18 }, (_, i) => 'D' + String(i + 1).padStart(2, '0')).filter(id => id !== 'D17'),

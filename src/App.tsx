@@ -77,6 +77,8 @@ import {
 import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplaceUndo } from './model/openFileReplaceUndo';
 
 import { nextOutputPanelMode, revealOutputPanel, type OutputPanelMode } from './model/outputPanelLayout';
+import { DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, clampLayoutSize, type LayoutDimension } from './model/workspaceLayout';
+import { WorkspaceSplitter } from './components/WorkspaceSplitter';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -204,6 +206,13 @@ export default function App() {
   const [folderListingLimited, setFolderListingLimited] = useState(false);
   const [unavailableProjectFolders, setUnavailableProjectFolders] = useState<string[]>([]);
   const [explorerVisible, setExplorerVisible] = useState(true);
+  const [workspaceLayout, setWorkspaceLayout] = useState(() => {
+    try { return parseWorkspaceLayout(localStorage.getItem('studio.workspaceLayout')); }
+    catch { return { ...DEFAULT_WORKSPACE_LAYOUT }; }
+  });
+  const studioMainElement = useRef<HTMLDivElement | null>(null);
+  const workspaceElement = useRef<HTMLElement | null>(null);
+  const [workspaceDimensions, setWorkspaceDimensions] = useState({ width: 1200, height: 700 });
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState('Scarp Studio • editor foundation');
   const [busy, setBusy] = useState(false);
@@ -295,6 +304,32 @@ export default function App() {
   const verifyBlock = compilerActionBlock(actionState, 'verify');
   const runHint = compilerActionHint(runBlock, stdinValidationError);
   const verifyHint = compilerActionHint(verifyBlock, stdinValidationError);
+  function updateWorkspaceDimension(dimension: LayoutDimension, size: number): void {
+    setWorkspaceLayout(current => current[dimension] === size ? current : { ...current, [dimension]: size });
+    if (dimension === 'outputHeight') setOutputPanelMode('normal');
+  }
+  useEffect(() => {
+    // Coalesce pointer moves; write only the latest display preferences.
+    const timer = window.setTimeout(() => {
+      try { localStorage.setItem('studio.workspaceLayout', JSON.stringify(workspaceLayout)); } catch { /* unavailable */ }
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [workspaceLayout]);
+  useEffect(() => {
+    const main = studioMainElement.current;
+    const workspace = workspaceElement.current;
+    if (!main || !workspace) return;
+    const measure = () => setWorkspaceDimensions(current => {
+      const width = main.clientWidth;
+      const height = workspace.clientHeight;
+      return current.width === width && current.height === height ? current : { width, height };
+    });
+    const observer = new ResizeObserver(measure);
+    observer.observe(main);
+    observer.observe(workspace);
+    measure();
+    return () => observer.disconnect();
+  }, []);
   function showCompilerSetup(): void {
     setOutputPanelMode(revealOutputPanel);
     setCompilerControlsOpen(true);
@@ -1967,14 +2002,20 @@ export default function App() {
               autoSaveEnabledRef.current = false;
               setAutoSavePreferences(restored.autoSave);
               setEditorPreferences(restored.editor);
+              setWorkspaceLayout({ ...DEFAULT_WORKSPACE_LAYOUT });
+              setOutputPanelMode('normal');
+              setExplorerVisible(true);
+              setCompilerControlsOpen(true);
               setNotice('Restored Studio Settings defaults; Auto Save is off.');
             }}
             title="Reset editor appearance and disable Auto Save"
           >Restore all defaults</button>
         </section>
       )}
-      <div className="studio-main">
-        <aside id="scarp-explorer" className={'sidebar' + (explorerVisible ? '' : ' sidebar-hidden')} aria-label="Scarp file explorer">
+      <div className="studio-main" ref={studioMainElement}>
+        <aside id="scarp-explorer" className={'sidebar' + (explorerVisible ? '' : ' sidebar-hidden')}
+          style={{ width: clampLayoutSize(workspaceLayout.explorerWidth, 'explorerWidth', workspaceDimensions.width),
+            flexBasis: clampLayoutSize(workspaceLayout.explorerWidth, 'explorerWidth', workspaceDimensions.width) }} aria-label="Scarp file explorer">
           <div className="sidebar-heading">EXPLORER</div>
           {folderPath ? (
             <section className="sidebar-section">
@@ -2057,7 +2098,11 @@ export default function App() {
           </section>
         </aside>
 
-        <main className="workspace">
+        {explorerVisible && <WorkspaceSplitter dimension="explorerWidth" value={workspaceLayout.explorerWidth}
+          available={workspaceDimensions.width} controls="scarp-explorer"
+          onChange={size => updateWorkspaceDimension('explorerWidth', size)}
+          onReset={() => updateWorkspaceDimension('explorerWidth', DEFAULT_WORKSPACE_LAYOUT.explorerWidth)} />}
+        <main className="workspace" ref={workspaceElement}>
           <div className="tabs" role="tablist" aria-label="Open source files">
             {documents.map((document) => (
               <div
@@ -2373,7 +2418,13 @@ export default function App() {
               </section>
             )}
           </div>
-          <section className={'compiler-panel output-' + outputPanelMode} aria-label="Scarp compiler output">
+          {outputPanelMode === 'normal' && <WorkspaceSplitter dimension="outputHeight" value={workspaceLayout.outputHeight}
+            available={workspaceDimensions.height} controls="scarp-output-panel"
+            onChange={size => updateWorkspaceDimension('outputHeight', size)}
+            onReset={() => updateWorkspaceDimension('outputHeight', DEFAULT_WORKSPACE_LAYOUT.outputHeight)} />}
+          <section id="scarp-output-panel" className={'compiler-panel output-' + outputPanelMode}
+            style={outputPanelMode === 'normal' ? { flexBasis: clampLayoutSize(workspaceLayout.outputHeight, 'outputHeight', workspaceDimensions.height) } : undefined}
+            aria-label="Scarp compiler output">
             <div className="compiler-heading">
               <div className="compiler-title">
                 <strong>SCARP OUTPUT</strong>
