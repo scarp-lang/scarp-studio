@@ -115,3 +115,28 @@ is already selected). This only changes the target for later, explicitly
 requested project commands; it never runs code. Even an empty manifest-bearing
 workspace root remains visible as an Explorer group. The existing bounded
 scanner and current project-root membership are still authoritative.
+
+
+## Source Insights — read-only active buffer analysis
+
+The Explorer includes a collapsed **SOURCE INSIGHTS** section. Expand it to
+analyze the active in-memory Scarp buffer. It exposes approximate line counts,
+functions, pure functions, records, variants, imports, loops, branch markers,
+comments and maximum brace nesting depth. Its review notes flag mixed newline
+conventions, mixed tabs/spaces in indentation, trailing spaces, long lines,
+unclosed strings and apparently unbalanced brace delimiters.
+
+The panel also indexes line-comment tasks such as TODO, FIXME, BUG, REVIEW,
+NOTE, HACK and XXX, optionally with a short owner. You can filter by text,
+task kind, severity, sort source/priority, and page through 24 task entries at
+a time. Clicking an item navigates to its exact in-memory line/column *only if
+the document ID, revision and exact buffer are still current*. Text in strings
+does not create fake comment tasks. The UI renders task descriptions as escaped
+plain React text: task comments cannot inject executable markup or links.
+
+**Security and scope:** This feature never runs Scarp, invokes a compiler,
+reads files from disk, sends network traffic, persists task comments or
+modifies source code. Large buffers are limited to 512 Ki UTF-16 units and
+24,000 lexical tokens, with 200 visible tasks maximum. A partial scan is
+always labeled incomplete. These insights are useful review heuristics, not
+compiler diagnostics or proof of correct syntax.

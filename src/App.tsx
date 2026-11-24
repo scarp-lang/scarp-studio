@@ -42,6 +42,7 @@ import { verifiedProblemMarker } from './model/problemMarkers';
 import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
+import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import {
   captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
   type VerifiedSourceSnapshot,
@@ -466,6 +467,23 @@ export default function App() {
       if (!model.isDisposed()) monaco.editor.setModelMarkers(model, 'scarp-verify', []);
     };
   }, [activeId, active?.content, problemMarker]);
+
+  function jumpToSourceInsight(target: InsightNavigation): void {
+    const current = liveEditor.current.documents.find(
+      document => document.id === target.documentId,
+    );
+    if (!current || current.id !== liveEditor.current.activeId ||
+        current.revision !== target.revision || current.content !== target.source) return;
+    if (!Number.isSafeInteger(target.line) || !Number.isSafeInteger(target.column) ||
+        target.line < 1 || target.column < 1) return;
+    const editor = editorHandle.current;
+    if (!editor || mountedEditorDocumentId.current !== current.id ||
+        editor.getModel()?.getValue() !== current.content) return;
+    const position = { lineNumber: target.line, column: target.column };
+    editor.setPosition(position);
+    editor.revealPositionInCenter(position);
+    editor.focus();
+  }
 
   function jumpToDeclaration(symbol: ScarpOutlineSymbol): void {
     const editor = editorHandle.current;
@@ -2274,6 +2292,7 @@ export default function App() {
             {declarationOutline.length >= 500 &&
               <p className="sidebar-note" role="status">Declaration outline limited to 500 entries.</p>}
           </section>
+          <SourceInsightsPanel document={active} onNavigate={jumpToSourceInsight} />
         </aside>
 
         {explorerVisible && <WorkspaceSplitter dimension="explorerWidth" value={workspaceLayout.explorerWidth}
