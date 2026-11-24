@@ -139,3 +139,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - F8 can navigate to a verified background-tab compiler problem. The status bar opens Problems; stale source or input results lose active markers and navigation.
 
 - **Grouped project Explorer:** root, src/, tests/ and examples/ groups, natural ordering, main-source indicators, active/modified state, collapse controls and local filters over the existing bounded scoped listing.
+
+- **Focus mode:** Ctrl+Alt+Z temporarily hides the Explorer and secondary toolbar, collapses the output body while retaining compiler controls, and restores previous workspace visibility on exit.

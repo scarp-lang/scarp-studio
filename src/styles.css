@@ -503,3 +503,18 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .explorer-source.selected { border-inline-start-color: var(--accent); }
 .explorer-entrypoint, .explorer-open { color: var(--muted); font-size: 10px; flex: 0 0 auto; }
 .explorer-entrypoint { border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; }
+
+/* Temporary focus mode preserves settings, tabs, current search and all
+   compiler controls. Only the secondary toolbar and pane bodies are hidden. */
+.toolbar { grid-template-columns: auto minmax(0, 1fr) auto auto auto; }
+.focus-mode-toggle { grid-column: 3; grid-row: 1; border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; background: transparent; color: var(--text); font-size: 12px; white-space: nowrap; }
+.focus-mode-toggle:hover { background: var(--raised); }
+.focus-mode-toggle[aria-pressed="true"] { border-color: var(--accent); background: var(--raised); }
+.settings-toggle { grid-column: 4; }
+.theme-button { grid-column: 5; }
+.focus-mode .toolbar-actions { display: none; }
+.focus-mode .toolbar { padding-bottom: 7px; }
+@media (max-width: 800px) {
+  .focus-mode-toggle, .settings-toggle, .theme-button { padding-inline: 6px; }
+  .toolbar-quick-open { padding-inline: 5px; gap: 4px; }
+}

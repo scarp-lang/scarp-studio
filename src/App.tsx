@@ -82,6 +82,7 @@ import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplace
 import { nextOutputPanelMode, revealOutputPanel, type OutputPanelMode } from './model/outputPanelLayout';
 import { DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, clampLayoutSize, EXPLORER_MIN, EXPLORER_MAX, OUTPUT_MIN, OUTPUT_MAX, type LayoutDimension } from './model/workspaceLayout';
 import { WorkspaceSplitter } from './components/WorkspaceSplitter';
+import { effectiveWorkspaceVisibility } from './model/workspaceFocus';
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
@@ -119,6 +120,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
   { id: 'toggle-output', label: 'Toggle Scarp Output Panel', detail: 'Ctrl+J' },
   { id: 'expand-output', label: 'Expand Scarp Output Panel', detail: 'More room for diagnostics' },
+  { id: 'toggle-focus', label: 'Toggle Focus Mode', detail: 'Ctrl+Alt+Z' },
   { id: 'show-problems', label: 'Show Current Problems', detail: 'Ctrl+Shift+M' },
   { id: 'compiler-controls', label: 'Show Compiler Setup and Program Input', detail: 'Output panel controls' },
   ...scarpStarterTemplates.map((starter) => ({
@@ -209,7 +211,8 @@ export default function App() {
   const selectedFolderRef = useRef<{ path: string; files: FolderEntry[] } | null>(null);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
   const [unavailableProjectFolders, setUnavailableProjectFolders] = useState<string[]>([]);
-  const [explorerVisible, setExplorerVisible] = useState(true);
+  const [preferredExplorerVisible, setExplorerVisible] = useState(true);
+  const [focusMode, setFocusMode] = useState(false);
   const [workspaceLayout, setWorkspaceLayout] = useState(() => {
     try { return parseWorkspaceLayout(localStorage.getItem('studio.workspaceLayout')); }
     catch { return { ...DEFAULT_WORKSPACE_LAYOUT }; }
@@ -273,7 +276,8 @@ export default function App() {
   const [completedRunInputGeneration, setCompletedRunInputGeneration] =
     useState<number | null>(null);
   const [compilerBusy, setCompilerBusy] = useState(false);
-  const [outputPanelMode, setOutputPanelMode] = useState<OutputPanelMode>('normal');
+  const [preferredOutputMode, setOutputPanelMode] = useState<OutputPanelMode>('normal');
+  const { explorerVisible, outputPanelMode } = effectiveWorkspaceVisibility({ explorerVisible: preferredExplorerVisible, outputPanelMode: preferredOutputMode }, focusMode);
   const [compilerControlsOpen, setCompilerControlsOpen] = useState(true);
   const [resultsView, setResultsView] = useState<'output' | 'problems'>('output');
   const pendingProblem = useRef<Extract<ProblemTarget, { kind: 'source' }> | null>(null);
@@ -340,13 +344,26 @@ export default function App() {
     measure();
     return () => observer.disconnect();
   }, []);
+  function toggleFocusMode(): void {
+    setFocusMode(current => !current);
+  }
+  function toggleExplorer(): void {
+    if (focusMode) { setFocusMode(false); setExplorerVisible(true); }
+    else setExplorerVisible(current => !current);
+  }
+  function toggleOutputPanel(): void {
+    if (focusMode) { setFocusMode(false); setOutputPanelMode(revealOutputPanel); }
+    else setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle'));
+  }
   function resetWorkspaceLayout(): void {
+    setFocusMode(false);
     setWorkspaceLayout({ ...DEFAULT_WORKSPACE_LAYOUT });
     setOutputPanelMode('normal');
     setExplorerVisible(true);
     setCompilerControlsOpen(true);
   }
   function showCompilerSetup(): void {
+    setFocusMode(false);
     setOutputPanelMode(revealOutputPanel);
     setCompilerControlsOpen(true);
   }
@@ -572,15 +589,16 @@ export default function App() {
       case 'previous-tab': cycleTab(-1); break;
       case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
       case 'settings': setEditorSettingsOpen(true); break;
-      case 'explorer': setExplorerVisible((visible) => !visible); break;
+      case 'explorer': toggleExplorer(); break;
       case 'select-compiler': void selectCompiler(); break;
       case 'scan-compiler': void rescanCompilers(); break;
       case 'download-compiler': void downloadCompiler(); break;
       case 'run-scarp': void runCompiler('exec'); break;
       case 'verify-scarp': void runCompiler('verify'); break;
       case 'stop-scarp': void stopCompiler(); break;
-      case 'toggle-output': setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle')); break;
-      case 'expand-output': setOutputPanelMode('expanded'); break;
+      case 'toggle-output': toggleOutputPanel(); break;
+      case 'toggle-focus': toggleFocusMode(); break;
+      case 'expand-output': setFocusMode(false); setOutputPanelMode('expanded'); break;
       case 'show-problems': showProblems(); break;
       case 'compiler-controls': showCompilerSetup(); break;
     }
@@ -1269,6 +1287,7 @@ export default function App() {
       setError(toMessage(caught));
       return;
     }
+    setFocusMode(false);
     setOutputPanelMode(revealOutputPanel);
     let binary = compilerPath;
     if (!binary) {
@@ -1371,6 +1390,7 @@ export default function App() {
   }
 
   function showProblems(): void {
+    setFocusMode(false);
     if (resultsView === 'problems' && outputPanelMode !== 'collapsed') problemsTab.current?.focus();
     else focusProblemsTab.current = true;
     setOutputPanelMode(revealOutputPanel);
@@ -1449,6 +1469,7 @@ export default function App() {
         return;
       }
     }
+    setFocusMode(false);
     setOutputPanelMode(revealOutputPanel);
     // Capture the current listing instance AND the selected-project source
     // generation before the async compiler begins. Edits during Run Tests can
@@ -1843,6 +1864,11 @@ export default function App() {
         return;
       }
       const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z' && paletteMode === null) {
+        event.preventDefault();
+        toggleFocusMode();
+        return;
+      }
       if (modifier && event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
         event.preventDefault();
         if (paletteMode === null) void saveAllFiles();
@@ -1876,14 +1902,14 @@ export default function App() {
         showProblems();
       } else if (key === 'j' && !event.shiftKey) {
         event.preventDefault();
-        setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle'));
+        toggleOutputPanel();
         outputToggle.current?.focus();
       } else if (key === 'tab' && event.ctrlKey) {
         event.preventDefault();
         cycleTab(event.shiftKey ? -1 : 1);
       } else if (key === 'b' && !event.shiftKey) {
         event.preventDefault();
-        setExplorerVisible((visible) => !visible);
+        toggleExplorer();
       } else if (key === 's') {
         event.preventDefault();
         void saveFile(event.shiftKey);
@@ -1908,7 +1934,7 @@ export default function App() {
   });
 
   return (
-    <div className="studio-shell">
+    <div className={'studio-shell' + (focusMode ? ' focus-mode' : '')}>
       <header className="toolbar">
         <div className="identity" aria-label="Scarp Studio">
           <span className="identity-mark" aria-hidden="true">S</span>
@@ -1928,7 +1954,7 @@ export default function App() {
           <div className="toolbar-group" role="group" aria-label="Navigation">
           <button onClick={() => showPalette('commands')} title="Commands (Ctrl+Shift+P)">Commands</button>
           <button onClick={showStarterTemplates} title="New Scarp starter source templates">Examples</button>
-          <button onClick={() => setExplorerVisible((visible) => !visible)}
+          <button onClick={toggleExplorer}
             aria-expanded={explorerVisible} aria-controls="scarp-explorer"
             title="Toggle Explorer (Ctrl+B)">Explorer</button>
           <button
@@ -1951,6 +1977,8 @@ export default function App() {
             title="Reload the saved Scarp source from disk, confirming before discarding edits">Reload</button>
           </div>
         </nav>
+        <button type="button" className="focus-mode-toggle" aria-pressed={focusMode}
+          onClick={toggleFocusMode} title="Toggle Focus Mode (Ctrl+Alt+Z)">{focusMode ? 'Exit focus' : 'Focus'}</button>
         <button
           className="settings-toggle"
           type="button"
@@ -2515,7 +2543,7 @@ export default function App() {
                   aria-expanded={compilerControlsOpen && outputPanelMode !== 'collapsed'} aria-controls="compiler-controls"
                   onClick={() => {
                     if (outputPanelMode === 'collapsed') {
-                      setOutputPanelMode(revealOutputPanel); setCompilerControlsOpen(true);
+                      showCompilerSetup();
                     } else setCompilerControlsOpen(open => !open);
                   }}>Setup &amp; Input</button>
                 <button type="button" disabled={outputPanelMode === 'collapsed'}
@@ -2523,7 +2551,7 @@ export default function App() {
                   onClick={() => setOutputPanelMode(current => nextOutputPanelMode(current, 'expand'))}
                   title="Toggle expanded output panel">{outputPanelMode === 'expanded' ? 'Restore size' : 'Expand'}</button>
                 <button type="button" ref={outputToggle} aria-expanded={outputPanelMode !== 'collapsed'}
-                  aria-controls="compiler-panel-body" onClick={() => setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle'))}
+                  aria-controls="compiler-panel-body" onClick={toggleOutputPanel}
                   title="Toggle output panel (Ctrl+J)">{outputPanelMode === 'collapsed' ? 'Show output' : 'Hide output'}</button>
               </div>
             </div>
@@ -2795,6 +2823,7 @@ export default function App() {
         </div>
       )}
       <footer className="status-bar">
+        {focusMode && <button type="button" className="status-nav" onClick={toggleFocusMode} title="Exit Focus Mode (Ctrl+Alt+Z)">Focus mode · Exit</button>}
         <span className="status-notice" role="status" title={busy ? 'Working…' : notice}>{busy ? 'Working…' : notice}</span>
         <div className="status-items" aria-label="Editor status">
         <button type="button" className="status-nav status-problems" onClick={showProblems} title="Show current structured problems (Ctrl+Shift+M)">
