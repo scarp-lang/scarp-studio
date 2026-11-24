@@ -1,3 +1,6 @@
+import { isScarpPath, sameFilePath } from './documents';
+import { safeRelativeScarpSourceName } from './folderListing';
+
 /** Select a project target only from manifest-bearing directories found by
  * the bounded, user-authorized Explorer scan. UI selection is not permission:
  * the official native compiler validates the manifest again on execution.
@@ -28,4 +31,34 @@ export function retainedProjectDirectory(
 ): string {
   if (!previous || roots.some(root => root.directory === previous)) return previous;
   return preferredProjectDirectory(roots);
+}
+
+export interface ListedWorkspaceSource {
+  name: string;
+  path: string;
+}
+
+/** Determine the closest manifest-bearing project containing an already
+ * listed editor source. Do not infer filesystem paths from source labels:
+ * the original native path must first match an Explorer listing entry.
+ *
+ * Nested manifests win over their parent manifest, avoiding accidental Run
+ * Project against a parent that also contains a different child project.
+ * No project selection is changed until the user explicitly requests it.
+ */
+export function projectTargetForListedSource(
+  sourcePath: string | null,
+  listed: readonly ListedWorkspaceSource[],
+  roots: readonly ScannedManifestRoot[],
+): string | null {
+  if (!sourcePath || !isScarpPath(sourcePath)) return null;
+  const source = listed.find(entry =>
+    safeRelativeScarpSourceName(entry.name) && isScarpPath(entry.path) &&
+    sameFilePath(entry.path, sourcePath));
+  if (!source) return null;
+  const owned = roots.filter(root =>
+    root.directory === '' || source.name.startsWith(root.directory + '/'));
+  if (!owned.length) return null;
+  owned.sort((a, b) => b.directory.length - a.directory.length);
+  return owned[0].directory;
 }

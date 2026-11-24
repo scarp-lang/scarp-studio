@@ -14,7 +14,7 @@ import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder, type ScarpProjectRoot } from './services/folders';
 import { disambiguateDocumentNames } from './model/documentLabels';
 import { saveChangesWorkspaceListing } from './model/workspaceSaveRefresh';
-import { preferredProjectDirectory, retainedProjectDirectory } from './model/projectTargets';
+import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForListedSource } from './model/projectTargets';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
@@ -384,6 +384,13 @@ export default function App() {
   const selectedProjectHasManifest = projectRoots.some(root =>
     root.directory === projectDirectory &&
     selectedProjectPath !== null && sameFilePath(root.path, selectedProjectPath));
+  // A file is never allowed to redirect project execution automatically.
+  // Offer an explicit switch to its closest discovered manifest root instead.
+  const activeSourceProjectDirectory = projectTargetForListedSource(
+    active?.path ?? null, folderEntries, projectRoots,
+  );
+  const activeSourceHasOtherProject = activeSourceProjectDirectory !== null &&
+    activeSourceProjectDirectory !== projectDirectory;
   const dirtySelectedProjectSources = useMemo(
     () => selectedProjectPath ? dirtyProjectSourceNames(documents, selectedProjectPath) : [],
     [documents, selectedProjectPath],
@@ -1504,6 +1511,19 @@ export default function App() {
       return;
     }
     void openFolderFile(path);
+  }
+
+  function chooseProjectTarget(directory: string): void {
+    if (commandInProgress.current || saveInProgress.current ||
+        filePickerInProgress.current || selectionInProgress.current ||
+        nativeDialogGate.current.isActive) return;
+    if (directory && !projectRoots.some(root => root.directory === directory)) return;
+    if (directory === projectDirectory) return;
+    setProjectDirectory(directory);
+    projectResultEpoch.current++;
+    setProjectTestResult(null);
+    setNotice(directory ? 'Selected Scarp project: ' + directory
+      : 'Selected workspace root for project commands');
   }
 
   async function runProjectAction(action: ScarpProjectAction): Promise<void> {
@@ -2681,19 +2701,23 @@ export default function App() {
                 value={projectDirectory}
                 disabled={busy || compilerBusy || compilerSelecting || !isTauri()}
                 title="Choose a manifest-bearing nested project for Info, Verify, Run and Tests"
-                onChange={event => {
-                  const target = event.target.value;
-                  if (target && !projectRoots.some(root => root.directory === target)) return;
-                  if (target === projectDirectory) return;
-                  setProjectDirectory(target);
-                  projectResultEpoch.current++;
-                  setProjectTestResult(null);
-                  setNotice(target ? 'Selected Scarp project: ' + target : 'Selected workspace root for project commands');
-                }}>
+                onChange={event => chooseProjectTarget(event.target.value)}>
                 <option value="">Workspace root{projectRoots.some(root => root.directory === '') ? ' (manifest)' : ' (no manifest detected)'}</option>
                 {projectRoots.filter(root => root.directory !== '').map(root =>
                   <option key={root.directory} value={root.directory}>{root.directory}/</option>)}
               </select>}
+              {activeSourceHasOtherProject && <button type="button"
+                className="project-target-from-source"
+                disabled={!isTauri() || busy || compilerBusy || compilerSelecting}
+                title={'Target the discovered project containing the active ' +
+                  (active?.name ?? 'Scarp source') + ' file; does not execute code'}
+                onClick={() => {
+                  if (activeSourceProjectDirectory !== null) {
+                    chooseProjectTarget(activeSourceProjectDirectory);
+                  }
+                }}>
+                Use Active File's Project
+              </button>}
               <button type="button" onClick={() => void runProjectAction('info')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath}
                 title="Inspect the chosen project's manifest and entrypoint">Info</button>

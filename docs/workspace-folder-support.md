@@ -95,3 +95,14 @@ unique marker, and verifies **Info**, **Verify** and **Run** against each child
 path. This checks pinned compiler compatibility and sibling isolation without
 claiming that a headless workflow has exercised Tauri's GUI. The Windows P41
 manual acceptance case remains required.
+
+### Switch project to match the active file
+
+When the active editor tab is an **already-listed** Scarp source belonging to
+a different manifest-bearing child project, Studio offers **Use Active File's
+Project** next to the project selector. It resolves the deepest containing
+manifest root among the folder scanner's verified entries. This is an explicit
+UI action: opening a file never silently changes the project to execute.
+Unlisted paths, unsafe source labels and paths from other workspaces cannot
+populate the action. Switching targets retires the previous project's
+structured test results and marks prior project output as historical.
