@@ -1311,6 +1311,81 @@ mod tests {
         assert_eq!(input_run.stdout, "Hello नमस्ते 👋\n");
 
         fs::remove_file(&source).unwrap();
+
+        // Alpha.20 changes the preferred filename, not the native project's
+        // scoped argument contract. Exercise the same native command builders
+        // and bounded process runner used by Studio for both manifest formats.
+        if expected_version == "0.0.6-alpha.20" {
+            let workspace = std::env::temp_dir().join(format!(
+                "studio-project-compat-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir(&workspace).unwrap();
+            for (folder, filename, manifest, format) in [
+                (
+                    "modern",
+                    "scarp.project",
+                    "project \"modern\" { version: \"0.1.0\" entry: \"src/main.srp\" type: \"application\" }\n",
+                    "v2",
+                ),
+                (
+                    "legacy",
+                    "Scarp.project",
+                    "scarp-project: 1\nname: legacy\nentry: src/main.srp\n",
+                    "legacy-v1",
+                ),
+            ] {
+                let root = workspace.join(folder);
+                fs::create_dir_all(root.join("src")).unwrap();
+                fs::write(root.join(filename), manifest).unwrap();
+                let main = root.join("src/main.srp");
+                // Project Info and Verify are deliberately non-executing.
+                fs::write(&main, "assert(false);\n").unwrap();
+                let selected_root = selected_project_root(root.to_str().unwrap()).unwrap();
+                let info = process(
+                    &binary,
+                    &project_action_args("info", &selected_root).unwrap(),
+                    Some(&selected_root),
+                    EXEC_TIMEOUT,
+                    EXEC_OUTPUT_LIMIT,
+                    Some(&runtime),
+                )
+                .expect("native project info");
+                assert!(info.status.success(), "{}", info.stderr);
+                assert!(!info.truncated && !info.cancelled);
+                assert!(info.stdout.contains("\"schema_version\":1"));
+                assert!(info.stdout.contains(&format!("\"format\":\"{format}\"")));
+                assert!(info.stdout.contains("\"entry\":\"src/main.srp\""));
+                let verify = process(
+                    &binary,
+                    &project_action_args("verify", &selected_root).unwrap(),
+                    Some(&selected_root),
+                    EXEC_TIMEOUT,
+                    EXEC_OUTPUT_LIMIT,
+                    Some(&runtime),
+                )
+                .expect("native project Verify");
+                assert!(verify.status.success(), "{}", verify.stderr);
+                assert!(!verify.truncated && !verify.cancelled);
+                assert!(verify.stdout.is_empty());
+
+                fs::write(&main, "print(\"STUDIO_PROJECT_ALPHA20_OK\");\n").unwrap();
+                let run = process(
+                    &binary,
+                    &project_run_args(&selected_root, false),
+                    Some(&selected_root),
+                    EXEC_TIMEOUT,
+                    EXEC_OUTPUT_LIMIT,
+                    Some(&runtime),
+                )
+                .expect("native project Run");
+                assert!(run.status.success(), "{}", run.stderr);
+                assert!(!run.truncated && !run.cancelled);
+                assert_eq!(run.stdout.trim(), "STUDIO_PROJECT_ALPHA20_OK");
+                assert_eq!(fs::read_to_string(root.join(filename)).unwrap(), manifest);
+            }
+            fs::remove_dir_all(workspace).unwrap();
+        }
         assert!(runtime.active.lock().unwrap().is_none());
     }
 

@@ -98,3 +98,7 @@ not a successful source verification. This standalone check does not replace
 hands-on Windows GUI acceptance.
 
 The current official alpha.20 compiler retains the existing Scarp source-level CLI. The Linux native object-emission API is for Rust host embedding; Studio continues to use the interpreter CLI. Alpha.18, alpha.19 and alpha.20 are checked separately in Windows CI.
+
+## Project-manifest compatibility (C28)
+
+With the trusted alpha.20 compiler, test both the lowercase declarative `scarp.project` and legacy `Scarp.project` format in separate disposable folders. The native integration test exercises Project Info, static Verify and bounded Run for both formats; interactive Studio testing is still required. Neither project action rewrites the manifest.
