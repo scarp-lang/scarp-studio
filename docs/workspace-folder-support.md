@@ -165,3 +165,24 @@ diffs explicitly show **preview unavailable**, rather than inaccurate
 change counts. Up to 32 hunks and 400 preview lines are returned, with
 eight visible groups initially. Other editor safety checks for Save,
 Save As, external-disk conflict and Auto Save remain independent.
+
+
+## Import navigator — already-open Scarp modules only
+
+The collapsed **IMPORTS** panel shows approximate import relationships for
+open sources that are also members of the current authorized Scarp Explorer
+listing. It recognizes literal source import headers with an alias, such as
+a relative .srp module followed by an as clause. Quoted comments and strings
+are ignored; malformed or unsupported specifiers are labelled unrecognized.
+
+Only conservative relative .srp paths, without dot-dot segments, absolute
+roots or backslashes, can match an exact Explorer-listed source name. An
+**Open Source** action delegates to the existing guarded Explorer opener;
+the index never constructs a native destination path or reads imported files
+by itself. The panel distinguishes currently open targets from listed but
+unopened targets, missing/unsafe imports, ambiguous names and self-imports.
+
+Open-buffer cycles are hints only. The compiler remains authoritative for
+module resolution, import policies, transitive dependencies and diagnostics.
+The index has explicit source, token, per-file import and graph edge limits;
+it never claims missing/unopened files are invalid Scarp modules.

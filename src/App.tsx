@@ -44,6 +44,7 @@ import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
+import { SourceImportsPanel } from './components/SourceImportsPanel';
 import {
   captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
   type VerifiedSourceSnapshot,
@@ -2295,6 +2296,9 @@ export default function App() {
           </section>
           <SourceInsightsPanel document={active} onNavigate={jumpToSourceInsight} />
           <WorkingChangesPanel document={active} onNavigate={jumpToSourceInsight} />
+          <SourceImportsPanel documents={documents} listed={folderEntries}
+            activeId={activeId} busy={busy || compilerBusy || compilerSelecting}
+            onOpen={path => void openFolderFile(path)} />
         </aside>
 
         {explorerVisible && <WorkspaceSplitter dimension="explorerWidth" value={workspaceLayout.explorerWidth}

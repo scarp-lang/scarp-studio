@@ -678,3 +678,38 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   border: 1px solid var(--border); border-radius: 4px; font-size: 10px;
 }
 .changes-more:hover { border-color: var(--accent); }
+
+
+/* Import navigator: only existing bounded Explorer-listing paths are opened. */
+.imports-panel { border-top: 1px solid var(--border); }
+.imports-content { padding: 4px 8px 12px; }
+.imports-summary {
+  display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;
+  font-size: 11px; font-weight: 600; padding-bottom: 8px;
+}
+.imports-controls { display: grid; grid-template-columns: 1fr; gap: 5px; }
+.imports-controls input, .imports-controls select {
+  width: 100%; min-width: 0; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; font-size: 10px;
+  padding: 5px 6px;
+}
+.imports-controls :is(input, select):focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.imports-list { display: flex; flex-direction: column; gap: 6px; }
+.imports-row {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+  padding: 6px; border: 1px solid var(--border); border-radius: 4px;
+}
+.imports-row-main { display: flex; align-items: baseline; justify-content: space-between; gap: 5px; }
+.imports-path { font: 11px/1.4 Consolas, monospace; overflow-wrap: anywhere; }
+.imports-status { flex: 0 0 auto; font-size: 10px; color: var(--muted); }
+.imports-status-open, .imports-status-listed { color: var(--accent); }
+.imports-status-unsafe, .imports-status-self { color: #d96871; }
+.imports-alias, .imports-note { font-size: 10px; line-height: 1.4; color: var(--muted); overflow-wrap: anywhere; }
+.imports-row button {
+  align-self: start; padding: 3px 6px; border: 1px solid var(--border);
+  border-radius: 4px; color: var(--text); background: var(--raised); font-size: 10px;
+}
+.imports-row button:hover:not(:disabled) { border-color: var(--accent); }
+.imports-row button:disabled { opacity: .5; cursor: not-allowed; }
