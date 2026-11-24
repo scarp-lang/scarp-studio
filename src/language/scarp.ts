@@ -1,5 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import { localSignatureAt } from './signature';
+import { canCompleteLocalFunction, completeLocalFunctions } from './localCompletion';
 import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAt } from './definition';
 import {
   isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
@@ -121,8 +122,21 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         startColumn: word.startColumn,
         endColumn,
       };
-      return {
-        suggestions: scarpCompletions(word.word).map((item) => ({
+      const builtins = scarpCompletions(word.word);
+      const local = canCompleteLocalFunction(line, word.startColumn - 1, word.word) &&
+        model.getValueLength() <= MAX_DEFINITION_SOURCE_UNITS
+        ? completeLocalFunctions(model.getValue(), word.word, new Set(builtins.map(item => item.label)))
+        : [];
+      const suggestions: Monaco.languages.CompletionItem[] = [
+        ...local.map(item => ({
+          label: item.name,
+          kind: monaco.languages.CompletionItemKind.Function,
+          insertText: item.name,
+          range,
+          detail: item.detail,
+          documentation: 'Local Scarp function declaration (editor-only).',
+        })),
+        ...builtins.map((item) => ({
           label: item.label,
           kind: completionKinds[item.kind],
           insertText: item.insertText,
@@ -131,7 +145,8 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
           detail: item.detail,
           documentation: item.documentation,
         })),
-      };
+      ];
+      return { suggestions: suggestions.slice(0, 40) };
     },
   });
 

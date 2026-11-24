@@ -251,6 +251,7 @@ describe('Scarp editor assistance registration', () => {
       }> },
     };
     const model = {
+      getValueLength: () => 0, getValue: () => '',
       getLineContent: () => 'func',
       getWordUntilPosition: () => ({ word: 'func', startColumn: 1, endColumn: 5 }),
       getWordAtPosition: () => ({ word: 'func', startColumn: 1, endColumn: 5 }),
@@ -278,6 +279,7 @@ describe('Scarp editor assistance registration', () => {
     expect(handler.provideCompletionItems(commentModel, { lineNumber: 1, column: 8 }).suggestions).toEqual([]);
     // Mid-word accepting "funcra" must replace the entire existing token.
     const middle = {
+      getValueLength: () => 0, getValue: () => '',
       getLineContent: () => 'funcra',
       getWordUntilPosition: () => ({ word: 'fun', startColumn: 1, endColumn: 4 }),
       getWordAtPosition: () => ({ word: 'funcra', startColumn: 1, endColumn: 7 }),
@@ -294,6 +296,7 @@ describe('Scarp editor assistance registration', () => {
       { word: 'funcra', startColumn: 2, endColumn: 7 },
     ]) {
       const boundary = {
+        getValueLength: () => 0, getValue: () => '',
         getLineContent: () => 'fun(',
         getWordUntilPosition: () => ({ word: 'fun', startColumn: 1, endColumn: 4 }),
         getWordAtPosition: () => other,
@@ -303,6 +306,19 @@ describe('Scarp editor assistance registration', () => {
       }).suggestions.find((item) => item.label === 'funcra');
       expect(suggestion?.range).toMatchObject({ startColumn: 1, endColumn: 4 });
     }
+    const localSource = 'funcra add(a: integer) -> integer {}\nadd(1);';
+    const localModel = {
+      getValueLength: () => localSource.length, getValue: () => localSource,
+      getLineContent: () => 'add(1);',
+      getWordUntilPosition: () => ({ word: 'ad', startColumn: 1, endColumn: 3 }),
+      getWordAtPosition: () => ({ word: 'add', startColumn: 1, endColumn: 4 }),
+    };
+    const localResult = handler.provideCompletionItems(localModel, { lineNumber: 2, column: 3 }).suggestions;
+    expect(localResult[0]).toMatchObject({
+      label: 'add', detail: 'add(a: integer)', insertText: 'add',
+      range: { startColumn: 1, endColumn: 4 },
+    });
+    expect(localResult[0]).not.toHaveProperty('insertTextRules');
     const definitions = provideDefinition.mock.calls[0][1] as {
       provideDefinition: (model: unknown, position: unknown, token: unknown) => unknown;
     };
