@@ -57,6 +57,16 @@ and invalid-diagnostic check. They are checked by CI against the published
 alpha.17, alpha.18, alpha.19 and alpha.20 CLIs, but they do **not** substitute for running the actual Windows
 Studio application with its exact-head build.
 
+For a provenance-enabled build, use the read-only report helper to keep manual evidence bound to the exact build and worksheet. Save the JSON reports outside the artifact verification directory:
+
+```powershell
+node scripts/windows-acceptance-report.mjs template C:\ScarpStudioAcceptance\WINDOWS-CANDIDATE-PROVENANCE.json |
+  Set-Content -Encoding utf8 C:\ScarpStudioAcceptance\manual-results.json
+node scripts/windows-acceptance-report.mjs check C:\ScarpStudioAcceptance\WINDOWS-CANDIDATE-PROVENANCE.json C:\ScarpStudioAcceptance\manual-results.json
+```
+
+Record the actual Windows build and evidence for each executed case in the report. Keep unexecuted cases NOT RUN. Add `--require-pass` to the check command when reviewing release readiness; incomplete or failed cases then exit nonzero. The tool validates evidence structure, not the truth of manual observations, and never authorizes publication. Keep personal information out of evidence references.
+
 If the candidate fails, record reproducible steps, fix the source on a review branch, and repeat the **exact-head** automated and affected manual checks.
 
 ## 5. Decide whether to publish

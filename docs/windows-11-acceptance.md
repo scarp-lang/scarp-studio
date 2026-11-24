@@ -19,6 +19,8 @@ A ready-to-run [Windows GUI smoke suite](../qa/windows/README.md) contains
 real `.srp` files for Run/Verify, fixed arrays, preloaded boolean input and
 an intentionally invalid diagnostic. The same source examples are executed
 by exact-head Windows CI against the SHA-pinned official alpha.20 compiler (with separate backwards-compatibility checks for alpha.17, alpha.18 and alpha.19).
+The optional [manual report helper](../scripts/windows-acceptance-report.mjs) generates all case IDs as NOT RUN and binds evidence to the CI provenance and this worksheet hash. See the [verification plan](next-pre-release.md) for commands. A complete report still requires human review.
+
 **CI only establishes CLI compatibility; mark GUI cases PASS only after
 actually testing the Studio desktop build.**
 

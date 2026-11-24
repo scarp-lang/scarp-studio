@@ -754,6 +754,92 @@ jobs:
           $report = & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $sourceCommit -RunUrl $runUrl -AsJson | ConvertFrom-Json
           if (-not $report.verified -or $report.files.Count -ne 2) { throw 'Invalid artifact verification report' }
           $candidate = Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json
+          $matrixHash = (node scripts/windows-acceptance-report.mjs matrix-hash).Trim()
+          if ($LASTEXITCODE -ne 0 -or $matrixHash -cnotmatch '^[a-f0-9]{64}
+            schema_version = 1
+            source_commit = $sourceCommit
+            source_tree = $sourceTree
+            run_url = $runUrl
+            run_attempt = [int]$env:GITHUB_RUN_ATTEMPT
+            studio_version = $candidate.version
+            compiler_version = $candidate.compilerCompatibilityVersion
+            compiler_zip_sha256 = $candidate.compilerWindowsZipSha256
+            acceptance_matrix_sha256 = $matrixHash
+            publication_authorized = $false
+            manual_gui_acceptance = 'NOT RUN'
+            files = @($report.files | ForEach-Object {
+              [ordered]@{ file = $_.file; sha256 = $_.sha256; size_bytes = $_.size_bytes }
+            })
+          }
+          $provenance | ConvertTo-Json -Depth 5 | Set-Content -Path WINDOWS-CANDIDATE-PROVENANCE.json -Encoding utf8
+          # Extra unverified files (including a second plausible installer)
+          # must fail closed even when the original two hashes match.
+          $strayExe = Join-Path $stage "old-build-setup.exe"
+          [System.IO.File]::WriteAllText($strayExe, "not from this run")
+          # Hidden files also count; Get-ChildItem without -Force would miss it.
+          [System.IO.File]::SetAttributes($strayExe, [System.IO.FileAttributes]::Hidden)
+          try {
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $sourceCommit -RunUrl $runUrl -AsJson | Out-Null
+            throw "Unverified extra Windows executable was erroneously accepted."
+          } catch {
+            if ($_.Exception.Message -notmatch 'exactly three candidate files') { throw }
+            Write-Host "Expected stray-executable rejection test passed."
+          } finally {
+            Remove-Item -LiteralPath $strayExe -Force -ErrorAction SilentlyContinue
+          }
+          # A hidden empty folder has no files to count. It must still fail
+          # the exact-folder rule rather than hiding mixed-run contents.
+          $strayFolder = Join-Path $stage "old-extracted-artifact"
+          New-Item -ItemType Directory -Path $strayFolder -Force | Out-Null
+          $folderInfo = Get-Item -LiteralPath $strayFolder -Force
+          $folderInfo.Attributes = $folderInfo.Attributes -bor [System.IO.FileAttributes]::Hidden
+          try {
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $sourceCommit -RunUrl $runUrl -AsJson | Out-Null
+            throw "Hidden stray Windows candidate directory was erroneously accepted."
+          } catch {
+            if ($_.Exception.Message -notmatch 'exactly three candidate files') { throw }
+            Write-Host "Expected hidden-directory rejection test passed."
+          } finally {
+            Remove-Item -LiteralPath $strayFolder -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          # A modified executable must never pass with the old checksum file.
+          $stagedExe = Join-Path $stage "scarp-studio.exe"
+          [System.IO.File]::AppendAllText($stagedExe, "tampered")
+          try {
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $sourceCommit -RunUrl $runUrl -AsJson | Out-Null
+            throw "Tampered Windows candidate was erroneously accepted."
+          } catch {
+            if ($_.Exception.Message -notmatch 'SHA-256 mismatch') { throw }
+            Write-Host "Expected checksum tamper-rejection test passed."
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-windows-unbundled
+          path: src-tauri/target/release/scarp-studio.exe
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-windows-nsis-candidate
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            SHA256SUMS.txt
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-lockfiles
+          path: |
+            package-lock.json
+            src-tauri/Cargo.lock
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-windows-provenance
+          path: WINDOWS-CANDIDATE-PROVENANCE.json
+          if-no-files-found: error
+      - name: Ensure builds did not modify dependency lockfiles
+        shell: bash
+        run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+) { throw 'Invalid acceptance matrix hash' }
           $provenance = [ordered]@{
             schema_version = 1
             source_commit = $sourceCommit
