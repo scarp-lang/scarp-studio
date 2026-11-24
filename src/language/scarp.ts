@@ -1,6 +1,21 @@
 import type * as Monaco from 'monaco-editor';
+import { localSignatureAt } from './signature';
+import { canCompleteLocalFunction, completeLocalFunctions } from './localCompletion';
+import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAt } from './definition';
+import {
+  isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
+  type ScarpCompletion,
+} from './assist';
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.8.
+/** Avoid fetching a multi-megabyte line before deciding whether Monaco
+ * completion or hover is within the lexical assistance scanning budget.
+ * Positions come from Monaco and use one-based UTF-16 columns. */
+function canAssistAtColumn(column: number): boolean {
+  return Number.isSafeInteger(column) && column >= 1 &&
+    column <= MAX_ASSIST_SCAN_UNITS + 1;
+}
+
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.20.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco): void {
@@ -20,10 +35,24 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
     keywords: [
       'funcra', 'bind', 'var', 'pub', 'pure', 'import', 'if', 'elif', 'else',
       'while', 'repeat', 'as', 'return', 'break', 'continue', 'and', 'or', 'not',
-      'needs', 'ensures', 'assert',
+      'needs', 'ensures', 'assert', 'record', 'variant', 'match', 'on', 'case', 'new',
       'print', 'println', 'write', 'eprint', 'ewrite',
     ],
-    typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple'],
+    typeKeywords: ['integer', 'float', 'boolean', 'string', 'unit', 'vector', 'integers', 'tile', 'tuple', 'bigint', 'decimal', 'list', 'map', 'option', 'result'],
+    // Calls are not keywords: names such as ask and array can occur as bindings.
+    builtinFunctions: [
+      'input', 'ask', 'ask_or', 'input_integer', 'input_float', 'input_bigint',
+      'try_read_line', 'flush_stdout', 'flush_stderr',
+      'bigint_pow', 'bigint_gcd', 'bigint_lcm', 'bigint_sqrt', 'bigint_bit_length',
+      'bigint_to_text', 'bigint_from_radix', 'bigint_to_radix', 'bigint_and',
+      'bigint_or', 'bigint_xor', 'bigint_not', 'bigint_shl', 'bigint_shr',
+      'bigint_pow_mod', 'bigint_divmod',
+      'decimal', 'decimal_from_integer', 'decimal_to_integer', 'decimal_to_text',
+      'decimal_round', 'decimal_format', 'decimal_div_rounded', 'input_decimal',
+      'list_len', 'list_push', 'list_set', 'list_remove',
+      'map_len', 'map_keys', 'map_values', 'map_contains', 'map_get_or', 'map_set', 'map_remove',
+      'array_len', 'array_get_or', 'array_set', 'input_boolean',
+    ],
     // Old declaration spellings are reserved but rejected by the current compiler.
     legacyKeywords: ['let', 'mut'],
     tokenizer: {
@@ -37,7 +66,15 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         [/\b(?:0[xX][0-9a-fA-F]+|0[bB][01]+)(?![A-Za-z0-9_])/, 'number'],
         // Separators, missing digits and invalid radix digits are unsupported.
         [/\b(?:0[xX][A-Za-z0-9_]*|0[bB][A-Za-z0-9_]*|[0-9]+_[A-Za-z0-9_]*)\b/, 'number.invalid'],
+        // Exact decimal literals choose base-10 arithmetic; exponents are float-only.
+        [/\b[0-9]+(?:\.[0-9]+)?d(?![A-Za-z0-9_])/, 'number'],
+        [/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?d[A-Za-z0-9_]*/, 'number.invalid'],
         [/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b/, 'number'],
+        [/\b(?:array|list|map|option|result)(?=\s*<)/, 'type'],
+        [/[a-zA-Z_][\w]*(?=\s*\()/, {
+          cases: { '@keywords': 'keyword', '@builtinFunctions': 'predefined',
+            '@legacyKeywords': 'invalid', '@default': 'identifier' },
+        }],
         [/[a-zA-Z_][\w]*/, {
           cases: { '@keywords': 'keyword', '@typeKeywords': 'type', '@legacyKeywords': 'invalid', '@default': 'identifier' },
         }],
@@ -53,6 +90,149 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         [/\\./, 'string.invalid'],
         [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }],
       ],
+    },
+  });
+
+  // These are editor-only conveniences. Source acceptance remains the job of
+  // the separately installed official Scarp compiler.
+  const completionKinds: Record<ScarpCompletion['kind'], Monaco.languages.CompletionItemKind> = {
+    keyword: monaco.languages.CompletionItemKind.Keyword,
+    type: monaco.languages.CompletionItemKind.Class,
+    function: monaco.languages.CompletionItemKind.Function,
+    snippet: monaco.languages.CompletionItemKind.Snippet,
+  };
+  monaco.languages.registerCompletionItemProvider('scarp', {
+    provideCompletionItems(model, position) {
+      if (!canAssistAtColumn(position.column)) return { suggestions: [] };
+      const line = model.getLineContent(position.lineNumber);
+      if (!isScarpCodePosition(line, position.column - 1)) return { suggestions: [] };
+      const word = model.getWordUntilPosition(position);
+      const completeWord = model.getWordAtPosition(position);
+      // Completing inside an identifier must replace its existing suffix:
+      // fun|cra -> funcra, not funcracra. A mismatching word at a
+      // punctuation boundary cannot widen the replacement.
+      const endColumn = completeWord &&
+        completeWord.startColumn === word.startColumn &&
+        completeWord.endColumn >= word.endColumn &&
+        completeWord.word.startsWith(word.word)
+        ? completeWord.endColumn : word.endColumn;
+      const range = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: word.startColumn,
+        endColumn,
+      };
+      const builtins = scarpCompletions(word.word);
+      const local = canCompleteLocalFunction(line, word.startColumn - 1, word.word) &&
+        model.getValueLength() <= MAX_DEFINITION_SOURCE_UNITS
+        ? completeLocalFunctions(model.getValue(), word.word, new Set(builtins.map(item => item.label)))
+        : [];
+      const suggestions: Monaco.languages.CompletionItem[] = [
+        ...local.map(item => ({
+          label: item.name,
+          kind: monaco.languages.CompletionItemKind.Function,
+          insertText: item.name,
+          range,
+          detail: item.detail,
+          documentation: 'Local Scarp function declaration (editor-only).',
+        })),
+        ...builtins.map((item) => ({
+          label: item.label,
+          kind: completionKinds[item.kind],
+          insertText: item.insertText,
+          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+          range,
+          detail: item.detail,
+          documentation: item.documentation,
+        })),
+      ];
+      return { suggestions: suggestions.slice(0, 40) };
+    },
+  });
+
+  monaco.languages.registerHoverProvider('scarp', {
+    provideHover(model, position) {
+      if (!canAssistAtColumn(position.column)) return null;
+      const line = model.getLineContent(position.lineNumber);
+      if (!isScarpCodePosition(line, position.column - 1)) return null;
+      const literal = scarpDecimalLiteralAt(line, position.column - 1);
+      if (literal) {
+        return {
+          range: new monaco.Range(position.lineNumber, literal.start + 1,
+            position.lineNumber, literal.end + 1),
+          contents: [
+            { value: '**Scarp: exact decimal literal (alpha.20+)**' },
+            { value: 'The lowercase d suffix selects exact base-10 arithmetic. Exponents and implicit float/integer conversion are unsupported. Verify checks precision and range.' },
+          ],
+        };
+      }
+      const word = model.getWordAtPosition(position);
+      if (!word) return null;
+      const item = scarpTokenHelp(word.word);
+      if (!item) return null;
+      return {
+        range: new monaco.Range(position.lineNumber, word.startColumn,
+          position.lineNumber, word.endColumn),
+        contents: [
+          { value: '**Scarp: ' + item.label + '**' },
+          { value: item.documentation },
+        ],
+      };
+    },
+  });
+
+  monaco.languages.registerSignatureHelpProvider('scarp', {
+    signatureHelpTriggerCharacters: ['(', ','],
+    signatureHelpRetriggerCharacters: [')'],
+    provideSignatureHelp(model, position, token) {
+      if (token.isCancellationRequested || !canAssistAtColumn(position.column) ||
+          model.getValueLength() > MAX_DEFINITION_SOURCE_UNITS) return null;
+      const signature = localSignatureAt(model.getValue(), model.getOffsetAt(position));
+      if (!signature || token.isCancellationRequested) return null;
+      return {
+        value: {
+          signatures: [{
+            label: signature.label,
+            documentation: 'Local Scarp declaration (editor-only assistance).',
+            parameters: signature.parameters.map(label => ({ label })),
+          }],
+          activeSignature: 0,
+          activeParameter: signature.activeParameter,
+        },
+        dispose() {},
+      };
+    },
+  });
+
+  monaco.languages.registerDefinitionProvider('scarp', {
+    provideDefinition(model, position, token) {
+      if (token.isCancellationRequested || !canAssistAtColumn(position.column) ||
+          model.getLineMaxColumn(position.lineNumber) > MAX_ASSIST_SCAN_UNITS + 1 ||
+          model.getValueLength() > MAX_DEFINITION_SOURCE_UNITS) return null;
+      const name = scarpCallNameAt(model.getLineContent(position.lineNumber), position.column);
+      if (!name) return null;
+      const target = findLocalFunctionDefinition(model.getValue(), name);
+      if (!target || token.isCancellationRequested) return null;
+      return {
+        uri: model.uri,
+        range: new monaco.Range(target.line, target.startColumn, target.line, target.endColumn),
+      };
+    },
+  });
+
+  monaco.languages.registerDocumentSymbolProvider('scarp', {
+    provideDocumentSymbols(model) {
+      return scanScarpOutlineSymbols(model.getValue()).map((symbol) => ({
+        name: symbol.name,
+        detail: 'Scarp ' + symbol.kind,
+        kind: symbol.kind === 'function' ? monaco.languages.SymbolKind.Function
+          : symbol.kind === 'record' ? monaco.languages.SymbolKind.Struct
+            : monaco.languages.SymbolKind.Enum,
+        tags: [],
+        range: new monaco.Range(symbol.line, 1, symbol.line, model.getLineMaxColumn(symbol.line)),
+        selectionRange: new monaco.Range(symbol.line, symbol.startColumn,
+          symbol.line, symbol.endColumn),
+      }));
     },
   });
 }

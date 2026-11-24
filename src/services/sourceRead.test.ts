@@ -1,59 +1,225 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { readTextFile, stat } from '@tauri-apps/plugin-fs';
+import { open } from '@tauri-apps/plugin-fs';
 import { MAX_SCARP_SOURCE_BYTES } from '../model/sourceLimits';
 import { readScarpSource } from './sourceRead';
 
-vi.mock('@tauri-apps/plugin-fs', () => ({
-  stat: vi.fn(),
-  readTextFile: vi.fn(),
-}));
+vi.mock('@tauri-apps/plugin-fs', () => ({ open: vi.fn() }));
 
-const metadata = (size: number, isFile = true) =>
-  ({ size, isFile }) as Awaited<ReturnType<typeof stat>>;
+const encoder = new TextEncoder();
 
-describe('bounded Scarp file loading', () => {
+function mockFile(
+  data: Uint8Array,
+  info: { size?: number; isFile?: boolean; mtime?: Date | null } = {},
+) {
+  let cursor = 0;
+  const handle = {
+    stat: vi.fn(async () => ({
+      size: info.size ?? data.byteLength,
+      isFile: info.isFile ?? true,
+      mtime: info.mtime ?? null,
+    })),
+    read: vi.fn(async (buffer: Uint8Array): Promise<number | null> => {
+      if (cursor >= data.byteLength) return null;
+      const count = Math.min(buffer.byteLength, data.byteLength - cursor);
+      buffer.set(data.subarray(cursor, cursor + count));
+      cursor += count;
+      return count;
+    }),
+    close: vi.fn(async () => {}),
+  };
+  vi.mocked(open).mockResolvedValue(handle as unknown as Awaited<ReturnType<typeof open>>);
+  return handle;
+}
+
+describe('bounded Scarp source reading through one scoped handle', () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(stat).mockResolvedValue(metadata(10));
-    vi.mocked(readTextFile).mockResolvedValue('print(1);');
   });
 
-  it('reads a normal source after checking file metadata', async () => {
-    await expect(readScarpSource('C:/project/main.srp')).resolves.toBe('print(1);');
-    expect(stat).toHaveBeenCalledWith('C:/project/main.srp');
-    expect(readTextFile).toHaveBeenCalledWith('C:/project/main.srp');
+  it('refuses non-Scarp extensions without opening any native file handle', async () => {
+    await expect(readScarpSource('C:/project/notes.txt')).rejects.toThrow('.srp');
+    expect(open).not.toHaveBeenCalled();
+    const handle = mockFile(encoder.encode('print(1);'));
+    await expect(readScarpSource('C:/project/script.SRP')).resolves.toBe('print(1);');
+    expect(open).toHaveBeenCalledWith('C:/project/script.SRP', { read: true });
+    expect(handle.close).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects oversized files before invoking the native text reader', async () => {
-    vi.mocked(stat).mockResolvedValue(metadata(MAX_SCARP_SOURCE_BYTES + 1));
-    await expect(readScarpSource('C:/project/huge.srp')).rejects.toThrow('4 MiB');
-    expect(readTextFile).not.toHaveBeenCalled();
+  it('opens only in read mode, reads, and always closes the handle', async () => {
+    const handle = mockFile(encoder.encode('print("hello");'));
+    await expect(readScarpSource('C:/project/main.srp')).resolves.toBe('print("hello");');
+    expect(open).toHaveBeenCalledWith('C:/project/main.srp', { read: true });
+    // Pre-read and post-read metadata must be checked on the same handle.
+    expect(handle.stat).toHaveBeenCalledTimes(2);
+    expect(handle.read).toHaveBeenCalled();
+    expect(handle.close).toHaveBeenCalledTimes(1);
   });
 
-  it('accepts a file of exactly the permitted UTF-8 byte size', async () => {
-    const content = 'a'.repeat(MAX_SCARP_SOURCE_BYTES);
-    vi.mocked(stat).mockResolvedValue(metadata(MAX_SCARP_SOURCE_BYTES));
-    vi.mocked(readTextFile).mockResolvedValue(content);
-    await expect(readScarpSource('C:/project/limit.srp')).resolves.toBe(content);
+  it('rejects oversized metadata before reading any file bytes', async () => {
+    const handle = mockFile(encoder.encode('short'), { size: MAX_SCARP_SOURCE_BYTES + 1 });
+    await expect(readScarpSource('C:/project/large.srp')).rejects.toThrow('4 MiB');
+    expect(handle.read).not.toHaveBeenCalled();
+    expect(handle.close).toHaveBeenCalledTimes(1);
   });
 
-  it('rechecks actual UTF-8 size after metadata can become stale', async () => {
-    vi.mocked(stat).mockResolvedValue(metadata(1));
-    vi.mocked(readTextFile).mockResolvedValue('🙂'.repeat(1_048_577));
+  it('supports a smaller exact project-search byte cap without affecting the normal 4 MiB default', async () => {
+    const atLimit = mockFile(encoder.encode('hello'));
+    await expect(readScarpSource('C:/project/short.srp', 5)).resolves.toBe('hello');
+    expect(atLimit.close).toHaveBeenCalledTimes(1);
+
+    const overLimit = mockFile(encoder.encode('hello!'));
+    await expect(readScarpSource('C:/project/long.srp', 5))
+      .rejects.toThrow('bounded read limit');
+    expect(overLimit.read).not.toHaveBeenCalled();
+    expect(overLimit.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid smaller caps before opening a native file', async () => {
+    for (const limit of [0, -1, NaN, Infinity, 1.5, MAX_SCARP_SOURCE_BYTES + 1]) {
+      await expect(readScarpSource('C:/project/main.srp', limit))
+        .rejects.toThrow('Invalid Scarp source read limit');
+    }
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('rejects growth beyond a smaller project-search cap even with stale metadata', async () => {
+    const handle = mockFile(encoder.encode('changed-during-read'), { size: 3 });
+    await expect(readScarpSource('C:/project/growing.srp', 5))
+      .rejects.toThrow('bounded read limit');
+    expect(handle.read.mock.calls.every(([buffer]) => buffer.byteLength <= 6)).toBe(true);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a file exactly at the 4 MiB byte boundary', async () => {
+    const contents = 'a'.repeat(MAX_SCARP_SOURCE_BYTES);
+    const handle = mockFile(encoder.encode(contents));
+    await expect(readScarpSource('C:/project/limit.srp')).resolves.toBe(contents);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses growth beyond 4 MiB even when handle metadata is stale', async () => {
+    const handle = mockFile(new Uint8Array(MAX_SCARP_SOURCE_BYTES + 100_000), { size: 3 });
     await expect(readScarpSource('C:/project/growing.srp')).rejects.toThrow('4 MiB');
+    expect(handle.read).toHaveBeenCalled();
+    expect(handle.read.mock.calls.every(([buffer]) => buffer.byteLength <= 16 * 1024)).toBe(true);
+    expect(handle.close).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects directories and invalid metadata before reading', async () => {
-    vi.mocked(stat).mockResolvedValue(metadata(2, false));
+  it('preserves UTF-8 characters split across two native read chunks', async () => {
+    const content = 'a'.repeat(16 * 1024 - 1) + '🙂 हिन्दी';
+    const handle = mockFile(encoder.encode(content));
+    await expect(readScarpSource('C:/project/unicode.srp')).resolves.toBe(content);
+    expect(handle.read.mock.calls.length).toBeGreaterThan(1);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves an existing UTF-8 BOM and both Windows and Unix line endings', async () => {
+    const content = '\ufeffprint("one");\r\nprint("two");\n';
+    const handle = mockFile(encoder.encode(content));
+    await expect(readScarpSource('C:/project/bom.srp')).resolves.toBe(content);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid and incomplete UTF-8 with handle cleanup', async () => {
+    const malformed = mockFile(new Uint8Array([0xc3, 0x28]));
+    await expect(readScarpSource('C:/project/invalid.srp')).rejects.toThrow();
+    expect(malformed.close).toHaveBeenCalledTimes(1);
+    const incomplete = mockFile(new Uint8Array([0xe2, 0x82]));
+    await expect(readScarpSource('C:/project/incomplete.srp')).rejects.toThrow();
+    expect(incomplete.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects directories and non-finite metadata with guaranteed close', async () => {
+    const directory = mockFile(new Uint8Array(0), { isFile: false });
     await expect(readScarpSource('C:/project/folder.srp')).rejects.toThrow('regular file');
-    vi.mocked(stat).mockResolvedValue(metadata(Number.NaN));
+    expect(directory.read).not.toHaveBeenCalled();
+    expect(directory.close).toHaveBeenCalledTimes(1);
+    const invalid = mockFile(new Uint8Array(0), { size: Number.NaN });
     await expect(readScarpSource('C:/project/bad.srp')).rejects.toThrow('4 MiB');
-    expect(readTextFile).not.toHaveBeenCalled();
+    expect(invalid.close).toHaveBeenCalledTimes(1);
   });
 
-  it('fails closed when filesystem metadata inspection is denied', async () => {
-    vi.mocked(stat).mockRejectedValue(new Error('forbidden path'));
-    await expect(readScarpSource('C:/secret.srp')).rejects.toThrow('forbidden path');
-    expect(readTextFile).not.toHaveBeenCalled();
+  it('always closes the handle after a native read or metadata failure', async () => {
+    const readFailure = mockFile(encoder.encode('text'));
+    readFailure.read.mockRejectedValueOnce(new Error('permission revoked'));
+    await expect(readScarpSource('C:/project/revoked.srp')).rejects.toThrow('permission revoked');
+    expect(readFailure.close).toHaveBeenCalledTimes(1);
+    const statFailure = mockFile(encoder.encode('text'));
+    statFailure.stat.mockRejectedValueOnce(new Error('metadata denied'));
+    await expect(readScarpSource('C:/project/denied.srp')).rejects.toThrow('metadata denied');
+    expect(statFailure.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a zero-progress or invalid native read count', async () => {
+    const stalled = mockFile(encoder.encode('abc'));
+    stalled.read.mockResolvedValueOnce(0);
+    await expect(readScarpSource('C:/project/stalled.srp')).rejects.toThrow('invalid byte count');
+    expect(stalled.close).toHaveBeenCalledTimes(1);
+    const impossible = mockFile(encoder.encode('abc'));
+    impossible.read.mockResolvedValueOnce(999_999);
+    await expect(readScarpSource('C:/project/impossible.srp')).rejects.toThrow('invalid byte count');
+    expect(impossible.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a file that shrinks after initial metadata inspection', async () => {
+    const handle = mockFile(encoder.encode('print(1);'));
+    handle.stat.mockResolvedValueOnce({
+      isFile: true, size: 100, mtime: null,
+    }).mockResolvedValueOnce({
+      isFile: true, size: 9, mtime: null,
+    });
+    await expect(readScarpSource('C:/project/shrinking.srp'))
+      .rejects.toThrow('changed on disk');
+    expect(handle.stat).toHaveBeenCalledTimes(2);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects same-size rewrites with a different modified timestamp', async () => {
+    const handle = mockFile(encoder.encode('print(1);'));
+    handle.stat.mockResolvedValueOnce({
+      isFile: true, size: 9, mtime: new Date('2026-01-01T00:00:00.000Z'),
+    }).mockResolvedValueOnce({
+      isFile: true, size: 9, mtime: new Date('2026-01-01T00:00:02.000Z'),
+    });
+    await expect(readScarpSource('C:/project/rewritten.srp'))
+      .rejects.toThrow('changed on disk');
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts an unchanged file after comparing final metadata', async () => {
+    const stamp = new Date('2026-01-01T00:00:00.000Z');
+    const handle = mockFile(encoder.encode('hello'), {
+      size: 5, mtime: stamp,
+    });
+    await expect(readScarpSource('C:/project/stable.srp')).resolves.toBe('hello');
+    expect(handle.stat).toHaveBeenCalledTimes(2);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the file if the final metadata check fails', async () => {
+    const handle = mockFile(encoder.encode('hello'));
+    handle.stat.mockResolvedValueOnce({
+      isFile: true, size: 5, mtime: null,
+    }).mockRejectedValueOnce(new Error('final metadata unavailable'));
+    await expect(readScarpSource('C:/project/unavailable.srp'))
+      .rejects.toThrow('final metadata unavailable');
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a file that becomes non-regular before read completion', async () => {
+    const handle = mockFile(encoder.encode('hello'));
+    handle.stat.mockResolvedValueOnce({
+      isFile: true, size: 5, mtime: null,
+    }).mockResolvedValueOnce({
+      isFile: false, size: 5, mtime: null,
+    });
+    await expect(readScarpSource('C:/project/replaced.srp'))
+      .rejects.toThrow('changed on disk');
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when opening a path is forbidden', async () => {
+    vi.mocked(open).mockRejectedValue(new Error('path outside selected scope'));
+    await expect(readScarpSource('C:/secret.srp')).rejects.toThrow('outside selected scope');
   });
 });

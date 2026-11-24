@@ -1,0 +1,140 @@
+import { isDirty, isScarpPath, sameFilePath, type StudioDocument } from './documents';
+import {
+  MAX_DISPLAYED_SCARP_FILES, MAX_SCANNED_SCARP_DIRECTORIES,
+  safeRelativeScarpDirectory, safeRelativeScarpSourceName,
+} from './folderListing';
+import type { ListedProjectSource } from './projectQuickOpen';
+
+export const EXPLORER_GROUPS = ['', 'src', 'tests', 'examples'] as const;
+export type ExplorerDirectory = string;
+export type ExplorerFilter = 'all' | 'open' | 'modified';
+export interface ExplorerSource extends ListedProjectSource {
+  directory: ExplorerDirectory;
+  basename: string;
+  documentId: string | null;
+  active: boolean;
+  modified: boolean;
+  entrypoint: boolean;
+}
+export interface ExplorerGroup {
+  directory: ExplorerDirectory;
+  sources: ExplorerSource[];
+}
+const compareNames = (a: ExplorerSource, b: ExplorerSource) =>
+  Number(b.entrypoint) - Number(a.entrypoint) ||
+  a.basename.localeCompare(b.basename, 'en', { numeric: true }) ||
+  (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+
+function compareDirectories(a: string, b: string): number {
+  if (!a) return -1;
+  if (!b) return 1;
+  const left = a.split('/');
+  const right = b.split('/');
+  for (let i = 0; i < Math.min(left.length, right.length); i++) {
+    if (left[i] === right[i]) continue;
+    if (i === 0) {
+      const p = EXPLORER_GROUPS.indexOf(left[i] as typeof EXPLORER_GROUPS[number]);
+      const q = EXPLORER_GROUPS.indexOf(right[i] as typeof EXPLORER_GROUPS[number]);
+      if (p >= 0 || q >= 0) {
+        if (p < 0) return 1;
+        if (q < 0) return -1;
+        return p - q;
+      }
+    }
+    const order = left[i].localeCompare(right[i], 'en', { numeric: true });
+    return order || (left[i] < right[i] ? -1 : 1);
+  }
+  return left.length - right.length;
+}
+
+/** Presentation only: does not enumerate directories or authorize paths. */
+export function buildExplorerGroups(
+  files: readonly ListedProjectSource[], documents: readonly StudioDocument[],
+  activeId: string | null, directories: readonly string[] = [],
+  projectRootDirectories: readonly string[] = [],
+): ExplorerGroup[] {
+  const groups = new Map<string, ExplorerGroup>();
+  for (const directory of directories.slice(0, MAX_SCANNED_SCARP_DIRECTORIES - 1)) {
+    if (safeRelativeScarpDirectory(directory) && !groups.has(directory)) {
+      groups.set(directory, { directory, sources: [] });
+    }
+  }
+  // A manifest-bearing root can be an empty project with no .srp source
+  // directly in its own directory. Keep it visible as a selectable project.
+  for (const directory of projectRootDirectories.slice(0, MAX_SCANNED_SCARP_DIRECTORIES)) {
+    if ((directory === '' || safeRelativeScarpDirectory(directory)) && !groups.has(directory)) {
+      groups.set(directory, { directory, sources: [] });
+    }
+  }
+  const seenPaths: string[] = [];
+  for (const entry of files.slice(0, MAX_DISPLAYED_SCARP_FILES)) {
+    if (!safeRelativeScarpSourceName(entry.name) || !isScarpPath(entry.path) ||
+        seenPaths.some(path => sameFilePath(path, entry.path))) continue;
+    seenPaths.push(entry.path);
+    const slash = entry.name.lastIndexOf('/');
+    const directory = slash < 0 ? '' : entry.name.slice(0, slash);
+    const basename = entry.name.slice(slash + 1);
+    const group: ExplorerGroup = groups.get(directory) ?? { directory, sources: [] };
+    if (!groups.has(directory)) groups.set(directory, group);
+    const document = documents.find(item => item.path !== null && sameFilePath(item.path, entry.path));
+    group.sources.push({
+      ...entry, directory, basename,
+      documentId: document?.id ?? null,
+      active: document !== undefined && document.id === activeId,
+      modified: document !== undefined && isDirty(document),
+      entrypoint: basename.toLowerCase() === 'main.srp',
+    });
+  }
+  return [...groups.values()].filter(group =>
+    group.sources.length > 0 || directories.includes(group.directory) ||
+    projectRootDirectories.includes(group.directory))
+    .map(group => ({ ...group, sources: group.sources.sort(compareNames) }))
+    .sort((a, b) => compareDirectories(a.directory, b.directory));
+}
+
+/** Collapsing a parent folder also hides nested folder headings. Search
+ * temporarily reveals matches without mutating the collapsed state. */
+export function isHiddenByCollapsedExplorerAncestor(
+  directory: string, collapsed: ReadonlySet<string>,
+): boolean {
+  let separator = directory.lastIndexOf('/');
+  while (separator > 0) {
+    if (collapsed.has(directory.slice(0, separator))) return true;
+    separator = directory.lastIndexOf('/', separator - 1);
+  }
+  return false;
+}
+
+export function filterExplorerGroups(
+  groups: readonly ExplorerGroup[], query: string, filter: ExplorerFilter,
+): ExplorerGroup[] {
+  const terms = query.slice(0, 160).trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length && filter === 'all') return [...groups];
+  return groups.map(group => ({
+    directory: group.directory,
+    sources: group.sources.filter(source =>
+      (filter === 'all' || (filter === 'open' ? source.documentId !== null : source.modified)) &&
+      terms.every(term => source.name.toLowerCase().includes(term))),
+  })).filter(group => group.sources.length > 0);
+}
+
+/** Indentation is presentation-only, bounded by the folder scanner depth.
+ * Root files remain visible and nested sources line up beneath their folder
+ * headings in the narrow Windows Explorer pane.
+ */
+export function explorerDirectoryDepth(directory: ExplorerDirectory): number {
+  return directory ? Math.min(5, directory.split('/').length) : 0;
+}
+export function explorerHeadingIndent(directory: ExplorerDirectory): number {
+  return 12 + 12 * explorerDirectoryDepth(directory);
+}
+export function explorerSourceIndent(directory: ExplorerDirectory): number {
+  return 18 + 12 * explorerDirectoryDepth(directory);
+}
+/** Full paths distinguish filtered matches; a plain tree needs just the
+ * local basename, while the button title keeps the absolute context.
+ */
+export function explorerDirectoryLabel(directory: ExplorerDirectory, searching: boolean): string {
+  if (!directory) return 'Project root';
+  return (searching ? directory : directory.slice(directory.lastIndexOf('/') + 1)) + '/';
+}

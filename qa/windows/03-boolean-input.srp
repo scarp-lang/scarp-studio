@@ -1,0 +1,4 @@
+// Enable prompt input and preload the supplied true line before Run.
+bind confirmed: boolean = input_boolean("Continue? ");
+assert(confirmed, "boolean input must be true");
+print("SCARP_STUDIO_GUI_BOOLEAN_OK");

@@ -1,0 +1,13 @@
+// Each loop controls its own nearest break/continue.
+var total = 0;
+repeat 3 as outer {
+    var inner = 0;
+    while inner < 5 {
+        inner += 1;
+        if inner == 2 { continue; }
+        if inner == 4 { break; }
+        total += outer + inner;
+    }
+}
+assert(total == 18, "nested loop total");
+print("SCARP_STUDIO_GUI_NESTED_LOOP_OK");

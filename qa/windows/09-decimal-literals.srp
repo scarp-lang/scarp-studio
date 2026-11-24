@@ -1,0 +1,12 @@
+// Requires official Scarp alpha.20 or newer (interpreter).
+bind sum: decimal = 0.1d + 0.2d;
+assert(sum == 0.3d, "exact decimal addition");
+assert(42d == decimal("42"), "integer-form decimal literal");
+assert(-1.20d == -1.2d, "exact signed decimals");
+assert(10d / 8d == 1.25d, "exact division");
+var step = 0.0d;
+repeat 10 as index {
+    step += 0.1d;
+}
+assert(step == 1d, "exact repeated addition");
+print("SCARP_STUDIO_GUI_DECIMAL_LITERAL_OK");

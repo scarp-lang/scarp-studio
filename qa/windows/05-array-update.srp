@@ -1,0 +1,7 @@
+// Published alpha.18 interpreter: a fixed-array update returns a new snapshot.
+bind original = [array: 5, 8, 13];
+bind updated = array_set(original, 1, 99);
+assert(original[1] == 8, "old snapshot must not change");
+assert(updated[1] == 99, "array_set must update the new snapshot");
+assert(array_len(updated) == 3, "array length must remain fixed");
+print("SCARP_STUDIO_GUI_ARRAY_UPDATE_OK");

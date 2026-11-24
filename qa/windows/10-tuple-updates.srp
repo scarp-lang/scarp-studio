@@ -1,0 +1,12 @@
+// Requires official Scarp alpha.20 or newer (interpreter).
+var position: tuple<integer, integer> = (10, 20);
+bind before = position;
+position[0] = 50;
+position[1] = 100;
+assert(position == (50, 100), "new tuple snapshot");
+assert(before == (10, 20), "original snapshot remains");
+assert(before < position, "lexicographic ordering");
+assert(position >= (50, 100), "equal tuples compare equal");
+assert((1, (2, 3)) < (1, (2, 4)), "nested tuple ordering");
+assert((10, 100) < (20, 0), "first differing member decides");
+print("SCARP_STUDIO_GUI_TUPLE_UPDATE_OK");

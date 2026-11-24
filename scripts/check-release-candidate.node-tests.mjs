@@ -1,0 +1,127 @@
+import { afterEach, describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { checkReleaseCandidate } from './check-release-candidate.mjs';
+
+const roots = [];
+const candidatePath = '.github/release-candidates/v0.0.2-alpha.1.json';
+
+function fixture() {
+  const root = mkdtempSync(join(tmpdir(), 'scarp-release-gate-'));
+  roots.push(root);
+  const write = (path, contents) => {
+    const absolute = join(root, path);
+    mkdirSync(dirname(absolute), { recursive: true });
+    writeFileSync(absolute, contents);
+  };
+  const json = (path, value) => write(path, JSON.stringify(value));
+  const candidate = {
+    version: '0.0.2-alpha.1', tag: 'v0.0.2-alpha.1', channel: 'prerelease',
+    target: 'windows-x64', compilerCompatibilityVersion: '0.0.6-alpha.20',
+    compilerWindowsZipSha256: '68a5ee47f24e2e36dd7fb1fcc6257feaea291d801048f7866bff1a7e4994aca2',
+    manualWindowsAcceptanceRequired: true, publicationAuthorized: false,
+  };
+  json(candidatePath, candidate);
+  write('docs/windows-11-acceptance.md',
+    '- Obtain the official Scarp `v' + candidate.compilerCompatibilityVersion +
+    '` Windows compiler separately.\n  `' + candidate.compilerWindowsZipSha256 + '`.\n');
+  json('package.json', { version: candidate.version });
+  json('package-lock.json', {
+    version: candidate.version, packages: { '': { version: candidate.version } },
+  });
+  json('src-tauri/tauri.conf.json', { version: candidate.version });
+  write('src-tauri/Cargo.toml', '[package]\nname = "scarp-studio"\nversion = "0.0.2-alpha.1"\n[dependencies]\nversion = "9.9.9"\n');
+  write('src-tauri/Cargo.lock',
+    '[[package]]\nname = "other"\nversion = "9.9.9"\n\n[[package]]\nname = "scarp-studio"\nversion = "0.0.2-alpha.1"\n\n[[package]]\nname = "next"\nversion = "1.0.0"\n');
+  return { root, write, json, candidate };
+}
+
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { force: true, recursive: true });
+});
+
+describe('read-only Scarp Studio prerelease gate', () => {
+  it('accepts six consistent version fields without publishing', () => {
+    const { root } = fixture();
+    assert.deepEqual(checkReleaseCandidate(root), {
+      version: '0.0.2-alpha.1',
+      tag: 'v0.0.2-alpha.1',
+      compilerVersion: '0.0.6-alpha.20',
+    });
+  });
+
+  it('rejects each independently mismatched version field', () => {
+    const fields = [
+      (f) => f.json('package.json', { version: '0.0.1-alpha.2' }),
+      (f) => f.json('package-lock.json', {
+        version: '0.0.1-alpha.2', packages: { '': { version: '0.0.2-alpha.1' } },
+      }),
+      (f) => f.json('package-lock.json', {
+        version: '0.0.2-alpha.1', packages: { '': { version: '0.0.1-alpha.2' } },
+      }),
+      (f) => f.json('src-tauri/tauri.conf.json', { version: '0.0.1-alpha.2' }),
+      (f) => f.write('src-tauri/Cargo.toml', '[package]\nversion = "0.0.1-alpha.2"\n'),
+      (f) => f.write('src-tauri/Cargo.lock',
+        '[[package]]\nname = "scarp-studio"\nversion = "0.0.1-alpha.2"\n'),
+    ];
+    for (const mutate of fields) {
+      const f = fixture();
+      mutate(f);
+      assert.throws(() => checkReleaseCandidate(f.root), /version locations; mismatches/);
+    }
+  });
+
+  it('requires the review-only manifest to keep publication authorization false', () => {
+    const f = fixture();
+    f.json(candidatePath, { ...f.candidate, publicationAuthorized: true });
+    assert.throws(() => checkReleaseCandidate(f.root), /publication-enabled/);
+  });
+
+  it('rejects an unsafe tag, missing GUI acceptance gate or invalid compiler digest', () => {
+    for (const patch of [
+      { tag: 'v0.0.2-alpha.2' },
+      { manualWindowsAcceptanceRequired: false },
+      { compilerWindowsZipSha256: 'not-a-sha256' },
+      { compilerWindowsZipSha256: 'b'.repeat(64) },
+      { compilerCompatibilityVersion: '0.0.6-alpha.15' },
+      { compilerCompatibilityVersion: '0.0.6-alpha.19' },
+      { compilerWindowsZipSha256: 'e00ec9bfd2447fc2c54ae8101933da3c6899251300711627115db5239e559023' },
+    ]) {
+      const f = fixture();
+      f.json(candidatePath, { ...f.candidate, ...patch });
+      assert.throws(() => checkReleaseCandidate(f.root), /Invalid or publication-enabled/);
+    }
+  });
+
+  it('rejects a self-consistent but different release version before checking package versions', () => {
+    const f = fixture();
+    f.json(candidatePath, { ...f.candidate, version: '0.0.2-alpha.2', tag: 'v0.0.2-alpha.2' });
+    assert.throws(() => checkReleaseCandidate(f.root), /Invalid or publication-enabled/);
+  });
+
+  it('rejects a stale or malformed manual compiler download instruction', () => {
+    const f = fixture();
+    const path = 'docs/windows-11-acceptance.md';
+    const correct = readFileSync(join(f.root, path), 'utf8');
+    for (const broken of [
+      correct.replace('alpha.20', 'alpha.19'),
+      correct.replace(f.candidate.compilerWindowsZipSha256, 'b'.repeat(64)),
+      'No compiler download instructions.',
+    ]) {
+      f.write(path, broken);
+      assert.throws(() => checkReleaseCandidate(f.root), /Windows acceptance compiler version or digest/);
+    }
+  });
+
+  it('reads Cargo sections precisely, not a similarly named dependency', () => {
+    const f = fixture();
+    const old = readFileSync(join(f.root, 'src-tauri/Cargo.lock'), 'utf8');
+    f.write('src-tauri/Cargo.lock', old.replace(
+      'name = "scarp-studio"\nversion = "0.0.2-alpha.1"',
+      'name = "scarp-studio"\nversion = "0.0.1-alpha.2"',
+    ));
+    assert.throws(() => checkReleaseCandidate(f.root), /Cargo.lock scarp-studio/);
+  });
+});

@@ -1,0 +1,56 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  MAX_INPUT_BYTES, MAX_INPUT_LINE_BYTES, MAX_INPUT_LINES,
+  programInputBytes, programInputValidationError, validateProgramInput,
+} from './programInput';
+
+describe('bounded explicit Scarp program input', () => {
+  it('accepts empty, LF, CRLF, Unicode and final unterminated lines unchanged', () => {
+    for (const input of ['', 'Ada\n', 'नमस्ते 👋\r\nnext', 'last line']) {
+      expect(() => validateProgramInput(input)).not.toThrow();
+    }
+    expect(programInputBytes('👋')).toBe(4);
+  });
+  it('counts UTF-8 bytes rather than JavaScript UTF-16 units', () => {
+    expect(() => validateProgramInput('👋'.repeat(MAX_INPUT_LINE_BYTES / 4))).not.toThrow();
+    expect(() => validateProgramInput('👋'.repeat(MAX_INPUT_LINE_BYTES / 4 + 1)))
+      .toThrow('4096');
+  });
+  it('enforces a total 16 KiB budget even when each line is short', () => {
+    expect(() => validateProgramInput('a\n'.repeat(MAX_INPUT_BYTES / 2))).toThrow('256 lines');
+    expect(() => validateProgramInput('a'.repeat(4000) + '\n'.repeat(13000))).toThrow('16 KiB');
+  });
+  it('accepts exactly 256 lines and rejects 257 lines', () => {
+    expect(() => validateProgramInput('a\n'.repeat(MAX_INPUT_LINES))).not.toThrow();
+    expect(() => validateProgramInput('a\n'.repeat(MAX_INPUT_LINES + 1))).toThrow('256 lines');
+  });
+  it('does not allocate a UTF-8 input buffer for an obviously oversized paste', () => {
+    const encode = vi.spyOn(TextEncoder.prototype, 'encode')
+      .mockImplementation(() => { throw new Error('unexpected allocation'); });
+    try {
+      expect(() => validateProgramInput('a'.repeat(MAX_INPUT_BYTES + 1)))
+        .toThrow('16 KiB');
+      expect(encode).not.toHaveBeenCalled();
+    } finally {
+      encode.mockRestore();
+    }
+  });
+
+  it('reports live input validity for Unicode, too-long lines and malformed text', () => {
+    expect(programInputValidationError('नमस्ते 👋\r\nOK')).toBeNull();
+    expect(programInputValidationError('👋'.repeat(5000))).toContain('16 KiB');
+    expect(programInputValidationError('x'.repeat(4097))).toContain('4096');
+    expect(programInputValidationError('\ud800')).toContain('unpaired UTF-16');
+  });
+
+  it('counts CRLF terminators inside the per-line byte budget', () => {
+    expect(() => validateProgramInput('a'.repeat(MAX_INPUT_LINE_BYTES - 2) + '\r\n')).not.toThrow();
+    expect(() => validateProgramInput('a'.repeat(MAX_INPUT_LINE_BYTES - 1) + '\r\n')).toThrow('4096');
+  });
+  it('refuses malformed UTF-16 rather than sending silent replacement characters as stdin', () => {
+    for (const input of ['one\uD800', '\uDC00two', '😀\uD83D']) {
+      expect(() => validateProgramInput(input)).toThrow(/Program input.*unpaired UTF-16 surrogate/);
+    }
+    expect(() => validateProgramInput('नमस्ते 😀\nOK')).not.toThrow();
+  });
+});

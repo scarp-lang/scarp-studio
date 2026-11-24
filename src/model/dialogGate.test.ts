@@ -21,6 +21,29 @@ describe('NativeDialogGate', () => {
     expect(gate.begin('window-exit')).toBe(false);
   });
 
+  it('prevents reload confirmation from overlapping a close or exit dialog', () => {
+    const gate = new NativeDialogGate();
+    expect(gate.begin('reload-source')).toBe(true);
+    expect(gate.begin('tab-close')).toBe(false);
+    expect(gate.begin('window-exit')).toBe(false);
+    gate.finish('window-exit');
+    expect(gate.isActive).toBe(true);
+    gate.finish('reload-source');
+    expect(gate.begin('window-exit')).toBe(true);
+    expect(gate.begin('reload-source')).toBe(false);
+  });
+
+  it('does not allow Replace All confirmation to stack with reload or exit', () => {
+    const gate = new NativeDialogGate();
+    expect(gate.begin('replace-open-files')).toBe(true);
+    expect(gate.begin('reload-source')).toBe(false);
+    expect(gate.begin('window-exit')).toBe(false);
+    gate.finish('reload-source');
+    expect(gate.isActive).toBe(true);
+    gate.finish('replace-open-files');
+    expect(gate.begin('tab-close')).toBe(true);
+  });
+
   it('does not allow the wrong confirmation owner to release the gate', () => {
     const gate = new NativeDialogGate();
     expect(gate.begin('tab-close')).toBe(true);

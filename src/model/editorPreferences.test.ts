@@ -12,23 +12,51 @@ describe('local-only Scarp editor preferences', () => {
   it('restores valid persisted preferences', () => {
     expect(parseEditorPreferences(JSON.stringify({
       fontSize: 18, tabSize: 2, wordWrap: false,
-    }))).toEqual({ fontSize: 18, tabSize: 2, wordWrap: false });
+      minimap: true, showWhitespace: true,
+    }))).toEqual({
+      fontSize: 18, tabSize: 2, wordWrap: false,
+      minimap: true, showWhitespace: true,
+    });
   });
 
   it('rejects unsupported sizes and non-boolean wrapping', () => {
     expect(parseEditorPreferences(JSON.stringify({
       fontSize: 1000000, tabSize: -1, wordWrap: 'false',
+      minimap: 'true', showWhitespace: 1,
     }))).toEqual(DEFAULT_EDITOR_PREFERENCES);
     expect(parseEditorPreferences(JSON.stringify({
       fontSize: '18', tabSize: 2.5, wordWrap: 0,
+      minimap: null, showWhitespace: {},
     }))).toEqual(DEFAULT_EDITOR_PREFERENCES);
   });
 
   it('preserves valid fields when another field is invalid or missing', () => {
     expect(parseEditorPreferences(JSON.stringify({ fontSize: 16, tabSize: '4' })))
-      .toEqual({ fontSize: 16, tabSize: 4, wordWrap: true });
+      .toEqual({ fontSize: 16, tabSize: 4, wordWrap: true,
+        minimap: false, showWhitespace: false });
     expect(parseEditorPreferences(JSON.stringify({ wordWrap: false })))
-      .toEqual({ fontSize: 14, tabSize: 4, wordWrap: false });
+      .toEqual({ fontSize: 14, tabSize: 4, wordWrap: false,
+        minimap: false, showWhitespace: false });
+    expect(parseEditorPreferences(JSON.stringify({
+      minimap: true, showWhitespace: 'not-a-boolean',
+    }))).toEqual({ fontSize: 14, tabSize: 4, wordWrap: true,
+      minimap: true, showWhitespace: false });
+  });
+
+  it('preserves legacy settings and safe editor-only display defaults', () => {
+    // Existing Studio users have records without the newly added controls.
+    const legacy = parseEditorPreferences(JSON.stringify({
+      fontSize: 20, tabSize: 8, wordWrap: false,
+    }));
+    expect(legacy).toEqual({
+      fontSize: 20, tabSize: 8, wordWrap: false,
+      minimap: false, showWhitespace: false,
+    });
+    const toggled = parseEditorPreferences(JSON.stringify({
+      minimap: true, showWhitespace: true,
+    }));
+    expect(toggled.minimap).toBe(true);
+    expect(toggled.showWhitespace).toBe(true);
   });
 
   it('accepts only supported finite choices', () => {

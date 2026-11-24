@@ -1,7 +1,7 @@
 {
   "name": "scarp-studio",
   "private": true,
-  "version": "0.0.1-alpha.2",
+  "version": "0.0.2-alpha.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "check:release-candidate": "node scripts/check-release-candidate.mjs",
+    "test:release-candidate": "node --test scripts/check-release-candidate.node-tests.mjs scripts/windows-acceptance-report.node-tests.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
