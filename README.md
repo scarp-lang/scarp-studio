@@ -113,3 +113,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 
 **Source:** https://github.com/scarp-lang/scarp-studio  
 **Official compiler:** https://github.com/scarp-lang/scarp
+
+- **Go to Declaration (Ctrl+Shift+O):** search the current Scarp buffer's function, record and variant outline; keyboard or mouse navigation, no implicit file reads or execution.

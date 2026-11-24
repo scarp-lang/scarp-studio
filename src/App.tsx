@@ -24,6 +24,7 @@ import {
   type NavigationEntry,
 } from './model/navigation';
 import { scanScarpOutlineSymbols, type ScarpOutlineSymbol } from './language/assist';
+import { buildDeclarationEntries, isCurrentDeclarationEntry, type DeclarationEntry } from './model/declarationNavigation';
 import { NativeDialogGate } from './model/dialogGate';
 import { getScarpStarterTemplate, scarpStarterTemplates } from './model/starterTemplates';
 import { runnableSource } from './model/compilerReadiness';
@@ -76,7 +77,7 @@ import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplace
 
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
-type PaletteMode = 'files' | 'commands' | 'line';
+type PaletteMode = 'files' | 'commands' | 'line' | 'symbols';
 
 /** Actions are deliberately limited to the Scarp-only editor. */
 const studioCommands: readonly NavigationEntry[] = [
@@ -96,6 +97,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'undo-replace-open-files', label: 'Undo Last Replace All in Open Scarp Files', detail: 'Only if every buffer is unchanged' },
   { id: 'quick-open', label: 'Quick Open Tabs and Project Sources', detail: 'Ctrl+P' },
   { id: 'go-to-line', label: 'Go to Line and Column', detail: 'Ctrl+G' },
+  { id: 'go-to-symbol', label: 'Go to Scarp Declaration in Current File', detail: 'Ctrl+Shift+O' },
   { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
   { id: 'previous-tab', label: 'Previous Open Tab', detail: 'Ctrl+Shift+Tab' },
   { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
@@ -352,7 +354,7 @@ export default function App() {
 
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
     ? buildQuickOpenEntries(documents, folderEntries)
-    : studioCommands;
+    : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : studioCommands;
   const paletteResults = paletteMode === 'line'
     ? []
     : filterNavigationEntries(paletteEntries, paletteQuery);
@@ -415,6 +417,17 @@ export default function App() {
       }
       return;
     }
+    if (mode === 'symbols') {
+      const target = entry as DeclarationEntry;
+      const current = currentActiveDocument(liveEditor.current);
+      if (!isCurrentDeclarationEntry(current, target) || mountedEditorDocumentId.current !== target.documentId ||
+          mountedEditor.current?.getModel()?.getValue() !== current?.content) {
+        setError('The Scarp source changed. Reopen Go to Declaration and choose again.');
+        return;
+      }
+      jumpToDeclaration(target.symbol);
+      return;
+    }
     if (mode !== 'commands') return;
     if (entry.id.startsWith('template:')) {
       createFromTemplate(entry.id.slice('template:'.length));
@@ -439,6 +452,7 @@ export default function App() {
       case 'undo-replace-open-files': undoLastOpenFileReplace(); break;
       case 'quick-open': showPalette('files'); break;
       case 'go-to-line': showPalette('line'); break;
+      case 'go-to-symbol': showPalette('symbols'); break;
       case 'next-tab': cycleTab(1); break;
       case 'previous-tab': cycleTab(-1); break;
       case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
@@ -1700,6 +1714,11 @@ export default function App() {
         showPalette('line');
         return;
       }
+      if (key === 'o' && event.shiftKey) {
+        event.preventDefault();
+        showPalette('symbols');
+        return;
+      }
       if (paletteMode !== null) return;
       if (key === 'tab' && event.ctrlKey) {
         event.preventDefault();
@@ -1935,6 +1954,10 @@ export default function App() {
           </section>
           <section className="sidebar-section" aria-label="Scarp declaration outline">
             <div className="sidebar-heading">DECLARATION OUTLINE</div>
+            <button type="button" className="file-row" disabled={!active}
+              onClick={() => showPalette('symbols')} title="Go to Declaration (Ctrl+Shift+O)">
+              <span className="file-name">Find declaration…</span>
+            </button>
             {declarationOutline.map((symbol) => (
               <button type="button" className="file-row outline-row"
                 key={symbol.line + ':' + symbol.kind + ':' + symbol.name}
@@ -2435,13 +2458,13 @@ export default function App() {
           onMouseDown={(event) => { if (event.target === event.currentTarget) hidePalette(); }}
         >
           <section className="nav-dialog" role="dialog" aria-modal="true"
-            aria-label={paletteMode === 'files' ? 'Quick Open Scarp tabs and project sources' : paletteMode === 'commands' ? 'Scarp Studio commands' : 'Go to line'}>
+            aria-label={paletteMode === 'files' ? 'Quick Open Scarp tabs and project sources' : paletteMode === 'commands' ? 'Scarp Studio commands' : paletteMode === 'symbols' ? 'Go to Scarp declaration' : 'Go to line'}>
             <div className="nav-query-row">
-              <span aria-hidden="true">{paletteMode === 'files' ? '▤' : paletteMode === 'commands' ? '⌘' : ':'}</span>
+              <span aria-hidden="true">{paletteMode === 'files' ? '▤' : paletteMode === 'commands' ? '⌘' : paletteMode === 'symbols' ? 'ƒ' : ':'}</span>
               <input
                 ref={paletteInput}
-                aria-label={paletteMode === 'files' ? 'Search open Scarp tabs and listed project files' : paletteMode === 'commands' ? 'Search editor commands' : 'Line and optional column'}
-                placeholder={paletteMode === 'files' ? 'Find an open or project .srp file…' : paletteMode === 'commands' ? 'Type a Studio command…' : 'Line or line:column (e.g. 12:4)'}
+                aria-label={paletteMode === 'files' ? 'Search open Scarp tabs and listed project files' : paletteMode === 'commands' ? 'Search editor commands' : paletteMode === 'symbols' ? 'Search declarations in the current Scarp file' : 'Line and optional column'}
+                placeholder={paletteMode === 'files' ? 'Find an open or project .srp file…' : paletteMode === 'commands' ? 'Type a Studio command…' : paletteMode === 'symbols' ? 'Find a function, record or variant…' : 'Line or line:column (e.g. 12:4)'}
                 value={paletteQuery}
                 maxLength={MAX_NAVIGATION_QUERY_UNITS}
                 onChange={(event) => {
@@ -2482,7 +2505,9 @@ export default function App() {
                     <span className="nav-result-detail">{item.detail}</span>
                   </button>
                 ))}
-                {!paletteResults.length && <p className="nav-hint">No matching Scarp Studio items.</p>}
+                {!paletteResults.length && <p className="nav-hint">{paletteMode === 'symbols'
+                  ? 'No matching declarations in the current Scarp file.' : 'No matching Scarp Studio items.'}</p>}
+                {paletteMode === 'symbols' && <p className="nav-hint">Current file only · up to 500 declarations · up to 40 results. Refine the query to find more.</p>}
               </div>
             )}
             <div className="nav-footer">↑ ↓ Navigate · Enter Select · Esc Close</div>
