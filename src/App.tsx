@@ -14,6 +14,7 @@ import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder, type ScarpProjectRoot } from './services/folders';
 import { disambiguateDocumentNames } from './model/documentLabels';
 import { saveChangesWorkspaceListing } from './model/workspaceSaveRefresh';
+import { preferredProjectDirectory, retainedProjectDirectory } from './model/projectTargets';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
@@ -826,7 +827,7 @@ export default function App() {
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
       setProjectRoots(result.projectRoots);
-      setProjectDirectory('');
+      setProjectDirectory(preferredProjectDirectory(result.projectRoots));
       setFolderPath(result.path);
       setFolderEntries(result.files);
       setFolderDirectories(result.directories);
@@ -870,7 +871,7 @@ export default function App() {
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
       setProjectRoots(result.projectRoots);
-      setProjectDirectory(current => current && !result.projectRoots.some(root => root.directory === current) ? '' : current);
+      setProjectDirectory(current => retainedProjectDirectory(current, result.projectRoots));
       setFolderEntries(result.files);
       setFolderDirectories(result.directories);
       setFolderListingLimited(result.truncated);
@@ -1002,8 +1003,7 @@ export default function App() {
       setFolderEntries(result.files);
       setFolderDirectories(result.directories);
       setProjectRoots(result.projectRoots);
-      setProjectDirectory(current => current &&
-        !result.projectRoots.some(root => root.directory === current) ? '' : current);
+      setProjectDirectory(current => retainedProjectDirectory(current, result.projectRoots));
       setFolderListingLimited(result.truncated);
       setUnavailableProjectFolders(result.unavailableFolders);
       return true;

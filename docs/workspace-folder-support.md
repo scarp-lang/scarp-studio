@@ -76,3 +76,13 @@ Reports from a selected nested project must appear in the compiler panel even
 when the Explorer is showing a different parent workspace. Visibility and
 test-source navigation use the same current project-root identity (including
 safe Windows path aliases); a sibling project's report is never displayed.
+
+### Automatic project target selection
+
+If the selected workspace itself has a project manifest, project commands
+target its root by default. If the workspace root has **no** manifest but
+contains exactly one scanned manifest-bearing child, that child is selected
+automatically. When two or more nested projects exist, the user must choose
+the intended **Project target** explicitly. Refresh preserves a selected,
+still-present project, but retires a removed project target instead of running
+against its stale path.
