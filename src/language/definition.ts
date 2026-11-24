@@ -1,6 +1,6 @@
 import {
   isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_SCARP_OUTLINE_SYMBOLS,
-  scanScarpFunctions, type ScarpFunctionSymbol,
+  type ScarpFunctionSymbol,
 } from './assist';
 
 /** Editor-only, bounded lookup for unqualified function calls. It is not
@@ -30,16 +30,96 @@ export function scarpCallNameAt(line: string, column: number): string | null {
   return null;
 }
 
-/** Suppress a target when the bounded inventory may have omitted a duplicate.
- * The call-site check is independent of model word-separator configuration.
+/** Lexical top-level inventory for definition lookup. Unlike the sidebar's
+ * deliberately line-oriented outline, this consumes the entire bounded buffer,
+ * including multiple declarations on one line and multiline headers. It never
+ * returns a first match from a potentially incomplete or duplicate inventory.
  */
+export function indexLocalFunctionDefinitions(source: string): ScarpFunctionSymbol[] | null {
+  if (source.length > MAX_DEFINITION_SOURCE_UNITS) return null;
+  const symbols: ScarpFunctionSymbol[] = [];
+  let offset = 0;
+  let line = 1;
+  let column = 1;
+  let depth = 0;
+  let expectingName = false;
+  let pending: ScarpFunctionSymbol | null = null;
+
+  function advance(): void {
+    const char = source[offset++];
+    if (char === '\r' || char === '\n') {
+      if (char === '\r' && source[offset] === '\n') offset++;
+      line++;
+      column = 1;
+    } else {
+      column++;
+    }
+  }
+
+  while (offset < source.length) {
+    const char = source[offset];
+    if (/\s/.test(char)) { advance(); continue; }
+    if (char === '/' && source[offset + 1] === '/') {
+      while (offset < source.length && source[offset] !== '\r' && source[offset] !== '\n') advance();
+      continue;
+    }
+    if (char === '"') {
+      // Scarp strings are single-line. Never index declaration-like text
+      // inside a string or after an unterminated lexical construct.
+      expectingName = false;
+      pending = null;
+      advance();
+      let closed = false;
+      while (offset < source.length) {
+        const current = source[offset];
+        if (current === '\r' || current === '\n') return null;
+        advance();
+        if (current === '"') { closed = true; break; }
+        if (current === '\\') {
+          if (offset >= source.length || source[offset] === '\r' || source[offset] === '\n') return null;
+          advance();
+        }
+      }
+      if (!closed) return null;
+      continue;
+    }
+
+    if (/[A-Za-z_0-9]/.test(char)) {
+      const start = offset;
+      const startColumn = column;
+      while (offset < source.length && /[A-Za-z_0-9]/.test(source[offset])) advance();
+      const name = source.slice(start, offset);
+      if (depth === 0 && expectingName && /^[A-Za-z_]/.test(name)) {
+        pending = { name, line, startColumn, endColumn: column };
+        expectingName = false;
+      } else {
+        pending = null;
+        expectingName = depth === 0 && name === 'funcra';
+      }
+      continue;
+    }
+    if (char === '(' && depth === 0 && pending) {
+      symbols.push(pending);
+      if (symbols.length >= MAX_SCARP_OUTLINE_SYMBOLS) return null;
+    }
+    pending = null;
+    expectingName = false;
+    if (char === '{') depth++;
+    else if (char === '}') {
+      if (depth === 0) return null;
+      depth--;
+    }
+    advance();
+  }
+  return symbols;
+}
+
 export function findLocalFunctionDefinition(
   source: string, name: string,
 ): ScarpFunctionSymbol | null {
-  if (source.length > MAX_DEFINITION_SOURCE_UNITS ||
-      !/^[A-Za-z_][A-Za-z_0-9]*$/.test(name)) return null;
-  const functions = scanScarpFunctions(source);
-  if (functions.length >= MAX_SCARP_OUTLINE_SYMBOLS) return null;
-  const matches = functions.filter(symbol => symbol.name === name);
+  if (!/^[A-Za-z_][A-Za-z_0-9]*$/.test(name)) return null;
+  const symbols = indexLocalFunctionDefinitions(source);
+  if (!symbols) return null;
+  const matches = symbols.filter(symbol => symbol.name === name);
   return matches.length === 1 ? matches[0] : null;
 }

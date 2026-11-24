@@ -34,6 +34,25 @@ describe('conservative current-file function definition lookup', () => {
     expect(findLocalFunctionDefinition(many, 'f0')).toBeNull();
     expect(findLocalFunctionDefinition(many.slice(0, many.lastIndexOf('\n')), 'f0')?.line).toBe(1);
   });
+  it('detects duplicate declarations hidden on long lines and same-line bodies', () => {
+    const first = 'funcra add() {}';
+    for (const second of [
+      ' '.repeat(3000) + 'funcra add() {}',
+      'funcra\nadd\n() {}',
+      'pub funcra // comment\nadd() {}',
+    ]) expect(findLocalFunctionDefinition(first + '\n' + second, 'add')).toBeNull();
+    expect(findLocalFunctionDefinition(first + ' funcra add() {}', 'add')).toBeNull();
+  });
+  it('tracks multiline headers, comments, UTF-16 columns and top-level scope', () => {
+    const source = 'print("😀 funcra fake() {}"); funcra real\n() { // funcra hidden()\n print("}");\n}';
+    const location = findLocalFunctionDefinition(source, 'real');
+    expect(location).toEqual({ name: 'real', line: 1,
+      startColumn: source.indexOf('real') + 1, endColumn: source.indexOf('real') + 5 });
+    expect(findLocalFunctionDefinition(source, 'fake')).toBeNull();
+    expect(findLocalFunctionDefinition(source, 'hidden')).toBeNull();
+    expect(findLocalFunctionDefinition('funcra outer() { funcra inner() {} }', 'inner')).toBeNull();
+    expect(findLocalFunctionDefinition('funcra real() {} "unterminated', 'real')).toBeNull();
+  });
   it('bounds giant lines and source buffers', () => {
     expect(scarpCallNameAt('add()' + ' '.repeat(MAX_ASSIST_SCAN_UNITS), 1)).toBeNull();
     expect(findLocalFunctionDefinition('funcra add() {}\n' + ' '.repeat(MAX_DEFINITION_SOURCE_UNITS), 'add')).toBeNull();
