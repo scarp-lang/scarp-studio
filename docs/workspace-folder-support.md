@@ -15,6 +15,7 @@ Choose the **Scarp-Practice** parent folder once. Explorer headings include nest
 
 ## Limits and security
 
+- Folder selection requests a Tauri recursive *dynamic* scope for the specifically chosen root. Without `recursive: true`, Tauri can deny access to child folders even when the scanner finds them. No global filesystem scope is granted.
 - Scanning is non-executing and never reads source contents. Only valid, non-symlink directory names observed from native readDir are joined under the user-selected scope.
 - Hidden, dependency/build and unsafe traversal directory entries are skipped.
 - At most **64 directories** (including selected root), **5 nested levels**, and **200 listed Scarp sources**, with the prior **4096-entry** ordinary inspection budget per directory. Native readDir materializes its immediate directory before these frontend limits apply.

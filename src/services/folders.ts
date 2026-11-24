@@ -30,7 +30,11 @@ export interface ScarpFolderScan {
   unavailableFolders: string[];
 }
 export async function chooseSourceFolder(): Promise<ScarpFolderScan | null> {
-  const path = await open({ directory: true, multiple: false, title: 'Choose Scarp workspace folder' });
+  // A native directory picker grants a non-recursive FS scope by default.
+  // Request recursion explicitly so Tauri permits readDir/open in nested
+  // practice projects. The user-selected root remains the only dynamic scope.
+  const path = await open({ directory: true, recursive: true, multiple: false,
+    title: 'Choose Scarp workspace folder' });
   if (typeof path !== 'string') return null;
   return scanSourceFolder(path);
 }

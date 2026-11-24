@@ -24,6 +24,7 @@ describe('selected-folder Scarp source reads', () => {
     vi.mocked(open).mockResolvedValue(null);
     expect(await chooseSourceFolder()).toBeNull();
     expect(readDir).not.toHaveBeenCalled();
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ directory: true, recursive: true, multiple: false }));
   });
 
   it('reads only top-level regular Scarp file names', async () => {
