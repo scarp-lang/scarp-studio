@@ -46,6 +46,7 @@ import { SourceInsightsPanel, type InsightNavigation } from './components/Source
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
 import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
+import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import {
   createSourceBookmark, resolveSourceBookmarks, bookmarkTargetForCurrentSource,
   removeSourceBookmark, type SourceBookmark,
@@ -2351,6 +2352,10 @@ export default function App() {
             onAdd={addCurrentBookmark}
             onRemove={id => setBookmarks(previous => removeSourceBookmark(previous, id))}
             onNavigate={jumpToBookmark} />
+          <WorkspaceInsightsPanel documents={documents} listed={folderEntries}
+            roots={projectRoots} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting}
+            onActivate={id => dispatch({ type: 'activate', id })} />
         </aside>
 
         {explorerVisible && <WorkspaceSplitter dimension="explorerWidth" value={workspaceLayout.explorerWidth}

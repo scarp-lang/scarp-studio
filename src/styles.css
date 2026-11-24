@@ -752,3 +752,41 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .bookmarks-actions button:hover:not(:disabled) { border-color: var(--accent); }
 .bookmarks-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .bookmarks-reason { margin: 0; font-size: 10px; color: var(--muted); line-height: 1.4; }
+
+
+/* Workspace Overview: one-pass, open-buffer-only project review. */
+.workspace-insights-panel { border-top: 1px solid var(--border); }
+.workspace-insights-content { padding: 4px 8px 12px; }
+.workspace-project-overview { padding: 5px 0 8px; font-size: 11px; }
+.workspace-project-overview strong { display: block; margin-bottom: 4px; }
+.workspace-project-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 6px; border-bottom: 1px solid var(--border); padding: 4px 0;
+  line-height: 1.4;
+}
+.workspace-project-row span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.workspace-project-row span:last-child { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+.workspace-insights-filters {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px;
+}
+.workspace-insights-filters input, .workspace-insights-filters select {
+  width: 100%; min-width: 0; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--bg); color: var(--text);
+  font-size: 10px; padding: 5px 6px;
+}
+.workspace-insights-filters input { grid-column: 1 / -1; }
+.workspace-source-overview { display: flex; flex-direction: column; gap: 5px; }
+.workspace-source-row {
+  border: 1px solid var(--border); border-radius: 4px; padding: 5px;
+}
+.workspace-source-row.selected { border-inline-start: 3px solid var(--accent); }
+.workspace-source-row > button {
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px;
+  width: 100%; background: transparent; border: 0; padding: 0;
+  font-size: 11px; color: var(--text); text-align: left; overflow-wrap: anywhere;
+}
+.workspace-source-row > button span:last-child { font-size: 10px; color: var(--muted); }
+.workspace-source-row > button:hover:not(:disabled) { color: var(--accent); }
+.workspace-source-row > button:disabled { opacity: .5; cursor: not-allowed; }
+.workspace-source-summary { margin-top: 3px; font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+.workspace-source-warning { margin: 3px 0 0; font-size: 10px; line-height: 1.4; }

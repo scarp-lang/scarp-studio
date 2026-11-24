@@ -204,3 +204,21 @@ status/tab, and viewed in source or creation order. The implementation caps
 source analysis to 512 Ki UTF-16 units, 2,400 lines, 40 bookmarks per tab and
 120 bookmarks per session. Navigation still verifies the live document
 revision and exact Monaco content, including when switching tabs.
+
+
+## Workspace Overview — bounded open-buffer analysis
+
+The collapsed **WORKSPACE OVERVIEW** section summarizes in-memory,
+already-open Scarp editor documents. It groups files by the deepest currently
+discovered manifest-bearing project root and includes unsaved editor changes,
+approximate declaration counts, comment tasks, line lengths and review hints.
+The view supports filtering by modified files, comments and review warnings,
+a case-insensitive filename search, and sorting by active file, filename,
+tasks or warning count. Only an already-open tab can be activated.
+
+Up to 40 tabs and 2 Mi UTF-16 units are inspected. Large or omitted sources
+are marked incomplete; totals do not pretend to cover skipped buffers. This
+does not recursively scan folders, invoke Scarp, read disk, write source,
+persist private comments, or diagnose the compiler's semantic correctness.
+Review hints are advisory and do not modify Monaco's authoritative compiler
+Problems panel.
