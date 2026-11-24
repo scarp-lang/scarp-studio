@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveListedTestSource, type TestSourceListing } from './projectTestNavigation';
+import { resolveListedTestSource, isSelectedProjectTestReport, type TestSourceListing } from './projectTestNavigation';
 
 const current: TestSourceListing = {
   path: 'C:/Scarp/Project',
@@ -94,5 +94,33 @@ describe('project test navigation in a multi-project Scarp workspace', () => {
       'C:/Scarp-Practice/basic_tuple', nested)).toBeNull();
     expect(resolveListedTestSource('tests/tuple.srp',
       'C:/Scarp-Practice/basic_tuple', { ...nested, projectRoots: [] })).toBeNull();
+  });
+});
+
+describe('structured test report visibility for the selected project root', () => {
+  it('renders results for the selected nested project, not its workspace parent', () => {
+    expect(isSelectedProjectTestReport(
+      'C:/Scarp-Practice/basic_tuple', 'C:/Scarp-Practice/basic_tuple',
+    )).toBe(true);
+    expect(isSelectedProjectTestReport(
+      'C:/Scarp-Practice/basic_tuple', 'C:/Scarp-Practice',
+    )).toBe(false);
+  });
+  it('keeps Windows path aliases valid but isolates neighboring project folders', () => {
+    expect(isSelectedProjectTestReport(
+      String.raw`C:\Scarp-Practice\Basic_Tuple`, 'c:/scarp-practice/basic_tuple',
+    )).toBe(true);
+    expect(isSelectedProjectTestReport(
+      'C:/Scarp-Practice/basic_tuple', 'C:/Scarp-Practice/loops',
+    )).toBe(false);
+    expect(isSelectedProjectTestReport(
+      'C:/Scarp-Practice/basic_tuple', null,
+    )).toBe(false);
+  });
+  it('preserves exact case on POSIX project roots', () => {
+    expect(isSelectedProjectTestReport('/home/me/Scarp/basic_tuple',
+      '/home/me/Scarp/basic_tuple')).toBe(true);
+    expect(isSelectedProjectTestReport('/home/me/Scarp/basic_tuple',
+      '/home/me/scarp/basic_tuple')).toBe(false);
   });
 });

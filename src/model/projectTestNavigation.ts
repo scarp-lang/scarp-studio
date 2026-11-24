@@ -31,3 +31,15 @@ export function resolveListedTestSource(
   const entry = selection.files.find(file => file.name === expectedName);
   return entry?.path ?? null;
 }
+
+/** Structured test results belong to the selected manifest root, not the
+ * parent Explorer workspace. Preserve native Windows path alias comparisons.
+ * Returning false for an absent target prevents stale reports leaking into
+ * the output panel after a workspace/project selection change.
+ */
+export function isSelectedProjectTestReport(
+  reportFolder: string, selectedProjectFolder: string | null,
+): boolean {
+  return selectedProjectFolder !== null &&
+    sameFilePath(reportFolder, selectedProjectFolder);
+}

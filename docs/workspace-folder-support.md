@@ -21,7 +21,7 @@ Choose the **Scarp-Practice** parent folder once. Explorer headings include nest
 - At most **64 directories** (including selected root), **5 nested levels**, and **200 listed Scarp sources**, with the prior **4096-entry** ordinary inspection budget per directory. Native readDir materializes its immediate directory before these frontend limits apply.
 - Unreadable nested folders are reported; accessible siblings remain visible.
 - Existing editor snapshot guards, 4 MiB source limits, external-modification protection, Save As checks and post-write read-back stay intact.
-- Scarp **project** compiler actions still act on the selected root; to run a standalone nested practice file, open that .srp source in the editor.
+- Scarp **project** compiler actions use the explicitly chosen manifest-bearing **Project target** (which can be a nested folder). To run a standalone nested practice file, open that .srp source in the editor.
 
 ## Generate a disposable Windows fixture
 
@@ -69,3 +69,10 @@ Normal Ctrl+S of an existing source does not rescan. If the rescan fails, the
 source remains saved but the user sees a manual **Refresh Explorer** hint.
 If Save All stops after some successful new saves, the Explorer still attempts
 to refresh; the original failure remains visible and later tabs remain dirty.
+
+### Structured test report visibility
+
+Reports from a selected nested project must appear in the compiler panel even
+when the Explorer is showing a different parent workspace. Visibility and
+test-source navigation use the same current project-root identity (including
+safe Windows path aliases); a sibling project's report is never displayed.

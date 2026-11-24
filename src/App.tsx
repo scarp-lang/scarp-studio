@@ -47,7 +47,7 @@ import {
 } from './model/verifiedSource';
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReportForAction, type ScarpTestReport } from './model/projectTestReport';
-import { resolveListedTestSource } from './model/projectTestNavigation';
+import { resolveListedTestSource, isSelectedProjectTestReport } from './model/projectTestNavigation';
 import {
   dirtyProjectSourceNames, projectActionRequiresSavedSources,
   projectSourceBuffersChanged,
@@ -2775,7 +2775,7 @@ export default function App() {
             {resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
               busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
 
-            {projectTestResult && projectTestResult.folder === folderPath && (
+            {projectTestResult && isSelectedProjectTestReport(projectTestResult.folder, selectedProjectPath) && (
               <section className="project-test-report" aria-label="Scarp project test results">
                 <div className="project-test-heading">
                   <strong>{projectTestResult.report.mode === 'list' ? 'DISCOVERED TESTS' : 'PROJECT TEST RESULTS'}</strong>
