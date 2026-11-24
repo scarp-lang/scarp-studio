@@ -34,9 +34,9 @@ import {
 } from './model/programInput';
 import { exitBlockReason, sameExitEditorState } from './model/exitGuards';
 import { detectScarp, executeScarp, openCompilerDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
-import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
+import { parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
-import { collectProblems, currentDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
+import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
 import {
   captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
@@ -276,6 +276,8 @@ export default function App() {
   const [compilerControlsOpen, setCompilerControlsOpen] = useState(true);
   const [resultsView, setResultsView] = useState<'output' | 'problems'>('output');
   const pendingProblem = useRef<Extract<ProblemTarget, { kind: 'source' }> | null>(null);
+  const problemsTab = useRef<HTMLButtonElement | null>(null);
+  const focusProblemsTab = useRef(false);
   const outputToggle = useRef<HTMLButtonElement | null>(null);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
@@ -368,14 +370,19 @@ export default function App() {
     laterSourceOutputWarning, laterProjectOutputWarning, laterRunInputWarning,
   ].filter((warning) => warning !== null).join('\n\n');
   const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
-  const diagnosticPosition = isCurrentVerifiedSource(compilerOutputSource, active) && active?.path
-    ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
   const problems = useMemo(() => collectProblems({ diagnostic, snapshot: compilerOutputSource,
     documents, testResult: projectTestResult, selection: selectedFolderRef.current,
     stale: Boolean(outputFreshnessWarning),
   }), [diagnostic, compilerOutputSource, documents, projectTestResult, folderEntries, outputFreshnessWarning]);
-  const problemMarker = useMemo(() => verifiedProblemMarker(diagnostic, compilerOutputSource, active),
-    [diagnostic, compilerOutputSource, active]);
+  const navigableDiagnostic = problems.find(problem => problem.kind === 'compiler' && problem.target?.kind === 'source');
+  const problemMarker = useMemo(() => outputFreshnessWarning ? null : verifiedProblemMarker(diagnostic, compilerOutputSource, active),
+    [diagnostic, compilerOutputSource, active, outputFreshnessWarning]);
+  useEffect(() => {
+    if (resultsView === 'problems' && outputPanelMode !== 'collapsed' && focusProblemsTab.current) {
+      focusProblemsTab.current = false;
+      problemsTab.current?.focus();
+    }
+  }, [resultsView, outputPanelMode]);
   const declarationOutline = useMemo(
     () => active ? scanScarpOutlineSymbols(active.content) : [],
     [active?.content],
@@ -1363,6 +1370,8 @@ export default function App() {
   }
 
   function showProblems(): void {
+    if (resultsView === 'problems' && outputPanelMode !== 'collapsed') problemsTab.current?.focus();
+    else focusProblemsTab.current = true;
     setOutputPanelMode(revealOutputPanel);
     setResultsView('problems');
   }
@@ -1378,7 +1387,7 @@ export default function App() {
       return;
     }
     const current = currentDiagnosticTarget(diagnostic, compilerOutputSource, liveEditor.current.documents);
-    if (!current || current.snapshot !== target.snapshot || current.lineNumber !== target.lineNumber || current.column !== target.column) return;
+    if (!current || !sameDiagnosticTarget(current, target)) return;
     pendingSearchLocation.current = null;
     const editor = mountedEditor.current;
     if (liveEditor.current.activeId === current.snapshot.documentId && mountedEditorDocumentId.current === current.snapshot.documentId && editor && editor.getModel()?.getValue() === current.snapshot.content) {
@@ -1393,18 +1402,7 @@ export default function App() {
   }
 
   function revealDiagnostic(): void {
-    const current = liveEditor.current.documents.find(
-      (item) => item.id === liveEditor.current.activeId,
-    );
-    if (!isCurrentVerifiedSource(compilerOutputSource, current ?? null) ||
-        !current?.path || mountedEditorDocumentId.current !== current.id) return;
-    const position = diagnosticSourcePosition(diagnostic, current.path, current.content);
-    const editor = mountedEditor.current;
-    if (!position || !editor) return;
-    pendingSearchLocation.current = null;
-    editor.setPosition(position);
-    editor.revealPositionInCenter(position);
-    editor.focus();
+    if (navigableDiagnostic) navigateProblem(navigableDiagnostic);
   }
 
   function openProjectTestSource(testPath: string, reportFolder: string): void {
@@ -1832,7 +1830,7 @@ export default function App() {
       }
       if (paletteMode === null && event.key === 'F8' &&
           !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
-          diagnosticPosition) {
+          navigableDiagnostic && !busy && !compilerBusy && !compilerSelecting) {
         event.preventDefault();
         revealDiagnostic();
         return;
@@ -2445,8 +2443,9 @@ export default function App() {
                   if (pendingDiagnostic) {
                     pendingProblem.current = null;
                     const target = currentDiagnosticTarget(diagnostic, compilerOutputSource, liveEditor.current.documents);
-                    if (target && !outputFreshnessWarning && target.snapshot === pendingDiagnostic.snapshot &&
-                        target.snapshot.documentId === active.id && editor.getModel()?.getValue() === target.snapshot.content) {
+                    if (target && !outputFreshnessWarning && sameDiagnosticTarget(target, pendingDiagnostic) &&
+                        target.snapshot.documentId === active.id && liveEditor.current.activeId === active.id &&
+                        editor.getModel()?.getValue() === target.snapshot.content) {
                       editor.setPosition(target);
                       editor.revealPositionInCenter(target);
                       editor.focus();
@@ -2654,7 +2653,7 @@ export default function App() {
             </div>
             <div className="results-view-switch" role="group" aria-label="Compiler result view">
               <button type="button" aria-pressed={resultsView === 'output'} onClick={() => setResultsView('output')}>Output</button>
-              <button type="button" aria-pressed={resultsView === 'problems'} onClick={showProblems} title="Show Problems (Ctrl+Shift+M)">Problems ({problems.length})</button>
+              <button type="button" ref={problemsTab} aria-pressed={resultsView === 'problems'} onClick={showProblems} title="Show Problems (Ctrl+Shift+M)">Problems ({problems.length})</button>
             </div>
             <div className="compiler-results" tabIndex={0} aria-label="Compiler results and diagnostics">
             {resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
@@ -2703,9 +2702,9 @@ export default function App() {
               <div className="compiler-diagnostic" role="status">
                 <strong>{diagnostic.code || 'Scarp Verify error'}</strong>
                 <span>{diagnostic.message}</span>
-                {diagnosticPosition && (
-                  <button type="button" onClick={revealDiagnostic}
-                    title="Navigate to this Verify error in the unchanged Scarp source (F8)">
+                {navigableDiagnostic && (
+                  <button type="button" disabled={busy || compilerBusy || compilerSelecting} onClick={revealDiagnostic}
+                    title="Navigate to this compiler error in the unchanged saved Scarp source (F8)">
                     Go to line {diagnostic.line}, column {diagnostic.column} (F8)
                   </button>
                 )}
@@ -2805,6 +2804,9 @@ export default function App() {
       <footer className="status-bar">
         <span className="status-notice" role="status" title={busy ? 'Working…' : notice}>{busy ? 'Working…' : notice}</span>
         <div className="status-items" aria-label="Editor status">
+        <button type="button" className="status-nav status-problems" onClick={showProblems} title="Show current structured problems (Ctrl+Shift+M)">
+          Problems: {problems.length}
+        </button>
         <button className="status-nav" onClick={() => showPalette('line')} disabled={!active}
           title="Go to Line (Ctrl+G)">
           {active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}

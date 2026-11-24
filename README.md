@@ -135,3 +135,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - Workspace Settings includes width/height sliders and a layout-only reset; the measured editor/output region scrolls instead of collapsing when search or review takes vertical space.
 
 - **Problems view:** Ctrl+Shift+M shows current structured compiler diagnostics and failed project tests, searchable by code/message/path/help, with snapshot-guarded source navigation and a separate raw Output view.
+
+- F8 can navigate to a verified background-tab compiler problem. The status bar opens Problems; stale source or input results lose active markers and navigation.

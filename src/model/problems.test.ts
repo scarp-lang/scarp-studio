@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createUntitled, markSaved, updateContent } from './documents';
 import { captureVerifiedSource } from './verifiedSource';
-import { collectProblems, currentDiagnosticTarget, filterProblems, type ProblemInputs } from './problems';
+import { collectProblems, currentDiagnosticTarget, filterProblems, sameDiagnosticTarget, type ProblemInputs } from './problems';
 import type { ScarpDiagnostic } from './diagnostics';
 
 const initial = createUntitled(1);
@@ -43,5 +43,14 @@ describe('current structured problems', () => {
     expect(filterProblems(problems, 'compiler', 'INTEGER')).toHaveLength(1);
     expect(filterProblems(problems, 'test', '')).toEqual([]);
     expect(filterProblems(problems, 'all', 'foreign')).toEqual([]);
+  });
+});
+
+describe('pending diagnostic navigation', () => {
+  it('rejects a changed position or source snapshot even with equal source text', () => {
+    const target = currentDiagnosticTarget(diagnostic, snapshot, [saved])!;
+    expect(sameDiagnosticTarget({ ...target }, target)).toBe(true);
+    expect(sameDiagnosticTarget({ ...target, column: target.column + 1 }, target)).toBe(false);
+    expect(sameDiagnosticTarget({ ...target, snapshot: { ...snapshot } }, target)).toBe(false);
   });
 });

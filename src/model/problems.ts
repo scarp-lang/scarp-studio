@@ -71,3 +71,13 @@ export function filterProblems(problems: readonly StudioProblem[], filter: Probl
   return problems.filter(problem => (filter === 'all' || problem.kind === filter) &&
     (!term || [problem.code, problem.message, problem.location, problem.help].some(value => value?.toLowerCase().includes(term))));
 }
+
+/** Pending jumps must match both the exact source generation and the
+ * location. A later diagnostic in the same unchanged file is not enough. */
+export function sameDiagnosticTarget(
+  current: Extract<ProblemTarget, { kind: 'source' }>,
+  expected: Extract<ProblemTarget, { kind: 'source' }>,
+): boolean {
+  return current.snapshot === expected.snapshot && current.lineNumber === expected.lineNumber &&
+    current.column === expected.column;
+}
