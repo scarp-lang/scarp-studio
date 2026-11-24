@@ -21,7 +21,12 @@ describe('safe and bounded top-level Scarp folder listing', () => {
   });
 
   it('rejects separator traversal names and control characters consistently', () => {
-    for (const name of ['../escape.srp', '..\\escape.srp', 'nested/file.srp', 'a\0b.srp', 'bad\nname.srp', 'tab\tname.srp', 'ctrl\x1fname.srp']) {
+    // A native readDir entry is a single basename; embedded separators
+    // must be rejected even when the same text is a valid Explorer relative
+    // path assembled from two individually validated directory entries.
+    expect(safeTopLevelSourceName(file('nested/file.srp'))).toBe(false);
+    expect(safeRelativeScarpSourceName('nested/file.srp')).toBe(true);
+    for (const name of ['../escape.srp', '..\\escape.srp', 'a\0b.srp', 'bad\nname.srp', 'tab\tname.srp', 'ctrl\x1fname.srp']) {
       expect(safeTopLevelSourceName(file(name))).toBe(false);
       expect(safeRelativeScarpSourceName(name)).toBe(false);
     }
