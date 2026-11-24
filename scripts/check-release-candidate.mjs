@@ -45,8 +45,8 @@ export function checkReleaseCandidate(root = defaultRoot) {
       candidate.target !== 'windows-x64' ||
       candidate.manualWindowsAcceptanceRequired !== true ||
       candidate.publicationAuthorized !== false ||
-      candidate.compilerCompatibilityVersion !== '0.0.6-alpha.19' ||
-      candidate.compilerWindowsZipSha256 !== 'e00ec9bfd2447fc2c54ae8101933da3c6899251300711627115db5239e559023') {
+      candidate.compilerCompatibilityVersion !== '0.0.6-alpha.20' ||
+      candidate.compilerWindowsZipSha256 !== '68a5ee47f24e2e36dd7fb1fcc6257feaea291d801048f7866bff1a7e4994aca2') {
     throw new Error('Invalid or publication-enabled alpha.1 release-candidate descriptor.');
   }
 

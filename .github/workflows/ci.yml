@@ -628,14 +628,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          $candidate = Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json
           $official = "e00ec9bfd2447fc2c54ae8101933da3c6899251300711627115db5239e559023"
-          if ($candidate.compilerCompatibilityVersion -ne "0.0.6-alpha.19" -or
-              $candidate.compilerWindowsZipSha256 -ne $official -or
-              $candidate.publicationAuthorized -ne $false -or
-              $candidate.manualWindowsAcceptanceRequired -ne $true) {
-            throw "Alpha.19 candidate must pin the official compiler and remain review-only"
-          }
           $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.19/scarp-0.0.6-alpha.19-x86_64-pc-windows-msvc.zip"
           Invoke-WebRequest -Uri $url -OutFile scarp-alpha19.zip
           $actual = (Get-FileHash scarp-alpha19.zip -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -658,6 +651,43 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Studio native process rejected alpha.19" }
           cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler_discovery::tests::discovers_pinned_official_compiler_from_extracted_archive --nocapture
           if ($LASTEXITCODE -ne 0) { throw "Studio discovery rejected alpha.19" }
+
+      # Alpha.20 retains interpreter CLI; native Linux embedding is not a Studio feature.
+      # Retain the independently pinned alpha.19 CLI gate immediately above.
+      - name: Verify SHA-pinned Scarp alpha.20 CLI and native Studio integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $candidate = Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json
+          $official = "68a5ee47f24e2e36dd7fb1fcc6257feaea291d801048f7866bff1a7e4994aca2"
+          if ($candidate.compilerCompatibilityVersion -ne "0.0.6-alpha.20" -or
+              $candidate.compilerWindowsZipSha256 -ne $official -or
+              $candidate.publicationAuthorized -ne $false -or
+              $candidate.manualWindowsAcceptanceRequired -ne $true) {
+            throw "Alpha.20 candidate must pin the official compiler and remain review-only"
+          }
+          $url = "https://github.com/scarp-lang/scarp/releases/download/v0.0.6-alpha.20/scarp-0.0.6-alpha.20-x86_64-pc-windows-msvc.zip"
+          Invoke-WebRequest -Uri $url -OutFile scarp-alpha20.zip
+          $actual = (Get-FileHash scarp-alpha20.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $official) { throw "Official alpha.20 compiler archive hash mismatch" }
+          Expand-Archive -Path scarp-alpha20.zip -DestinationPath scarp-alpha20
+          $binaries = @(Get-ChildItem scarp-alpha20 -File -Recurse -Filter "scarp.exe")
+          if ($binaries.Count -ne 1) { throw "Expected one alpha.20 compiler executable" }
+          $binary = $binaries[0]
+          $version = & $binary.FullName --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "scarp 0.0.6-alpha.20") { throw "Unexpected alpha.20 version" }
+          $execGuide = (& $binary.FullName guide exec | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $execGuide.StartsWith("Usage: scarp exec")) { throw "Alpha.20 exec guide changed" }
+          $verifyGuide = (& $binary.FullName guide verify | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $verifyGuide.StartsWith("Usage: scarp verify")) { throw "Alpha.20 verify guide changed" }
+          & ./scripts/verify-windows-qa.ps1 -CompilerPath $binary.FullName -ExpectedVersion '0.0.6-alpha.20'
+          if ($LASTEXITCODE -ne 0) { throw "Alpha.20 source QA failed" }
+          $env:SCARP_TEST_BIN = $binary.FullName
+          $env:SCARP_TEST_EXPECTED_VERSION = "0.0.6-alpha.20"
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler::tests::official_compiler_runs_through_native_service --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio native process rejected alpha.20" }
+          cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact compiler_discovery::tests::discovers_pinned_official_compiler_from_extracted_archive --nocapture
+          if ($LASTEXITCODE -ne 0) { throw "Studio discovery rejected alpha.20" }
 
       # Smoke the exact .srp sources provided for manual Windows 11 acceptance,
       # so QA instructions cannot silently drift from the official compiler.
