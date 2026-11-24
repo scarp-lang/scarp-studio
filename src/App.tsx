@@ -13,6 +13,7 @@ import { decidePickedSourceOpen } from './model/pickedSourceOpen';
 import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder, type ScarpProjectRoot } from './services/folders';
 import { disambiguateDocumentNames } from './model/documentLabels';
+import { saveChangesWorkspaceListing } from './model/workspaceSaveRefresh';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
@@ -977,6 +978,37 @@ export default function App() {
     }
   }
 
+  /** A successful Save As may have introduced a new source in a nested
+   * practice folder. Scan the authorized workspace once after the verified
+   * write, without reopening the saved document or losing later editor edits.
+   * A scan failure is NOT a save failure: leave the old listing and show an
+   * explicit refresh hint instead.
+   */
+  async function updateExplorerAfterSave(): Promise<boolean> {
+    const previous = selectedFolderRef.current;
+    if (!previous) return true;
+    try {
+      const result = await scanSourceFolder(previous.path);
+      if (selectedFolderRef.current !== previous) return false;
+      projectResultEpoch.current++;
+      setProjectTestResult(null);
+      invalidateProjectSearch();
+      selectedFolderRef.current = {
+        path: result.path, files: result.files, projectRoots: result.projectRoots,
+      };
+      setFolderEntries(result.files);
+      setFolderDirectories(result.directories);
+      setProjectRoots(result.projectRoots);
+      setProjectDirectory(current => current &&
+        !result.projectRoots.some(root => root.directory === current) ? '' : current);
+      setFolderListingLimited(result.truncated);
+      setUnavailableProjectFolders(result.unavailableFolders);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function saveFile(forceSaveAs = false): Promise<void> {
     const editorAtStart = liveEditor.current;
     const document = currentActiveDocument(editorAtStart);
@@ -1008,10 +1040,15 @@ export default function App() {
       // Record only the snapshot actually verified on disk, preserving later
       // changes as dirty rather than claiming that they were saved.
       dispatch({ type: 'saved', id: document.id, path, savedContent: document.content });
+      const workspaceNeedsRefresh = saveChangesWorkspaceListing(document.path, path);
+      const explorerRefreshed = !workspaceNeedsRefresh || await updateExplorerAfterSave();
       const current = liveEditor.current.documents.find((item) => item.id === document.id);
-      setNotice(current && isDirty(current)
+      const savedMessage = current && isDirty(current)
         ? 'Saved ' + fileName(path) + ' snapshot; newer edits remain unsaved'
-        : 'Saved ' + fileName(path));
+        : 'Saved ' + fileName(path);
+      setNotice(savedMessage + (!explorerRefreshed
+        ? '; Explorer could not refresh. Use Refresh Explorer to update the file list.'
+        : ''));
     } catch (caught) {
       setError('Could not save source: ' + toMessage(caught));
     } finally {
@@ -1038,19 +1075,25 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
+      let needsExplorerRefresh = false;
       const result = await saveAllModifiedSources(
         ids,
         (id) => liveEditor.current.documents.find((document) => document.id === id),
         (id) => liveEditor.current.documents
           .filter((document) => document.id !== id && document.path !== null)
           .map((document) => document.path as string),
-        (document, path) => dispatch({
-          type: 'saved', id: document.id, path, savedContent: document.content,
-        }),
+        (document, path) => {
+          needsExplorerRefresh ||= saveChangesWorkspaceListing(document.path, path);
+          dispatch({ type: 'saved', id: document.id, path, savedContent: document.content });
+        },
       );
-      setNotice(result.cancelled
+      const explorerRefreshed = !needsExplorerRefresh || await updateExplorerAfterSave();
+      const message = result.cancelled
         ? 'Save All cancelled; ' + result.saved + ' source(s) saved'
-        : 'Saved ' + result.saved + ' Scarp source(s)');
+        : 'Saved ' + result.saved + ' Scarp source(s)';
+      setNotice(message + (!explorerRefreshed
+        ? '; Explorer could not refresh. Use Refresh Explorer to update the file list.'
+        : ''));
     } catch (caught) {
       setError(toMessage(caught));
     } finally {
