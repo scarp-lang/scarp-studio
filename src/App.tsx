@@ -36,6 +36,8 @@ import { exitBlockReason, sameExitEditorState } from './model/exitGuards';
 import { detectScarp, executeScarp, openCompilerDownloads, probeScarp, stopScarp, type ScarpMode } from './services/compiler';
 import { diagnosticSourcePosition, parseScarpDiagnostic } from './model/diagnostics';
 import { verifiedProblemMarker } from './model/problemMarkers';
+import { collectProblems, currentDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
+import { ProblemsPanel } from './components/ProblemsPanel';
 import {
   captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
   type VerifiedSourceSnapshot,
@@ -116,6 +118,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
   { id: 'toggle-output', label: 'Toggle Scarp Output Panel', detail: 'Ctrl+J' },
   { id: 'expand-output', label: 'Expand Scarp Output Panel', detail: 'More room for diagnostics' },
+  { id: 'show-problems', label: 'Show Current Problems', detail: 'Ctrl+Shift+M' },
   { id: 'compiler-controls', label: 'Show Compiler Setup and Program Input', detail: 'Output panel controls' },
   ...scarpStarterTemplates.map((starter) => ({
     id: 'template:' + starter.id,
@@ -271,6 +274,8 @@ export default function App() {
   const [compilerBusy, setCompilerBusy] = useState(false);
   const [outputPanelMode, setOutputPanelMode] = useState<OutputPanelMode>('normal');
   const [compilerControlsOpen, setCompilerControlsOpen] = useState(true);
+  const [resultsView, setResultsView] = useState<'output' | 'problems'>('output');
+  const pendingProblem = useRef<Extract<ProblemTarget, { kind: 'source' }> | null>(null);
   const outputToggle = useRef<HTMLButtonElement | null>(null);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
@@ -365,6 +370,10 @@ export default function App() {
   const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
   const diagnosticPosition = isCurrentVerifiedSource(compilerOutputSource, active) && active?.path
     ? diagnosticSourcePosition(diagnostic, active.path, active.content) : null;
+  const problems = useMemo(() => collectProblems({ diagnostic, snapshot: compilerOutputSource,
+    documents, testResult: projectTestResult, selection: selectedFolderRef.current,
+    stale: Boolean(outputFreshnessWarning),
+  }), [diagnostic, compilerOutputSource, documents, projectTestResult, folderEntries, outputFreshnessWarning]);
   const problemMarker = useMemo(() => verifiedProblemMarker(diagnostic, compilerOutputSource, active),
     [diagnostic, compilerOutputSource, active]);
   const declarationOutline = useMemo(
@@ -564,6 +573,7 @@ export default function App() {
       case 'stop-scarp': void stopCompiler(); break;
       case 'toggle-output': setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle')); break;
       case 'expand-output': setOutputPanelMode('expanded'); break;
+      case 'show-problems': showProblems(); break;
       case 'compiler-controls': showCompilerSetup(); break;
     }
   }
@@ -1130,6 +1140,8 @@ export default function App() {
     setCompilerPath(chosen);
     setCompilerInfo(info);
     setCompilerOutputSource(null);
+    pendingProblem.current = null;
+    setResultsView('output');
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
     setCompletedProjectOutput(null);
@@ -1350,6 +1362,36 @@ export default function App() {
     }
   }
 
+  function showProblems(): void {
+    setOutputPanelMode(revealOutputPanel);
+    setResultsView('problems');
+  }
+
+  function navigateProblem(problem: StudioProblem): void {
+    if (busy || compilerBusy || compilerSelecting || outputFreshnessWarning) return;
+    const target = problem.target;
+    if (!target) return;
+    if (target.kind === 'test') {
+      if (!projectTestResult || projectTestResult.folder !== target.folder ||
+          !projectTestResult.report.tests.some(test => test.path === target.path && test.status === 'failed')) return;
+      openProjectTestSource(target.path, target.folder);
+      return;
+    }
+    const current = currentDiagnosticTarget(diagnostic, compilerOutputSource, liveEditor.current.documents);
+    if (!current || current.snapshot !== target.snapshot || current.lineNumber !== target.lineNumber || current.column !== target.column) return;
+    pendingSearchLocation.current = null;
+    const editor = mountedEditor.current;
+    if (liveEditor.current.activeId === current.snapshot.documentId && mountedEditorDocumentId.current === current.snapshot.documentId && editor && editor.getModel()?.getValue() === current.snapshot.content) {
+      pendingProblem.current = null;
+      editor.setPosition(current);
+      editor.revealPositionInCenter(current);
+      editor.focus();
+    } else {
+      pendingProblem.current = current;
+      dispatch({ type: 'activate', id: current.snapshot.documentId });
+    }
+  }
+
   function revealDiagnostic(): void {
     const current = liveEditor.current.documents.find(
       (item) => item.id === liveEditor.current.activeId,
@@ -1420,6 +1462,8 @@ export default function App() {
     setError(null);
     // Project operations may inspect other files. They never assign an editor
     // diagnostic position to the current open tab.
+    pendingProblem.current = null;
+    setResultsView('output');
     setCompilerDiagnosticStderr(null);
     setCompilerOutputSource(null);
     setProjectTestResult(null);
@@ -1828,7 +1872,10 @@ export default function App() {
         return;
       }
       if (paletteMode !== null) return;
-      if (key === 'j' && !event.shiftKey) {
+      if (key === 'm' && event.shiftKey) {
+        event.preventDefault();
+        showProblems();
+      } else if (key === 'j' && !event.shiftKey) {
         event.preventDefault();
         setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle'));
         outputToggle.current?.focus();
@@ -2394,6 +2441,17 @@ export default function App() {
                   editor.onDidChangeCursorPosition((event) => {
                     setCursor({ line: event.position.lineNumber, column: event.position.column });
                   });
+                  const pendingDiagnostic = pendingProblem.current;
+                  if (pendingDiagnostic) {
+                    pendingProblem.current = null;
+                    const target = currentDiagnosticTarget(diagnostic, compilerOutputSource, liveEditor.current.documents);
+                    if (target && !outputFreshnessWarning && target.snapshot === pendingDiagnostic.snapshot &&
+                        target.snapshot.documentId === active.id && editor.getModel()?.getValue() === target.snapshot.content) {
+                      editor.setPosition(target);
+                      editor.revealPositionInCenter(target);
+                      editor.focus();
+                    }
+                  }
                   const pending = pendingSearchLocation.current;
                   if (pending && pending.documentId === active.id) {
                     const current = liveEditor.current.documents.find(
@@ -2594,7 +2652,14 @@ export default function App() {
               </div>
             </div>
             </div>
+            <div className="results-view-switch" role="group" aria-label="Compiler result view">
+              <button type="button" aria-pressed={resultsView === 'output'} onClick={() => setResultsView('output')}>Output</button>
+              <button type="button" aria-pressed={resultsView === 'problems'} onClick={showProblems} title="Show Problems (Ctrl+Shift+M)">Problems ({problems.length})</button>
+            </div>
             <div className="compiler-results" tabIndex={0} aria-label="Compiler results and diagnostics">
+            {resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
+              busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
+
             {projectTestResult && projectTestResult.folder === folderPath && (
               <section className="project-test-report" aria-label="Scarp project test results">
                 <div className="project-test-heading">
@@ -2649,6 +2714,7 @@ export default function App() {
             )}
             <pre className="compiler-output" role="log" aria-live="polite">{outputFreshnessWarning
                     ? outputFreshnessWarning + '\n\n' + compilerOutput : compilerOutput}</pre>
+            </>}
             </div>
             </div>
           </section>

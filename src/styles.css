@@ -464,3 +464,21 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   .workspace-settings { grid-template-columns: minmax(0, auto) minmax(100px, 1fr); }
   .workspace-settings > button { justify-self: start; }
 }
+
+.results-view-switch { flex: 0 0 auto; display: flex; gap: 4px; padding: 4px 10px 0; border-bottom: 1px solid var(--border); background: var(--surface); }
+.results-view-switch button { font-size: 11px; padding: 5px 9px; color: var(--muted); background: transparent; border: 0; border-bottom: 2px solid transparent; }
+.results-view-switch button[aria-pressed="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.problems-panel { padding: 8px 12px; font-size: 12px; min-width: 0; }
+.problems-toolbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.problems-toolbar select, .problems-toolbar input, .problems-panel button { color: var(--text); background: var(--raised); border: 1px solid var(--border); border-radius: 4px; font: inherit; padding: 4px 7px; }
+.problems-toolbar input { flex: 1 1 160px; min-width: 100px; }
+.problems-toolbar input:focus-visible, .problems-toolbar select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.problems-summary { color: var(--muted); margin: 7px 0; font-size: 11px; }
+.problems-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.problem-row, .problems-empty { border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; display: grid; gap: 5px; overflow-wrap: anywhere; }
+.problem-row-heading { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.problem-error { color: #ff9a9a; font-size: 11px; font-weight: 700; }
+[data-theme="light"] .problem-error { color: #a32424; }
+.problem-kind, .problem-location, .problem-help, .problems-empty p { color: var(--muted); font-size: 11px; margin: 0; }
+.problem-row button, .problems-empty button { justify-self: start; }
+.problems-panel button:not(:disabled):hover { border-color: var(--accent); }

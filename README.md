@@ -133,3 +133,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Resizable workspace:** drag the Explorer and normal output dividers, or focus them and use arrows/Shift+arrows, Home/End; double-click restores the individual default. Local width/height preferences persist without source or input data.
 
 - Workspace Settings includes width/height sliders and a layout-only reset; the measured editor/output region scrolls instead of collapsing when search or review takes vertical space.
+
+- **Problems view:** Ctrl+Shift+M shows current structured compiler diagnostics and failed project tests, searchable by code/message/path/help, with snapshot-guarded source navigation and a separate raw Output view.
