@@ -389,8 +389,7 @@ fn supports_prompt_input(version: &str) -> bool {
 /// selected workspace after a directory scan.
 fn has_regular_project_manifest(root: &Path) -> bool {
     ["scarp.project", "Scarp.project"].iter().any(|name| {
-        fs::symlink_metadata(root.join(name))
-            .is_ok_and(|metadata| metadata.file_type().is_file())
+        fs::symlink_metadata(root.join(name)).is_ok_and(|metadata| metadata.file_type().is_file())
     })
 }
 
