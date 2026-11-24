@@ -2680,7 +2680,7 @@ export default function App() {
                 <option value="">Workspace root{projectRoots.some(root => root.directory === '') ? ' (manifest)' : ' (no manifest detected)'}</option>
                 {projectRoots.filter(root => root.directory !== '').map(root =>
                   <option key={root.directory} value={root.directory}>{root.directory}/</option>)}
-              </select>
+              </select>}
               <button type="button" onClick={() => void runProjectAction('info')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !folderPath}
                 title="Inspect the chosen project's manifest and entrypoint">Info</button>
