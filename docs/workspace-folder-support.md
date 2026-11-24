@@ -186,3 +186,21 @@ Open-buffer cycles are hints only. The compiler remains authoritative for
 module resolution, import policies, transitive dependencies and diagnostics.
 The index has explicit source, token, per-file import and graph edge limits;
 it never claims missing/unopened files are invalid Scarp modules.
+
+
+## Session bookmarks
+
+The collapsed **BOOKMARKS** Explorer section creates in-memory
+navigation anchors for specific source lines at the Monaco caret. Bookmarks
+are session-only; Studio does not persist bookmark data or upload code.
+An anchor records a short exact line and stable document identity, not the
+complete source. No native filesystem read is performed to find a bookmark.
+
+When text moves a bookmarked line, Studio can relocate it only if the
+exact original line appears uniquely in the current open buffer. An edited,
+deleted, ambiguous or closed source is marked stale/closed, with its
+navigation button disabled. Bookmarks can be removed, searched, filtered by
+status/tab, and viewed in source or creation order. The implementation caps
+source analysis to 512 Ki UTF-16 units, 2,400 lines, 40 bookmarks per tab and
+120 bookmarks per session. Navigation still verifies the live document
+revision and exact Monaco content, including when switching tabs.

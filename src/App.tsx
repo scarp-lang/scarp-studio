@@ -45,6 +45,11 @@ import { ProjectExplorer } from './components/ProjectExplorer';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
+import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
+import {
+  createSourceBookmark, resolveSourceBookmarks, bookmarkTargetForCurrentSource,
+  removeSourceBookmark, type SourceBookmark,
+} from './model/sourceBookmarks';
 import {
   captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
   type VerifiedSourceSnapshot,
@@ -314,6 +319,11 @@ export default function App() {
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  // Session-scoped only. Bookmarks never persist arbitrary source excerpts to
+  // localStorage or leave the native Scarp editor.
+  const [bookmarks, setBookmarks] = useState<SourceBookmark[]>([]);
+  const bookmarkSequence = useRef(0);
+  const pendingInsightJump = useRef<InsightNavigation | null>(null);
   const documentLabels = useMemo(() => disambiguateDocumentNames(documents), [documents]);
   const stdinValidationError = useMemo(
     () => programInputValidationError(stdinText), [stdinText],
@@ -474,17 +484,53 @@ export default function App() {
     const current = liveEditor.current.documents.find(
       document => document.id === target.documentId,
     );
-    if (!current || current.id !== liveEditor.current.activeId ||
+    if (!current ||
         current.revision !== target.revision || current.content !== target.source) return;
     if (!Number.isSafeInteger(target.line) || !Number.isSafeInteger(target.column) ||
         target.line < 1 || target.column < 1) return;
     const editor = editorHandle.current;
+    if (current.id !== liveEditor.current.activeId) {
+      pendingInsightJump.current = target;
+      dispatch({ type: 'activate', id: current.id });
+      return;
+    }
     if (!editor || mountedEditorDocumentId.current !== current.id ||
-        editor.getModel()?.getValue() !== current.content) return;
+        editor.getModel()?.getValue() !== current.content) {
+      pendingInsightJump.current = target;
+      return;
+    }
     const position = { lineNumber: target.line, column: target.column };
     editor.setPosition(position);
     editor.revealPositionInCenter(position);
     editor.focus();
+  }
+
+  function addCurrentBookmark(): void {
+    const state = liveEditor.current;
+    if (!state.activeId) return;
+    try {
+      const newBookmark = createSourceBookmark(
+        state.documents, bookmarks, state.activeId,
+        cursor.line, cursor.column, bookmarkSequence.current++,
+      );
+      setBookmarks(previous => [...previous, newBookmark]);
+      setNotice('Bookmarked source line ' + cursor.line + '.');
+    } catch (caught) {
+      setError('Could not add bookmark: ' + toMessage(caught));
+    }
+  }
+
+  function jumpToBookmark(id: string): void {
+    const state = liveEditor.current;
+    const bookmarked = bookmarks.find(item => item.id === id);
+    if (!bookmarked) return;
+    const resolved = resolveSourceBookmarks([bookmarked], state.documents)[0];
+    const target = bookmarkTargetForCurrentSource(resolved, state.documents);
+    if (!target) {
+      setError('Bookmark is stale or its source tab is closed. Select a current source line.');
+      return;
+    }
+    jumpToSourceInsight(target);
   }
 
   function jumpToDeclaration(symbol: ScarpOutlineSymbol): void {
@@ -2299,6 +2345,12 @@ export default function App() {
           <SourceImportsPanel documents={documents} listed={folderEntries}
             activeId={activeId} busy={busy || compilerBusy || compilerSelecting}
             onOpen={path => void openFolderFile(path)} />
+          <SourceBookmarksPanel documents={documents} bookmarks={bookmarks}
+            activeId={activeId} cursor={cursor}
+            busy={busy || compilerBusy || compilerSelecting}
+            onAdd={addCurrentBookmark}
+            onRemove={id => setBookmarks(previous => removeSourceBookmark(previous, id))}
+            onNavigate={jumpToBookmark} />
         </aside>
 
         {explorerVisible && <WorkspaceSplitter dimension="explorerWidth" value={workspaceLayout.explorerWidth}
@@ -2588,6 +2640,22 @@ export default function App() {
                         editor.getModel()?.getValue() === target.snapshot.content) {
                       editor.setPosition(target);
                       editor.revealPositionInCenter(target);
+                      editor.focus();
+                    }
+                  }
+                  const insightJump = pendingInsightJump.current;
+                  if (insightJump && insightJump.documentId === active.id) {
+                    pendingInsightJump.current = null;
+                    const fresh = liveEditor.current.documents.find(doc => doc.id === active.id);
+                    if (fresh && fresh.revision === insightJump.revision &&
+                        fresh.content === insightJump.source &&
+                        editor.getModel()?.getValue() === fresh.content) {
+                      const position = {
+                        lineNumber: insightJump.line,
+                        column: insightJump.column,
+                      };
+                      editor.setPosition(position);
+                      editor.revealPositionInCenter(position);
                       editor.focus();
                     }
                   }

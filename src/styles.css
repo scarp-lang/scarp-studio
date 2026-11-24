@@ -713,3 +713,42 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 }
 .imports-row button:hover:not(:disabled) { border-color: var(--accent); }
 .imports-row button:disabled { opacity: .5; cursor: not-allowed; }
+
+
+/* Session bookmarks show explicit stale/closed states rather than guessed lines. */
+.bookmarks-panel { border-top: 1px solid var(--border); }
+.bookmarks-content { padding: 4px 8px 12px; }
+.bookmarks-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 4px; padding: 2px 0 8px; font-size: 10px; }
+.bookmarks-toolbar button {
+  border: 1px solid var(--border); border-radius: 4px; background: var(--raised);
+  color: var(--text); padding: 4px 6px; font-size: 10px;
+}
+.bookmarks-toolbar button:not(:disabled):hover { border-color: var(--accent); }
+.bookmarks-toolbar button:disabled { opacity: .5; cursor: not-allowed; }
+.bookmarks-filters { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; }
+.bookmarks-filters input, .bookmarks-filters select {
+  width: 100%; min-width: 0; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--bg); color: var(--text);
+  padding: 5px 6px; font-size: 10px;
+}
+.bookmarks-filters input { grid-column: 1 / -1; }
+.bookmarks-list { display: flex; flex-direction: column; gap: 5px; }
+.bookmarks-row {
+  display: flex; flex-direction: column; gap: 4px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+  padding: 6px;
+}
+.bookmarks-header { display: flex; align-items: center; justify-content: space-between; gap: 4px; font-size: 10px; }
+.bookmarks-header span { overflow-wrap: anywhere; }
+.bookmarks-status { flex: 0 0 auto; color: var(--muted); }
+.bookmarks-status-current, .bookmarks-status-relocated { color: var(--accent); }
+.bookmarks-status-stale { color: #d96871; }
+.bookmarks-label { font: 11px/1.5 Consolas,monospace; overflow-wrap: anywhere; }
+.bookmarks-actions { display: flex; align-items: center; gap: 4px; }
+.bookmarks-actions button {
+  border: 1px solid var(--border); border-radius: 4px; color: var(--text);
+  background: var(--raised); padding: 3px 5px; font-size: 10px;
+}
+.bookmarks-actions button:hover:not(:disabled) { border-color: var(--accent); }
+.bookmarks-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.bookmarks-reason { margin: 0; font-size: 10px; color: var(--muted); line-height: 1.4; }
