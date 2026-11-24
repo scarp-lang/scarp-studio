@@ -43,9 +43,9 @@ export interface ProjectSearchHit {
 
 export interface ProjectSearchResult {
   hits: ProjectSearchHit[];
-  /** Selected project sources actually searched in memory. */
+  /** Selected project sources scanned to completion in memory. */
   searchedFiles: number;
-  /** Files omitted by limits, unsafe entries, or inaccessible source reads. */
+  /** Files not fully scanned, including partially scanned and inaccessible files. */
   skippedFiles: number;
   totalListedFiles: number;
   truncated: boolean;
@@ -198,7 +198,7 @@ export async function searchListedProjectSources(
       const source = mapping.get(hit.documentId);
       return source ? [{ ...source, match: hit }] : [];
     }),
-    searchedFiles: snapshots.length,
+    searchedFiles: result.searchedDocuments,
     skippedFiles: skipped + result.skippedDocuments,
     totalListedFiles: listed.length,
     truncated: truncated || result.truncated,

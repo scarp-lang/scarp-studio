@@ -1408,7 +1408,7 @@ export default function App() {
       }
       setProjectSearchResult({ selection, query: searchQuery, result });
       setNotice('Project search: ' + result.hits.length + ' match(es) in ' +
-        result.searchedFiles + ' source(s)' +
+        result.searchedFiles + ' fully scanned source(s)' +
         (result.truncated ? ' (incomplete)' : ''));
     } catch (caught) {
       if (current()) setError('Project search failed: ' + toMessage(caught));
@@ -2061,7 +2061,7 @@ export default function App() {
                     ? `${openFileMatches.hits.length} matches in open files`
                     : 'Search only already-open Scarp files. No files are read from disk.')}
                 {openFileMatches.truncated &&
-                  ` · Search budget reached; results may be incomplete. ${openFileMatches.skippedDocuments} buffers skipped.`}
+                  ` · Search budget reached; results may be incomplete. ${openFileMatches.skippedDocuments} buffers not fully searched.`}
               </div>
               {canUndoReplacement && (
                 <div className="replace-preview-actions" aria-label="Undo last confirmed replacement">
@@ -2123,9 +2123,9 @@ export default function App() {
                 <section className="project-search-results" aria-label="Read-only selected project search">
                   <div className="search-status" role="status">
                     Project (read-only): {projectSearchResult.result.hits.length} match(es) ·
-                    {' '}{projectSearchResult.result.searchedFiles} / {projectSearchResult.result.totalListedFiles} listed .srp files searched
+                    {' '}{projectSearchResult.result.searchedFiles} / {projectSearchResult.result.totalListedFiles} listed .srp files fully searched
                     {projectSearchResult.result.truncated && (
-                      <strong> · Incomplete ({projectSearchResult.result.skippedFiles} omitted/unreadable).</strong>
+                      <strong> · Incomplete ({projectSearchResult.result.skippedFiles} not fully searched).</strong>
                     )}
                     {' '}No files changed.
                   </div>

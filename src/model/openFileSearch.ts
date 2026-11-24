@@ -34,6 +34,8 @@ export interface OpenFileSearchHit {
 
 export interface OpenFileSearchResult {
   hits: OpenFileSearchHit[];
+  /** Buffers scanned to completion; partially scanned buffers count as skipped. */
+  searchedDocuments: number;
   skippedDocuments: number;
   truncated: boolean;
   error: string | null;
@@ -98,7 +100,7 @@ export function searchOpenFiles(
   options: SearchOptions,
 ): OpenFileSearchResult {
   const empty: OpenFileSearchResult = {
-    hits: [], skippedDocuments: 0, truncated: false, error: null,
+    hits: [], searchedDocuments: 0, skippedDocuments: 0, truncated: false, error: null,
   };
   if (query.length === 0) return empty;
   if (query.length > MAX_SEARCH_QUERY_UNITS) {
@@ -114,6 +116,11 @@ export function searchOpenFiles(
   let skippedDocuments = Math.max(0, documents.length - MAX_SEARCH_DOCUMENTS);
   let truncated = documents.length > MAX_SEARCH_DOCUMENTS;
   let candidatesExamined = 0;
+  let searchedDocuments = 0;
+  const incomplete = (): OpenFileSearchResult => ({
+    hits, searchedDocuments, skippedDocuments: documents.length - searchedDocuments,
+    truncated: true, error: null,
+  });
 
   for (const document of documents.slice(0, MAX_SEARCH_DOCUMENTS)) {
     const content = document.content;
@@ -131,7 +138,7 @@ export function searchOpenFiles(
     for (const match of content.matchAll(regex)) {
       candidatesExamined++;
       if (candidatesExamined > MAX_SEARCH_CANDIDATES) {
-        return { hits, skippedDocuments, truncated: true, error: null };
+        return incomplete();
       }
       if (options.wholeWord && !isWholeWord(content, match.index, match.index + match[0].length)) {
         continue;
@@ -160,9 +167,10 @@ export function searchOpenFiles(
       // still exposing no more than MAX_SEARCH_RESULTS hits to the UI.
       if (hits.length > MAX_SEARCH_RESULTS) {
         hits.pop();
-        return { hits, skippedDocuments, truncated: true, error: null };
+        return incomplete();
       }
     }
+    searchedDocuments++;
   }
-  return { hits, skippedDocuments, truncated, error: null };
+  return { hits, searchedDocuments, skippedDocuments, truncated, error: null };
 }

@@ -168,6 +168,40 @@ describe('bounded search across open Scarp buffers', () => {
     expect(result.truncated).toBe(true);
   });
 
+  it('counts only completely scanned buffers when the accepted-hit limit interrupts a scan', () => {
+    const result = searchOpenFiles([
+      source(1, 'no match'),
+      source(2, 'x '.repeat(MAX_SEARCH_RESULTS + 1)),
+      source(3, 'x'),
+    ], 'x', defaults);
+    expect(result.hits).toHaveLength(MAX_SEARCH_RESULTS);
+    expect(result.searchedDocuments).toBe(1);
+    expect(result.skippedDocuments).toBe(2);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('accounts for every omitted buffer at the rejected-candidate limit', () => {
+    const docs = [
+      source(1, 'other'),
+      source(2, 'varname '.repeat(MAX_SEARCH_CANDIDATES + 1)),
+      ...Array.from({ length: MAX_SEARCH_DOCUMENTS }, (_, i) => source(i + 3, 'var')),
+    ];
+    const result = searchOpenFiles(docs, 'var', { ...defaults, wholeWord: true });
+    expect(result.hits).toEqual([]);
+    expect(result.searchedDocuments).toBe(1);
+    expect(result.skippedDocuments).toBe(docs.length - 1);
+    expect(result.truncated).toBe(true);
+  });
+
+  it('counts all fully scanned buffers even at exactly the accepted-hit limit', () => {
+    const result = searchOpenFiles([
+      source(1, 'x '.repeat(MAX_SEARCH_RESULTS)), source(2, 'other'),
+    ], 'x', defaults);
+    expect(result.searchedDocuments).toBe(2);
+    expect(result.skippedDocuments).toBe(0);
+    expect(result.truncated).toBe(false);
+  });
+
   it('caps output even if many matches are present', () => {
     const result = searchOpenFiles([source(1, 'z '.repeat(MAX_SEARCH_RESULTS + 20))], 'z', defaults);
     expect(result.hits).toHaveLength(MAX_SEARCH_RESULTS);

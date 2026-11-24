@@ -279,6 +279,34 @@ describe('bounded read-only selected-project search', () => {
     expect(reader).toHaveBeenCalledTimes(5);
   });
 
+  it('does not count loaded but unscanned or partially scanned sources as searched', async () => {
+    const files = [file('first.srp'), file('many.srp'), file('later.srp')];
+    const read = vi.fn(async (path: string) =>
+      path.endsWith('many.srp') ? 'needle '.repeat(201) :
+        path.endsWith('later.srp') ? 'needle' : 'other');
+    const result = await searchListedProjectSources(files, [], 'needle', options, read);
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(result?.hits).toHaveLength(200);
+    expect(result?.searchedFiles).toBe(1);
+    expect(result?.skippedFiles).toBe(2);
+    expect(result?.truncated).toBe(true);
+  });
+
+  it('combines read failures with interrupted scanning without double counting', async () => {
+    const files = [file('missing.srp'), file('many.srp'), file('later.srp')];
+    const read = vi.fn(async (path: string) => {
+      if (path.endsWith('missing.srp')) throw new Error('unreadable');
+      return path.endsWith('many.srp') ? 'varname '.repeat(10_001) : 'var';
+    });
+    const result = await searchListedProjectSources(
+      files, [], 'var', { ...options, wholeWord: true }, read,
+    );
+    expect(result?.hits).toEqual([]);
+    expect(result?.searchedFiles).toBe(0);
+    expect(result?.skippedFiles).toBe(3);
+    expect(result?.truncated).toBe(true);
+  });
+
   it('stops a superseded search after a delayed native read', async () => {
     let release!: (value: string) => void;
     const blocked = new Promise<string>((resolve) => { release = resolve; });
