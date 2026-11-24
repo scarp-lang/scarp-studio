@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import decimalLiteralSource from '../../qa/windows/09-decimal-literals.srp?raw';
+import tupleUpdateSource from '../../qa/windows/10-tuple-updates.srp?raw';
 import { getScarpStarterTemplate, scarpStarterTemplates } from './starterTemplates';
 
 describe('Scarp-only starter templates', () => {
   it('offers independent real Scarp learning scenarios', () => {
     expect(scarpStarterTemplates.map(({ id }) => id)).toEqual([
-      'hello', 'bindings', 'functions', 'decisions', 'loops', 'whilecontrol', 'nestedloops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalinput', 'records', 'variants', 'collections', 'arrayupdates', 'optionresult',
+      'hello', 'bindings', 'functions', 'decisions', 'loops', 'whilecontrol', 'nestedloops', 'bigint', 'input', 'prompts', 'arrays', 'exactmath', 'decimals', 'decimalliterals', 'tupleupdates', 'decimalinput', 'records', 'variants', 'collections', 'arrayupdates', 'optionresult',
     ]);
-    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(19);
+    expect(new Set(scarpStarterTemplates.map(({ id }) => id)).size).toBe(21);
   });
 
   it('uses only .srp snippets that can be edited in an untitled buffer', () => {
@@ -88,6 +90,16 @@ describe('Scarp-only starter templates', () => {
     expect(starter?.source).toContain('original[1] == 8');
     expect(starter?.source).toContain('changed[1] == 99');
     expect(starter?.description).toContain('without mutating');
+  });
+
+  it('embeds exactly the alpha.20 CLI QA fixture bytes in both new starters', () => {
+    expect(getScarpStarterTemplate('decimalliterals')?.source).toBe(decimalLiteralSource);
+    expect(getScarpStarterTemplate('tupleupdates')?.source).toBe(tupleUpdateSource);
+    expect(decimalLiteralSource).toContain('0.1d + 0.2d');
+    expect(decimalLiteralSource).toContain('SCARP_STUDIO_GUI_DECIMAL_LITERAL_OK');
+    expect(tupleUpdateSource).toContain('position[0] = 50;');
+    expect(tupleUpdateSource).toContain('before < position');
+    expect(tupleUpdateSource).toContain('SCARP_STUDIO_GUI_TUPLE_UPDATE_OK');
   });
 
   it('looks up only registered templates without accepting arbitrary source', () => {

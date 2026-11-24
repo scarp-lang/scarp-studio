@@ -1,4 +1,6 @@
 import whileLoopSource from '../../qa/windows/06-while-control.srp?raw';
+import decimalLiteralSource from '../../qa/windows/09-decimal-literals.srp?raw';
+import tupleUpdateSource from '../../qa/windows/10-tuple-updates.srp?raw';
 import nestedLoopSource from '../../qa/windows/07-nested-loop.srp?raw';
 
 /** Small, explicitly created Scarp-only starter programs.
@@ -90,6 +92,18 @@ export const scarpStarterTemplates: readonly ScarpStarterTemplate[] = [
     title: 'Exact Decimals (alpha.11+)',
     description: 'Exact base-10 arithmetic and explicit rounding',
     source: '// Requires official Scarp v0.0.6-alpha.11+. No implicit float conversion.\nbind price: decimal = decimal("199.99");\nbind tax = decimal("0.18");\nprint(decimal_format(price + price * tax, 2, "half_even"));\nprint(decimal("0.1") + decimal("0.2"));\n',
+  },
+  {
+    id: 'decimalliterals',
+    title: 'Exact Decimal Literals (alpha.20+)',
+    description: 'Use the d suffix for exact base-10 arithmetic',
+    source: decimalLiteralSource,
+  },
+  {
+    id: 'tupleupdates',
+    title: 'Tuple Updates and Ordering (alpha.20+)',
+    description: 'Replace tuple members persistently and compare numeric tuples',
+    source: tupleUpdateSource,
   },
   {
     id: 'decimalinput',

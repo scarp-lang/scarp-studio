@@ -1,6 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import {
-  isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
+  isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
   type ScarpCompletion,
 } from './assist';
 
@@ -12,7 +12,7 @@ function canAssistAtColumn(column: number): boolean {
     column <= MAX_ASSIST_SCAN_UNITS + 1;
 }
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.19.
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.20.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco): void {
@@ -63,6 +63,9 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         [/\b(?:0[xX][0-9a-fA-F]+|0[bB][01]+)(?![A-Za-z0-9_])/, 'number'],
         // Separators, missing digits and invalid radix digits are unsupported.
         [/\b(?:0[xX][A-Za-z0-9_]*|0[bB][A-Za-z0-9_]*|[0-9]+_[A-Za-z0-9_]*)\b/, 'number.invalid'],
+        // Exact decimal literals choose base-10 arithmetic; exponents are float-only.
+        [/\b[0-9]+(?:\.[0-9]+)?d(?![A-Za-z0-9_])/, 'number'],
+        [/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?d[A-Za-z0-9_]*/, 'number.invalid'],
         [/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?\b/, 'number'],
         [/\b(?:array|list|map|option|result)(?=\s*<)/, 'type'],
         [/[a-zA-Z_][\w]*(?=\s*\()/, {
@@ -135,6 +138,17 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       if (!canAssistAtColumn(position.column)) return null;
       const line = model.getLineContent(position.lineNumber);
       if (!isScarpCodePosition(line, position.column - 1)) return null;
+      const literal = scarpDecimalLiteralAt(line, position.column - 1);
+      if (literal) {
+        return {
+          range: new monaco.Range(position.lineNumber, literal.start + 1,
+            position.lineNumber, literal.end + 1),
+          contents: [
+            { value: '**Scarp: exact decimal literal (alpha.20+)**' },
+            { value: 'The lowercase d suffix selects exact base-10 arithmetic. Exponents and implicit float/integer conversion are unsupported. Verify checks precision and range.' },
+          ],
+        };
+      }
       const word = model.getWordAtPosition(position);
       if (!word) return null;
       const item = scarpTokenHelp(word.word);

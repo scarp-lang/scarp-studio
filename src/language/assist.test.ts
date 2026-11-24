@@ -4,7 +4,7 @@ import {
   isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS,
   MAX_SCARP_OUTLINE_HEADER_UNITS, MAX_SCARP_OUTLINE_SYMBOLS,
   scanScarpFunctions, scanScarpOutlineSymbols,
-  scarpCompletions, scarpTokenHelp,
+  scarpCompletions, scarpTokenHelp, scarpDecimalLiteralAt,
 } from './assist';
 
 describe('Scarp completion catalog', () => {
@@ -178,6 +178,29 @@ describe('published Scarp alpha.18 immutable fixed-array updates', () => {
     expect(update?.documentation).toContain('E0063');
     expect(scarpCompletions('ARRAY_SET').some((item) => item.label === 'array_set')).toBe(true);
     expect(scarpCompletions('array_set_invalid')).toEqual([]);
+  });
+});
+
+describe('published Scarp alpha.20 decimal and tuple assistance', () => {
+  it('offers versioned snippets for exact literals, tuple replacement and ordering', () => {
+    for (const label of ['decimal literal', 'tuple update', 'tuple ordering']) {
+      const item = scarpCompletions(label).find((entry) => entry.label === label);
+      expect(item?.documentation).toContain('alpha.20');
+    }
+    expect(scarpTokenHelp('decimal literal')?.insertText).toBe('${1:0.1}d');
+    expect(scarpTokenHelp('tuple update')?.documentation).toContain('dynamic indices');
+    expect(scarpTokenHelp('tuple ordering')?.documentation).toContain('first differing');
+  });
+
+  it('recognizes exact literal hover only at a complete code token', () => {
+    expect(scarpDecimalLiteralAt('bind value = 0.1d;', 15)).toEqual({ start: 13, end: 17 });
+    expect(scarpDecimalLiteralAt('print(-42d);', 8)).toEqual({ start: 7, end: 10 });
+    for (const value of ['1.2d_more', '1e3d', '1.2E-4d', 'abc42d', '0x42d', '0.1', '.42d']) {
+      for (let i = 0; i < value.length; i++) expect(scarpDecimalLiteralAt(value, i), value).toBeNull();
+    }
+    expect(scarpDecimalLiteralAt('// 42d', 4)).toBeNull();
+    expect(scarpDecimalLiteralAt('"42d"', 2)).toBeNull();
+    expect(scarpDecimalLiteralAt('42d ' + 'x'.repeat(MAX_ASSIST_SCAN_UNITS), 1)).toBeNull();
   });
 });
 

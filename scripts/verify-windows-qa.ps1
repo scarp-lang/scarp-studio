@@ -87,6 +87,23 @@ if ($ExpectedVersion -in @('0.0.6-alpha.18', '0.0.6-alpha.19', '0.0.6-alpha.20')
   }
 }
 
+# New syntax is tested only by the exact official version that published it.
+if ($ExpectedVersion -eq '0.0.6-alpha.20') {
+  foreach ($fixture in @(
+    @{ Path = 'qa/windows/09-decimal-literals.srp'; Marker = 'SCARP_STUDIO_GUI_DECIMAL_LITERAL_OK' },
+    @{ Path = 'qa/windows/10-tuple-updates.srp'; Marker = 'SCARP_STUDIO_GUI_TUPLE_UPDATE_OK' }
+  )) {
+    if (-not (Test-Path -LiteralPath $fixture.Path -PathType Leaf)) { throw "Missing QA fixture: $($fixture.Path)" }
+    [void](Assert-ScarpCommand -Name "Verify $($fixture.Path)" -Arguments @(
+      'verify', '--diagnostic-format=json', '--', $fixture.Path
+    ) -ExpectedExitCode 0)
+    $ran = Assert-ScarpCommand -Name "Run $($fixture.Path)" -Arguments @(
+      'exec', '--diagnostic-format=json', '--', $fixture.Path
+    ) -ExpectedExitCode 0 -ExpectedMarker $fixture.Marker
+    if ($ran -ne $fixture.Marker) { throw "Unexpected alpha.20 fixture output: $ran" }
+  }
+}
+
 $booleanSource = 'qa/windows/03-boolean-input.srp'
 $booleanInput = 'qa/windows/03-boolean-input.stdin'
 if (-not (Test-Path -LiteralPath $booleanInput -PathType Leaf)) {

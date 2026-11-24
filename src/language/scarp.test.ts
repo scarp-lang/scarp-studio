@@ -154,6 +154,26 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
     }
   });
 
+  it('colors complete exact decimal literals without accepting malformed suffixes or exponents', () => {
+    const root = captureProvider().tokenizer.root;
+    // Check the first anchored rule that matches, just as the tokenizer does.
+    const token = (value: string) => {
+      for (const [rule, action] of root) {
+        const match = new RegExp('^(?:' + rule.source + ')').exec(value);
+        if (match) return [match[0], action];
+      }
+      return null;
+    };
+    for (const value of ['0.1d', '42d', '1.20d', '0001d']) {
+      expect(token(value)).toEqual([value, 'number']);
+    }
+    for (const value of ['1.2d_more', '42d2', '1e3d', '1.2E-4d']) {
+      expect(token(value)).toEqual([value, 'number.invalid']);
+    }
+    expect(token('0.1d + 0.2d')).toEqual(['0.1d', 'number']);
+    expect(token('1.2E-4')).toEqual(['1.2E-4', 'number']);
+  });
+
   it('colors published Unicode scalar escapes while leaving malformed forms unrecognized', () => {
     const escape = captureProvider().tokenizer.string.find(([rule, token]) =>
       token === 'string.escape' && rule.source.includes('u')
@@ -240,6 +260,12 @@ describe('Scarp editor assistance registration', () => {
       provideHover: (model: unknown, position: unknown) => unknown;
     };
     expect(hoverHandler.provideHover(giantModel, tooFar)).toBeNull();
+    const decimalModel = { ...model, getLineContent: () => 'bind sum = 0.1d;' };
+    const decimalHover = hoverHandler.provideHover(decimalModel, { lineNumber: 1, column: 14 });
+    expect(decimalHover).toMatchObject({
+      range: { startColumn: 12, endColumn: 16 },
+      contents: [{ value: expect.stringContaining('alpha.20') }, { value: expect.stringContaining('base-10') }],
+    });
     const commentModel = { ...model, getLineContent: () => '// func' };
     expect(handler.provideCompletionItems(commentModel, { lineNumber: 1, column: 8 }).suggestions).toEqual([]);
     // Mid-word accepting "funcra" must replace the entire existing token.

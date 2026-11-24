@@ -1,4 +1,4 @@
-/** Editor-only Scarp assistance, including published alpha.12 features.
+/** Editor-only Scarp assistance, including published alpha.20 features.
  * These templates do not replace parser/compiler validation.
  */
 import { lineBreakWidth, nextLineBreak } from '../model/sourceLines';
@@ -317,6 +317,21 @@ const templates: readonly ScarpCompletion[] = [
     documentation: 'Since alpha.11: requires interactive prompt mode. Studio preloads replies in its Program Input panel; it is not a live terminal.',
     insertText: 'input_decimal("${1:Amount: }")',
   },
+  {
+    label: 'decimal literal', kind: 'snippet', detail: 'Exact decimal literal (alpha.20+)',
+    documentation: 'Since alpha.20: use a lowercase d suffix, e.g. 0.1d or 42d. Exact base-10 arithmetic; no exponent or implicit float/integer conversion. Precision limits remain compiler-enforced.',
+    insertText: '${1:0.1}d',
+  },
+  {
+    label: 'tuple update', kind: 'snippet', detail: 'Persistent tuple replacement (alpha.20+)',
+    documentation: 'Since alpha.20: assign through a mutable var tuple at a nonnegative integer literal index. The replacement must match the exact member type; bind, dynamic indices and compound indexed assignment are rejected. Earlier aliases retain their original snapshot.',
+    insertText: '${1:position}[${2:0}] = ${3:50};',
+  },
+  {
+    label: 'tuple ordering', kind: 'snippet', detail: 'Lexicographic tuple ordering (alpha.20+)',
+    documentation: 'Since alpha.20: equal structural types containing only ordered numeric members (including nested tuples) compare at the first differing member. Strings and booleans are not ordered tuple members.',
+    insertText: '(${1:10}, ${2:20}) < (${3:30}, ${4:40})',
+  },
   // Published alpha.12 interpreter features. No native aggregate codegen
   // or general user-defined generics are promised by editor suggestions.
   {
@@ -420,6 +435,27 @@ export function isScarpCodePosition(line: string, zeroBasedOffset: number): bool
     else if (char === '/' && line[index + 1] === '/') return false;
   }
   return !insideString;
+}
+
+/** Locate a complete decimal token for hover; bounded and code-only.
+ * Do not mistake an identifier suffix, radix literal or exponent for decimal.
+ */
+export function scarpDecimalLiteralAt(
+  line: string, offset: number,
+): { start: number; end: number } | null {
+  if (line.length > MAX_ASSIST_SCAN_UNITS || !isScarpCodePosition(line, offset)) return null;
+  // Consume a complete numeric-looking run, including malformed suffixes,
+  // so the tail of an invalid number cannot be reinterpreted as a literal.
+  for (const match of line.matchAll(/\b[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?[A-Za-z0-9_]*/g)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (offset < start) break;
+    if (offset >= end) continue;
+    if (start > 0 && line[start - 1] === '.') return null;
+    if (!/^[0-9]+(?:\.[0-9]+)?d$/.test(match[0])) return null;
+    return isScarpCodePosition(line, start) ? { start, end } : null;
+  }
+  return null;
 }
 
 export interface ScarpFunctionSymbol {

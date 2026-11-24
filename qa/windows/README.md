@@ -2,7 +2,7 @@
 
 These are **disposable, source-only QA fixtures**, not examples to execute automatically.
 They are intended for the **unpublished** `v0.0.2-alpha.1` candidate. The
-official `Scarp v0.0.6-alpha.19` compiler is downloaded separately and
+official `Scarp v0.0.6-alpha.20` compiler is downloaded separately and
 must be independently checked and explicitly approved before use.
 
 ## Prepare
@@ -13,8 +13,8 @@ must be independently checked and explicitly approved before use.
    [the offline verifier](../../scripts/verify-windows-artifacts.ps1)
    and record the source SHA + run URL. The installer is **unsigned**; do not
    assume a Windows security warning is harmless.
-2. Independently obtain the official alpha.19 compiler. Its Windows ZIP SHA-256
-   is `e00ec9bfd2447fc2c54ae8101933da3c6899251300711627115db5239e559023`.
+2. Independently obtain the official alpha.20 compiler. Its Windows ZIP SHA-256
+   is `68a5ee47f24e2e36dd7fb1fcc6257feaea291d801048f7866bff1a7e4994aca2`.
    Do not execute a detected binary until you have reviewed the exact path
    and approved the trust prompt in Studio.
 3. **Copy** these `.srp` files into a disposable folder. Never use a real
@@ -29,7 +29,9 @@ must be independently checked and explicitly approved before use.
 | `02-fixed-array.srp` | Open, Verify, Run | Verify succeeds; Run prints `SCARP_STUDIO_GUI_ARRAY_OK` |
 | `06-while-control.srp` | Open, Verify, Run, then choose **While, Break and Continue** in Examples | Verify succeeds; Run prints `SCARP_STUDIO_GUI_WHILE_OK`; the same source appears as an editable Scarp starter template |
 | `07-nested-loop.srp` | Open, Verify, Run, then choose **Nested Repeat and While** in Examples | Verify succeeds; Run prints `SCARP_STUDIO_GUI_NESTED_LOOP_OK`; the same source appears as an editable Scarp starter template |
-| `08-declaration-outline.srp` | Open, Verify, Run; inspect the Declaration Outline and Monaco symbols | The sidebar lists public Task record, Lookup variant and pure is_done function. Verify succeeds and Run prints exactly `SCARP_STUDIO_GUI_DECLARATION_OK`. This fixture is tested by all three pinned official compilers |
+| `08-declaration-outline.srp` | Open, Verify, Run; inspect the Declaration Outline and Monaco symbols | The sidebar lists public Task record, Lookup variant and pure is_done function. Verify succeeds and Run prints exactly `SCARP_STUDIO_GUI_DECLARATION_OK`. This fixture is tested by all four pinned official compilers |
+| `09-decimal-literals.srp` | Choose **Exact Decimal Literals** in Examples, save a disposable copy, Verify/Run with alpha.20 | Exactly `SCARP_STUDIO_GUI_DECIMAL_LITERAL_OK`; exact literal hover describes the d suffix |
+| `10-tuple-updates.srp` | Choose **Tuple Updates and Ordering** in Examples, save a disposable copy, Verify/Run with alpha.20 | Exactly `SCARP_STUDIO_GUI_TUPLE_UPDATE_OK`; original tuple snapshot is preserved |
 | `05-array-update.srp` | Open, Verify, Run with Scarp alpha.18 or later | Verify succeeds; Run prints `SCARP_STUDIO_GUI_ARRAY_UPDATE_OK` and original fixed-array values remain unchanged |
 | `03-boolean-input.srp` | Enable **prompt mode**, paste the contents of `03-boolean-input.stdin` into **Program Input**, then Run | Output includes `SCARP_STUDIO_GUI_BOOLEAN_OK`; input is preloaded, **not a live terminal** |
 | `04-invalid-diagnostic.srp` | Verify, then select the diagnostic or press F8 | Verify fails with a genuine compiler error; navigation points to the unchanged offending source |
@@ -95,4 +97,4 @@ The final Verify command is **expected to fail**; it tests compiler diagnostics,
 not a successful source verification. This standalone check does not replace
 hands-on Windows GUI acceptance.
 
-The current official alpha.19 compiler retains the existing Scarp source-level CLI. Its new callable APIs are for Rust host embedding; Studio does not claim first-class function values or closure syntax. Both alpha.18 and alpha.19 are checked separately in Windows CI.
+The current official alpha.20 compiler retains the existing Scarp source-level CLI. The Linux native object-emission API is for Rust host embedding; Studio continues to use the interpreter CLI. Alpha.18, alpha.19 and alpha.20 are checked separately in Windows CI.
