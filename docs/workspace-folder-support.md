@@ -86,3 +86,12 @@ automatically. When two or more nested projects exist, the user must choose
 the intended **Project target** explicitly. Refresh preserves a selected,
 still-present project, but retires a removed project target instead of running
 against its stale path.
+
+## Automated compiler integration coverage
+
+The Windows CI workflow creates two independent official Scarp projects
+inside a shared manifest-less workspace, changes each child entrypoint to a
+unique marker, and verifies **Info**, **Verify** and **Run** against each child
+path. This checks pinned compiler compatibility and sibling isolation without
+claiming that a headless workflow has exercised Tauri's GUI. The Windows P41
+manual acceptance case remains required.

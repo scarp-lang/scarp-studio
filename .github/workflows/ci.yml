@@ -231,6 +231,41 @@ jobs:
           }
           Remove-Item studio-project-smoke/tests/failing.srp
 
+      - name: Smoke two independent nested Scarp project roots
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $binary = Get-ChildItem scarp-compiler -File -Recurse -Filter "scarp.exe" | Select-Object -First 1
+          if (-not $binary) { throw "Pinned Scarp compiler missing for nested workspace smoke" }
+          $root = "studio-multi-project-smoke"
+          New-Item -ItemType Directory -Path $root -ErrorAction Stop | Out-Null
+          $workspace = (Resolve-Path -LiteralPath $root).Path
+          foreach ($name in @("basic_tuple", "loops")) {
+            $target = Join-Path $workspace $name
+            & $binary.FullName init $target
+            if ($LASTEXITCODE -ne 0) { throw "Scarp init failed in nested project $name" }
+            if (-not ((Test-Path (Join-Path $target "scarp.project")) -or
+                      (Test-Path (Join-Path $target "Scarp.project")))) {
+              throw "Nested project manifest missing for $name"
+            }
+            $main = Join-Path $target "src/main.srp"
+            $marker = "STUDIO_NESTED_PROJECT_$name"
+            ('print("' + $marker + '");') | Set-Content -LiteralPath $main -Encoding utf8
+            & $binary.FullName project info --json -- $target | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Nested project info failed for $name" }
+            & $binary.FullName verify --diagnostic-format=json -- $target | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Nested project verification failed for $name" }
+            $output = & $binary.FullName run --max-steps 200000 --max-prints 1000 --max-input-line-bytes 4096 --max-input-bytes 16384 --max-input-reads 256 --diagnostic-format=json -- $target | Out-String
+            if ($LASTEXITCODE -ne 0 -or -not $output.Contains($marker)) {
+              throw "Nested project Run did not execute the expected entrypoint for $name"
+            }
+          }
+          if ((Test-Path (Join-Path $workspace "scarp.project")) -or
+              (Test-Path (Join-Path $workspace "Scarp.project"))) {
+            throw "Parent workspace unexpectedly contains a Scarp project manifest"
+          }
+          Write-Host "Both child projects passed Info, Verify and Run without a parent manifest."
+
       - name: Test Studio native process service against pinned Scarp compiler
         shell: pwsh
         run: |
