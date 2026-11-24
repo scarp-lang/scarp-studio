@@ -94,8 +94,9 @@ describe('bounded Scarp source lexical index', () => {
 
   it('treats surrogate pairs as two Monaco UTF-16 units', () => {
     const scan = scanScarpSource('print("🚀");\n// हिंदी\nvar x = 1;');
-    expect(scan.tokens.find(t => t.text === '"🚀"')?.end -
-      scan.tokens.find(t => t.text === '"🚀"')!.start).toBe(4);
+    const stringToken = scan.tokens.find(t => t.text === '"🚀"');
+    expect(stringToken).toBeDefined();
+    expect(stringToken!.end - stringToken!.start).toBe(4);
     expect(scan.tokens.find(t => t.text === 'var')?.line).toBe(3);
   });
 
