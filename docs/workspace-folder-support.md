@@ -222,3 +222,21 @@ does not recursively scan folders, invoke Scarp, read disk, write source,
 persist private comments, or diagnose the compiler's semantic correctness.
 Review hints are advisory and do not modify Monaco's authoritative compiler
 Problems panel.
+
+
+## Code References — lexical, open-buffers only
+
+The collapsed **CODE REFERENCES** section searches code identifiers in
+already-open Scarp buffers. Enter a conservative ASCII identifier, or click
+**At cursor** to use the exact code identifier under the current Monaco
+caret. Search can include all open buffers or only the active tab, with
+optional case-insensitive matching. Strings and comments do not count.
+The UI distinguishes declaration-like words from ordinary usages but
+does not pretend to resolve semantic scopes, imports or overloads.
+
+At most 32 files, 2 Mi UTF-16 source units and 320 matches are examined.
+Results that hit budgets are marked incomplete. Previews are bounded and
+escaped; each **Go to reference** first verifies the document ID, current
+revision and exact matched code spelling, and the editor separately verifies
+its current Monaco snapshot. No disk reads, filesystem path inference,
+compiler execution or source edits are performed by this feature.

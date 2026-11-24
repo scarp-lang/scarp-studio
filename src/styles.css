@@ -790,3 +790,35 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .workspace-source-row > button:disabled { opacity: .5; cursor: not-allowed; }
 .workspace-source-summary { margin-top: 3px; font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
 .workspace-source-warning { margin: 3px 0 0; font-size: 10px; line-height: 1.4; }
+
+
+/* Code references: source-only lexical matching, no disk search or writes. */
+.references-panel { border-top: 1px solid var(--border); }
+.references-content { padding: 4px 8px 12px; }
+.references-search { display: flex; gap: 5px; align-items: center; }
+.references-search input {
+  flex: 1 1 0; min-width: 0; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; padding: 5px; font-size: 10px;
+}
+.references-search button {
+  flex: 0 0 auto; color: var(--text); background: var(--raised);
+  border: 1px solid var(--border); border-radius: 4px; padding: 5px; font-size: 10px;
+}
+.references-search button:disabled { opacity: .5; cursor: not-allowed; }
+.references-options { display: flex; flex-wrap: wrap; gap: 9px; padding: 7px 0; }
+.references-options label { display: flex; align-items: center; gap: 3px; font-size: 10px; }
+.references-totals { display: flex; flex-direction: column; gap: 2px; font-size: 10px; padding-bottom: 5px; }
+.references-list { display: flex; flex-direction: column; gap: 6px; }
+.references-row { border: 1px solid var(--border); border-radius: 4px; padding: 5px; overflow: hidden; }
+.references-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px; font-size: 10px; }
+.references-title span { color: var(--muted); }
+.references-row > code {
+  display: block; margin: 4px 0; white-space: pre-wrap;
+  overflow-wrap: anywhere; font: 10px/1.5 Consolas, monospace;
+}
+.references-row > button {
+  background: var(--raised); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; font-size: 10px; padding: 3px 5px;
+}
+.references-row > button:hover:not(:disabled) { border-color: var(--accent); }
+.references-row > button:disabled { opacity: .5; cursor: not-allowed; }
