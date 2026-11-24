@@ -19,6 +19,19 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Test the exact PR source; main push CI separately tests the merged commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify checked-out source identity
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -cne $env:EXPECTED_SOURCE_SHA) { throw 'Unexpected checkout commit' }
+          Write-Host "Exact tested source: $actual"
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -734,7 +747,29 @@ jobs:
           Copy-Item -LiteralPath $setup[0].FullName -Destination $stage
           Copy-Item -LiteralPath "SHA256SUMS.txt" -Destination $stage
           $runUrl = "https://github.com/scarp-lang/scarp-studio/actions/runs/$env:GITHUB_RUN_ID"
-          & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl
+          $sourceCommit = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read checked-out commit' }
+          $sourceTree = (git rev-parse 'HEAD^{tree}').Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read checked-out tree' }
+          $report = & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $sourceCommit -RunUrl $runUrl -AsJson | ConvertFrom-Json
+          if (-not $report.verified -or $report.files.Count -ne 2) { throw 'Invalid artifact verification report' }
+          $candidate = Get-Content ".github/release-candidates/v0.0.2-alpha.1.json" -Raw | ConvertFrom-Json
+          $provenance = [ordered]@{
+            schema_version = 1
+            source_commit = $sourceCommit
+            source_tree = $sourceTree
+            run_url = $runUrl
+            run_attempt = [int]$env:GITHUB_RUN_ATTEMPT
+            studio_version = $candidate.version
+            compiler_version = $candidate.compilerCompatibilityVersion
+            compiler_zip_sha256 = $candidate.compilerWindowsZipSha256
+            publication_authorized = $false
+            manual_gui_acceptance = 'NOT RUN'
+            files = @($report.files | ForEach-Object {
+              [ordered]@{ file = $_.file; sha256 = $_.sha256; size_bytes = $_.size_bytes }
+            })
+          }
+          $provenance | ConvertTo-Json -Depth 5 | Set-Content -Path WINDOWS-CANDIDATE-PROVENANCE.json -Encoding utf8
           # Extra unverified files (including a second plausible installer)
           # must fail closed even when the original two hashes match.
           $strayExe = Join-Path $stage "old-build-setup.exe"
@@ -742,7 +777,7 @@ jobs:
           # Hidden files also count; Get-ChildItem without -Force would miss it.
           [System.IO.File]::SetAttributes($strayExe, [System.IO.FileAttributes]::Hidden)
           try {
-            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl -AsJson | Out-Null
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $sourceCommit -RunUrl $runUrl -AsJson | Out-Null
             throw "Unverified extra Windows executable was erroneously accepted."
           } catch {
             if ($_.Exception.Message -notmatch 'exactly three candidate files') { throw }
@@ -757,7 +792,7 @@ jobs:
           $folderInfo = Get-Item -LiteralPath $strayFolder -Force
           $folderInfo.Attributes = $folderInfo.Attributes -bor [System.IO.FileAttributes]::Hidden
           try {
-            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl -AsJson | Out-Null
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $sourceCommit -RunUrl $runUrl -AsJson | Out-Null
             throw "Hidden stray Windows candidate directory was erroneously accepted."
           } catch {
             if ($_.Exception.Message -notmatch 'exactly three candidate files') { throw }
@@ -769,7 +804,7 @@ jobs:
           $stagedExe = Join-Path $stage "scarp-studio.exe"
           [System.IO.File]::AppendAllText($stagedExe, "tampered")
           try {
-            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $env:GITHUB_SHA -RunUrl $runUrl -AsJson | Out-Null
+            & ./scripts/verify-windows-artifacts.ps1 -ArtifactDirectory $stage -SourceCommit $sourceCommit -RunUrl $runUrl -AsJson | Out-Null
             throw "Tampered Windows candidate was erroneously accepted."
           } catch {
             if ($_.Exception.Message -notmatch 'SHA-256 mismatch') { throw }
@@ -793,6 +828,11 @@ jobs:
           path: |
             package-lock.json
             src-tauri/Cargo.lock
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scarp-studio-windows-provenance
+          path: WINDOWS-CANDIDATE-PROVENANCE.json
           if-no-files-found: error
       - name: Ensure builds did not modify dependency lockfiles
         shell: bash

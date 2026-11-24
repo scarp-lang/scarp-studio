@@ -25,13 +25,14 @@ cargo check --locked --manifest-path src-tauri/Cargo.toml
 cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 ```
 
-The offline candidate checker validates versions in `package.json`, `package-lock.json` (top level and root package), Tauri, Cargo and Cargo.lock. Its manifest explicitly requires **manual Windows acceptance and no publication authorization**. Neither check command creates a tag, upload or release.
+The offline candidate checker validates the exact target release version, the manual acceptance compiler version/digest, and versions in `package.json`, `package-lock.json` (top level and root package), Tauri, Cargo and Cargo.lock. Its manifest explicitly requires **manual Windows acceptance and no publication authorization**. Neither check command creates a tag, upload or release.
 
 GitHub Actions must additionally show a successful exact-head Windows run with the SHA-pinned **official Scarp alpha.20 Windows CLI** (while retaining separate alpha.10–alpha.15 and alpha.17 backwards-compatibility checks), frontend tests, native service tests, build, installer, SHA-256 and deliberate tamper rejection. The alpha.17 gate checks fixed-array reads, preloaded boolean input and JSON v1 diagnostics; the alpha.18 gate additionally checks immutable `array_set`, no-argument `exec` selecting `src/main.srp`, native process integration and compiler discovery; the separate alpha.19 gate verifies the published official CLI version and digest, checked-in QA programs, and native execution/discovery; this does not imply Studio GUI prompt support.
 
 ## 3. Verify CI artifacts from the same run
 
 1. Open the successful GitHub Actions run for the **intended source commit**, not an earlier passing run. Download `scarp-studio-windows-unbundled` and `scarp-studio-windows-nsis-candidate` from that run only.
+   Download the separate `scarp-studio-windows-provenance` artifact when present. It identifies the checked-out commit/tree, run attempt, compiler pin and individual executable hashes. CI explicitly checks out PR head; merged-main CI must still pass separately. Keep this metadata outside the three-file verification directory. A provenance JSON file is not a signature or an independent guarantee of authenticity.
 2. Extract `scarp-studio.exe`, the single `*-setup.exe` and `SHA256SUMS.txt` into one **new, empty test directory** with no extra files or subfolders.
 3. In PowerShell run the existing verifier, replacing both placeholders with the *actual* source SHA and exact workflow run URL:
 
@@ -53,7 +54,7 @@ Test at least: editor launch/WebView2 and installer/uninstaller; file Open/Save/
 Use the checked-in [Windows GUI smoke examples](../qa/windows/README.md)
 for an independently reproducible Run, Verify, array, preloaded boolean-input
 and invalid-diagnostic check. They are checked by CI against the published
-alpha.17 and alpha.18 CLIs, but they do **not** substitute for running the actual Windows
+alpha.17, alpha.18, alpha.19 and alpha.20 CLIs, but they do **not** substitute for running the actual Windows
 Studio application with its exact-head build.
 
 If the candidate fails, record reproducible steps, fix the source on a review branch, and repeat the **exact-head** automated and affected manual checks.

@@ -24,6 +24,9 @@ function fixture() {
     manualWindowsAcceptanceRequired: true, publicationAuthorized: false,
   };
   json(candidatePath, candidate);
+  write('docs/windows-11-acceptance.md',
+    '- Obtain the official Scarp `v' + candidate.compilerCompatibilityVersion +
+    '` Windows compiler separately.\n  `' + candidate.compilerWindowsZipSha256 + '`.\n');
   json('package.json', { version: candidate.version });
   json('package-lock.json', {
     version: candidate.version, packages: { '': { version: candidate.version } },
@@ -89,6 +92,26 @@ describe('read-only Scarp Studio prerelease gate', () => {
       const f = fixture();
       f.json(candidatePath, { ...f.candidate, ...patch });
       assert.throws(() => checkReleaseCandidate(f.root), /Invalid or publication-enabled/);
+    }
+  });
+
+  it('rejects a self-consistent but different release version before checking package versions', () => {
+    const f = fixture();
+    f.json(candidatePath, { ...f.candidate, version: '0.0.2-alpha.2', tag: 'v0.0.2-alpha.2' });
+    assert.throws(() => checkReleaseCandidate(f.root), /Invalid or publication-enabled/);
+  });
+
+  it('rejects a stale or malformed manual compiler download instruction', () => {
+    const f = fixture();
+    const path = 'docs/windows-11-acceptance.md';
+    const correct = readFileSync(join(f.root, path), 'utf8');
+    for (const broken of [
+      correct.replace('alpha.20', 'alpha.19'),
+      correct.replace(f.candidate.compilerWindowsZipSha256, 'b'.repeat(64)),
+      'No compiler download instructions.',
+    ]) {
+      f.write(path, broken);
+      assert.throws(() => checkReleaseCandidate(f.root), /Windows acceptance compiler version or digest/);
     }
   });
 

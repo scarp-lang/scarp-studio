@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const descriptor = '.github/release-candidates/v0.0.2-alpha.1.json';
+const expectedVersion = '0.0.2-alpha.1';
 
 function readJson(root, path) {
   return JSON.parse(readFileSync(join(root, path), 'utf8'));
@@ -39,7 +40,7 @@ function versionFromCargoLock(source) {
 export function checkReleaseCandidate(root = defaultRoot) {
   const candidate = readJson(root, descriptor);
   const version = candidate?.version;
-  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+-alpha\.\d+$/.test(version) ||
+  if (version !== expectedVersion ||
       candidate.tag !== 'v' + version ||
       candidate.channel !== 'prerelease' ||
       candidate.target !== 'windows-x64' ||
@@ -48,6 +49,16 @@ export function checkReleaseCandidate(root = defaultRoot) {
       candidate.compilerCompatibilityVersion !== '0.0.6-alpha.20' ||
       candidate.compilerWindowsZipSha256 !== '68a5ee47f24e2e36dd7fb1fcc6257feaea291d801048f7866bff1a7e4994aca2') {
     throw new Error('Invalid or publication-enabled alpha.1 release-candidate descriptor.');
+  }
+
+  // The first documented compiler hash must describe the candidate currently
+  // offered to Windows testers, not an older compatibility baseline.
+  const acceptance = readFileSync(join(root, 'docs/windows-11-acceptance.md'), 'utf8');
+  const compilerInstruction = acceptance.match(/^- Obtain the official Scarp `v([^\x60]+)` Windows compiler[^\n]*\r?\n[ \t]+`([0-9a-f]{64})`\./m);
+  if (!compilerInstruction ||
+      compilerInstruction[1] !== candidate.compilerCompatibilityVersion ||
+      compilerInstruction[2] !== candidate.compilerWindowsZipSha256) {
+    throw new Error('Windows acceptance compiler version or digest disagrees with candidate.');
   }
 
   const pkg = readJson(root, 'package.json');

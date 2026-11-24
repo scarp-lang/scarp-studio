@@ -9,6 +9,7 @@ must be independently checked and explicitly approved before use.
 
 1. Obtain the **exact-head** Scarp Studio candidate Windows executable and NSIS
    installer from the same successful GitHub Actions run linked by [draft PR #82](https://github.com/scarp-lang/scarp-studio/pull/82).
+   Also download the separate Windows provenance JSON if present and compare its checked-out commit/tree and hashes with the run. Keep it outside the three-file verification folder.
    Check the two binaries and `SHA256SUMS.txt` using
    [the offline verifier](../../scripts/verify-windows-artifacts.ps1)
    and record the source SHA + run URL. The installer is **unsigned**; do not
