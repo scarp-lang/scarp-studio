@@ -28,7 +28,7 @@ Choose the **Scarp-Practice** parent folder once. Explorer headings include nest
 2. Open the parent workspace; confirm empty and populated folder headings and Expand/Collapse All behavior.
 3. Open basic_tuple/main.srp, edit, Ctrl+S, verify the disk bytes changed and the editor no longer shows an unsaved marker.
 4. Make another local edit while independently changing that disk file. Confirm unsafe Save is refused, dirty text is retained and Save As can preserve a separate copy.
-5. Check Quick Open, path filter, Refresh after file creation/rename, two dirty tabs and folder switch during a slow read.
+5. Check Quick Open, Search Project across nested paths (including unsaved buffer search), path filter, Refresh after file creation/rename, duplicate `main.srp` tab labels, two dirty tabs and folder switch during a slow read.
 6. Check inaccessible/symlinked directories and depth/count limit warnings, including more than 63 children.
 
 Automated checks are not evidence of actual Windows GUI acceptance.

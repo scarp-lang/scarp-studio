@@ -1,8 +1,8 @@
 import { sameFilePath } from './documents';
 import { isScarpTestReportPath } from './projectTestReport';
 
-/** The Explorer lists only sources from the selected folder and a bounded
- * number of immediate root/src/tests/examples sources. Treat compiler test
+/** The Explorer lists only sources from a bounded user-selected workspace.
+ * The compiler's test schema still authorizes only tests/*.srp. Treat compiler test
  * report paths as labels, never filesystem paths to join or read directly.
  */
 export interface TestSourceListing {

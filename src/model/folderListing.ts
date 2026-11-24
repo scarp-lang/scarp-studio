@@ -123,9 +123,9 @@ export function collectTopLevelScarpNames(
   };
 }
 
-/** The Explorer displays at most 200 sources across the chosen root and the
- * three fixed project folders. Round-robin selection prevents a crowded root
- * (or one large tests folder) from hiding all sources in another directory.
+/** The Explorer displays at most 200 sources across the selected workspace's
+ * bounded directory set. Round-robin selection prevents a crowded directory
+ * from hiding all sources in another scanned directory.
  * Inputs are already sanitized and independently bounded by
  * collectTopLevelScarpNames; this is not a filesystem permission boundary.
  */
