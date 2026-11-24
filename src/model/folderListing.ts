@@ -22,18 +22,25 @@ function safePathSegment(segment: string): boolean {
   return !!segment && segment !== '.' && segment !== '..' &&
     !/[/\\\x00-\x1f]/.test(segment);
 }
+function safeBrowsableDirectorySegment(segment: string): boolean {
+  return safePathSegment(segment) && !segment.startsWith('.') &&
+    !SKIPPED_FOLDERS.has(segment.toLowerCase());
+}
 
 export function safeRelativeScarpDirectory(path: string): boolean {
   if (!path || path.length > 1024) return false;
   const segments = path.split('/');
-  return segments.length <= MAX_SCARP_FOLDER_DEPTH && segments.every(safePathSegment);
+  return segments.length <= MAX_SCARP_FOLDER_DEPTH &&
+    segments.every(safeBrowsableDirectorySegment);
 }
 
 export function safeRelativeScarpSourceName(name: string): boolean {
   if (!name || name.length > 1024) return false;
   const segments = name.split('/');
+  const basename = segments[segments.length - 1];
   return segments.length <= MAX_SCARP_FOLDER_DEPTH + 1 &&
-    segments.every(safePathSegment) && isScarpPath(segments[segments.length - 1]);
+    segments.slice(0, -1).every(safeBrowsableDirectorySegment) &&
+    safePathSegment(basename) && isScarpPath(basename);
 }
 
 export function safeScarpDirectoryEntry(entry: FolderEntryCandidate & { isDirectory?: boolean }): boolean {
