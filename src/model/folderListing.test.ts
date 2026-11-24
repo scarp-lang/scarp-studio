@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   collectTopLevelScarpNames, selectBalancedScarpProjectNames,
   MAX_DISPLAYED_SCARP_FILES, MAX_INSPECTED_FOLDER_ENTRIES,
-  safeTopLevelSourceName, type FolderEntryCandidate,
+  safeTopLevelSourceName, safeRelativeScarpSourceName, type FolderEntryCandidate,
 } from './folderListing';
 
 function file(name: string, overrides: Partial<FolderEntryCandidate> = {}): FolderEntryCandidate {
@@ -20,11 +20,20 @@ describe('safe and bounded top-level Scarp folder listing', () => {
     expect(listing.truncated).toBe(false);
   });
 
-  it('rejects separator traversal names and embedded NUL', () => {
-    for (const name of ['../escape.srp', '..\\escape.srp', 'nested/file.srp', 'a\0b.srp']) {
+  it('rejects separator traversal names and control characters consistently', () => {
+    for (const name of ['../escape.srp', '..\\escape.srp', 'nested/file.srp', 'a\0b.srp', 'bad\nname.srp', 'tab\tname.srp', 'ctrl\x1fname.srp']) {
       expect(safeTopLevelSourceName(file(name))).toBe(false);
+      expect(safeRelativeScarpSourceName(name)).toBe(false);
     }
     expect(safeTopLevelSourceName(file('plain.srp'))).toBe(true);
+  });
+
+  it('never lists C0-control filenames read from a native directory', () => {
+    const listing = collectTopLevelScarpNames([
+      file('safe.srp'), file('hidden\\nproject.srp'.replace('\\n', '\n')),
+      file('tab\\tname.srp'.replace('\\t', '\t')),
+    ]);
+    expect(listing.names).toEqual(['safe.srp']);
   });
 
   it('ignores symlink entries even if their names have a Scarp extension', () => {

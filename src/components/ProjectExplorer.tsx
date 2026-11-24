@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { buildExplorerGroups, filterExplorerGroups, isHiddenByCollapsedExplorerAncestor, type ExplorerDirectory, type ExplorerFilter } from '../model/explorerView';
+import { buildExplorerGroups, filterExplorerGroups, isHiddenByCollapsedExplorerAncestor, explorerHeadingIndent, explorerSourceIndent, explorerDirectoryLabel, type ExplorerDirectory, type ExplorerFilter } from '../model/explorerView';
 import type { StudioDocument } from '../model/documents';
 import type { ListedProjectSource } from '../model/projectQuickOpen';
 
@@ -55,15 +55,17 @@ export function ProjectExplorer({ files, directories = [], documents, activeId, 
       const groupId = 'studio-explorer-group-' + index;
       return <section key={group.directory} className="explorer-group">
         <button type="button" className="explorer-group-heading" aria-expanded={expanded} aria-controls={groupId}
-          style={{ paddingLeft: 12 + 12 * Math.min(5, group.directory ? group.directory.split('/').length - 1 : 0) }}
+          title={group.directory || 'Workspace root'} aria-label={'Folder ' + (group.directory || 'Project root')}
+          style={{ paddingLeft: explorerHeadingIndent(group.directory) }}
           disabled={searching} onClick={() => toggle(group.directory)}>
           <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-          <strong>{group.directory ? group.directory + '/' : 'Project root'}</strong>
+          <strong>{explorerDirectoryLabel(group.directory, searching)}</strong>
           <span className="explorer-count">{group.sources.length}</span>
         </button>
         <div id={groupId} hidden={!expanded}>
           {group.sources.map(source => <button type="button" className={'file-row explorer-source' + (source.active ? ' selected' : '')}
             key={source.path} aria-current={source.active ? 'true' : undefined} title={source.path}
+            style={{ paddingLeft: explorerSourceIndent(group.directory) }}
             disabled={busy} onClick={() => onOpen(source.path)}>
             <span aria-hidden="true" className="file-glyph">S</span>
             <span className="file-name">{source.basename}</span>

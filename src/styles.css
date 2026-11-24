@@ -508,6 +508,9 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .explorer-group-heading { width: 100%; display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: transparent; color: var(--text); border: 0; text-align: left; font-size: 11px; }
 .explorer-group-heading:not(:disabled):hover { background: var(--raised); }
 .explorer-group-heading:disabled { opacity: 1; }
+.explorer-group-heading strong {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .explorer-count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .explorer-source { padding-left: 18px; border-inline-start: 2px solid transparent; }
 .explorer-source.selected { border-inline-start-color: var(--accent); }

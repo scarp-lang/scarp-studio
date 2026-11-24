@@ -108,3 +108,24 @@ export function filterExplorerGroups(
       terms.every(term => source.name.toLowerCase().includes(term))),
   })).filter(group => group.sources.length > 0);
 }
+
+/** Indentation is presentation-only, bounded by the folder scanner depth.
+ * Root files remain visible and nested sources line up beneath their folder
+ * headings in the narrow Windows Explorer pane.
+ */
+export function explorerDirectoryDepth(directory: ExplorerDirectory): number {
+  return directory ? Math.min(5, directory.split('/').length) : 0;
+}
+export function explorerHeadingIndent(directory: ExplorerDirectory): number {
+  return 12 + 12 * explorerDirectoryDepth(directory);
+}
+export function explorerSourceIndent(directory: ExplorerDirectory): number {
+  return 18 + 12 * explorerDirectoryDepth(directory);
+}
+/** Full paths distinguish filtered matches; a plain tree needs just the
+ * local basename, while the button title keeps the absolute context.
+ */
+export function explorerDirectoryLabel(directory: ExplorerDirectory, searching: boolean): string {
+  if (!directory) return 'Project root';
+  return (searching ? directory : directory.slice(directory.lastIndexOf('/') + 1)) + '/';
+}

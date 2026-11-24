@@ -86,10 +86,11 @@ export interface FolderListing {
 
 /** Never use untrusted directory entry names to construct arbitrary paths. */
 export function safeTopLevelSourceName(entry: FolderEntryCandidate): boolean {
+  // Keep filesystem scan membership and the Explorer/Quick Open validation
+  // aligned. Native filenames containing C0 control bytes must never enter
+  // source listings, even if they end with .srp.
   return entry.isFile && !entry.isSymlink &&
-    entry.name !== '.' && entry.name !== '..' &&
-    !/[/\\\0]/.test(entry.name) &&
-    isScarpPath(entry.name);
+    safePathSegment(entry.name) && isScarpPath(entry.name);
 }
 
 export function collectTopLevelScarpNames(

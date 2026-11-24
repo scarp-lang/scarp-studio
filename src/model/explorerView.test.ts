@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildExplorerGroups, filterExplorerGroups } from './explorerView';
+import { buildExplorerGroups, filterExplorerGroups, explorerDirectoryLabel, explorerHeadingIndent, explorerSourceIndent } from './explorerView';
 import { openedDocument, updateContent } from './documents';
 
 const file = (name: string) => ({ name, path: 'C:/project/' + name });
@@ -37,5 +37,23 @@ describe('bounded Explorer presentation', () => {
     expect(filterExplorerGroups(groups, 'item2', 'modified')[0].sources[0].documentId).toBe(opened.id);
     expect(filterExplorerGroups(groups, 'tests', 'modified')).toEqual([]);
     expect(filterExplorerGroups(groups, 'unknown', 'all')).toEqual([]);
+  });
+});
+
+describe('hierarchical nested Explorer presentation', () => {
+  it('labels nested folders by basename but shows full context during search', () => {
+    expect(explorerDirectoryLabel('', false)).toBe('Project root');
+    expect(explorerDirectoryLabel('basic_tuple', false)).toBe('basic_tuple/');
+    expect(explorerDirectoryLabel('basic_tuple/examples', false)).toBe('examples/');
+    expect(explorerDirectoryLabel('basic_tuple/examples', true)).toBe('basic_tuple/examples/');
+  });
+  it('indents nested file rows deeper than their headings, with a bounded depth', () => {
+    expect(explorerHeadingIndent('')).toBe(12);
+    expect(explorerSourceIndent('')).toBe(18);
+    expect(explorerHeadingIndent('basic_tuple')).toBe(24);
+    expect(explorerSourceIndent('basic_tuple')).toBe(30);
+    expect(explorerHeadingIndent('basic_tuple/examples')).toBe(36);
+    expect(explorerSourceIndent('basic_tuple/examples')).toBe(42);
+    expect(explorerSourceIndent('a/b/c/d/e/f')).toBe(78);
   });
 });
