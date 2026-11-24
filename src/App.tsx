@@ -12,6 +12,7 @@ import { pickSourcePath, saveAllModifiedSources, writeSourceFile } from './servi
 import { decidePickedSourceOpen } from './model/pickedSourceOpen';
 import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder } from './services/folders';
+import { disambiguateDocumentNames } from './model/documentLabels';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
@@ -306,6 +307,7 @@ export default function App() {
   const editorHandle = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
 
   const active = documents.find((document) => document.id === activeId) || null;
+  const documentLabels = useMemo(() => disambiguateDocumentNames(documents), [documents]);
   const stdinValidationError = useMemo(
     () => programInputValidationError(stdinText), [stdinText],
   );
@@ -2149,7 +2151,7 @@ export default function App() {
                 title={document.path || document.name}
               >
                 <span aria-hidden="true" className="file-glyph">S</span>
-                <span className="file-name">{document.name}</span>
+                <span className="file-name">{documentLabels.get(document.id) ?? document.name}</span>
                 {autoSaveReview.current.isHeld(document) && (
                   <span className="review-indicator" title="Review or Save these replacements; further editing resumes Auto Save">
                     Review
@@ -2222,7 +2224,7 @@ export default function App() {
                 aria-controls="scarp-editor-panel"
                 title={document.path || document.name}
               >
-                <span>{document.name}</span>
+                <span>{documentLabels.get(document.id) ?? document.name}</span>
                 {autoSaveReview.current.isHeld(document) && (
                   <span className="review-indicator" aria-label="Manual Save required after Replace All"
                     title="Replace All changes are held from Auto Save until manual Save, Undo or further editing">
@@ -2234,8 +2236,8 @@ export default function App() {
                   className="tab-close"
                   onClick={(event) => { event.stopPropagation(); void closeFile(document.id); }}
                   onKeyDown={(event) => { event.stopPropagation(); }}
-                  aria-label={'Close ' + document.name}
-                  title={'Close ' + document.name}
+                  aria-label={'Close ' + (documentLabels.get(document.id) ?? document.name)}
+                  title={'Close ' + (documentLabels.get(document.id) ?? document.name)}
                 >×</button>
               </div>
             ))}
