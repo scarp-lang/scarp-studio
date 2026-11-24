@@ -140,3 +140,28 @@ modifies source code. Large buffers are limited to 512 Ki UTF-16 units and
 24,000 lexical tokens, with 200 visible tasks maximum. A partial scan is
 always labeled incomplete. These insights are useful review heuristics, not
 compiler diagnostics or proof of correct syntax.
+
+
+## Working Changes: in-memory saved-versus-current diff
+
+The Explorer includes a collapsed **WORKING CHANGES** section. Expanding
+it compares the active Scarp document's current editor buffer against the
+last verified saved snapshot retained in editor state. It never reads the
+current file from disk, overwrites a file, performs an automatic merge,
+invokes a compiler or claims a source file was externally modified.
+
+The panel displays bounded changed-line groups with insertion/removal
+counts, two lines of context, collapsible context, and **Go to line** in the
+current editor. Navigation verifies the current document ID, revision,
+source text and mounted Monaco model before moving the caret. It never
+edits, saves or discards anything. The source previews are escaped and
+capped at 240 UTF-16 units per line.
+
+The diff engine compares original CR/LF/CRLF line endings as part of line
+identity. It trims common prefix/suffix lines and uses an exact LCS only
+within a fixed 400,000-cell work budget; 512 Ki UTF-16 source units and
+2,400 lines per snapshot are additional limits. Very large or complex
+diffs explicitly show **preview unavailable**, rather than inaccurate
+change counts. Up to 32 hunks and 400 preview lines are returned, with
+eight visible groups initially. Other editor safety checks for Save,
+Save As, external-disk conflict and Auto Save remain independent.

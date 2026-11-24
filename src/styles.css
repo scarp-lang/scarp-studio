@@ -633,3 +633,48 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px;
 }
 .insights-pages button:disabled { opacity: .5; cursor: not-allowed; }
+
+
+/* Working Changes: bounded source/saved snapshot comparison, no disk access. */
+.changes-panel { border-top: 1px solid var(--border); }
+.changes-content { padding: 4px 8px 12px; }
+.changes-disclaimer {
+  margin: 3px 0 9px; color: var(--muted); font-size: 10px; line-height: 1.5;
+}
+.changes-clean { color: var(--muted); font-size: 11px; line-height: 1.5; padding: 5px; }
+.changes-counts {
+  display: flex; gap: 6px; justify-content: space-between; align-items: center;
+  margin: 4px 0 8px; color: var(--text); font-size: 11px; font-weight: 600;
+}
+.changes-toggle-context { display: flex; align-items: center; gap: 5px; font-size: 10px; padding: 2px 0 9px; }
+.changes-hunk {
+  margin: 5px 0 8px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; overflow: hidden;
+}
+.changes-hunk-header {
+  display: flex; justify-content: space-between; gap: 5px;
+  align-items: center; background: var(--raised); padding: 4px 5px;
+  color: var(--muted); font-size: 10px;
+}
+.changes-hunk-header button {
+  color: var(--text); background: transparent; border: 1px solid var(--border);
+  border-radius: 3px; padding: 2px 4px; font-size: 10px; white-space: nowrap;
+}
+.changes-hunk-header button:hover { border-color: var(--accent); }
+.changes-hunk-header button:focus-visible { outline: 2px solid var(--accent); }
+.changes-hunk-lines { max-height: 280px; overflow: auto; }
+.changes-line {
+  display: grid; grid-template-columns: 12px 24px minmax(0, 1fr) auto;
+  align-items: start; gap: 3px; padding: 2px 4px;
+  font: 10px/1.5 Consolas, "Cascadia Code", monospace;
+}
+.changes-line code { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); font-size: inherit; }
+.changes-line-number { text-align: right; color: var(--muted); }
+.changes-line-added { border-inline-start: 2px solid #42a67c; }
+.changes-line-removed { border-inline-start: 2px solid #d96871; }
+.changes-line-context { opacity: .78; border-inline-start: 2px solid transparent; }
+.changes-more {
+  width: 100%; padding: 5px; color: var(--text); background: var(--raised);
+  border: 1px solid var(--border); border-radius: 4px; font-size: 10px;
+}
+.changes-more:hover { border-color: var(--accent); }

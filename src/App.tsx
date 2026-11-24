@@ -43,6 +43,7 @@ import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type St
 import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
+import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import {
   captureVerifiedSource, isCurrentVerifiedSource, retainVerifiedSourceSnapshot,
   type VerifiedSourceSnapshot,
@@ -2293,6 +2294,7 @@ export default function App() {
               <p className="sidebar-note" role="status">Declaration outline limited to 500 entries.</p>}
           </section>
           <SourceInsightsPanel document={active} onNavigate={jumpToSourceInsight} />
+          <WorkingChangesPanel document={active} onNavigate={jumpToSourceInsight} />
         </aside>
 
         {explorerVisible && <WorkspaceSplitter dimension="explorerWidth" value={workspaceLayout.explorerWidth}
