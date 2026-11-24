@@ -20,9 +20,9 @@ describe('bounded Explorer presentation', () => {
     expect(source).toMatchObject({ path: 'C:/project/src/item2.srp', active: true, modified: true, documentId: opened.id });
     expect(dirty[0].content).toBe('print(3);');
   });
-  it('never joins arbitrary directory names or admits unsupported or malformed names', () => {
+  it('accepts safe nested practice names but rejects traversal and unsupported names', () => {
     const groups = buildExplorerGroups([...listed, ...['../a.srp', 'src/deep/a.srp', 'other/a.srp', 'src/../x.srp', 'readme.md', 'SRC/x.srp'].map(file), listed[0]], [], null);
-    expect(groups.flatMap(g => g.sources)).toHaveLength(listed.length);
+    expect(groups.flatMap(g => g.sources)).toHaveLength(listed.length + 3);
   });
   it('preserves the 200-entry listing budget and exact original paths', () => {
     const files = Array.from({ length: 300 }, (_, i) => file('src/item' + i + '.srp'));

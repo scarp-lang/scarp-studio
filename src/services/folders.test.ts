@@ -43,7 +43,7 @@ describe('selected-folder Scarp source reads', () => {
     expect(join).toHaveBeenCalledTimes(2);
   });
 
-  it('shows standard src, tests and examples Scarp sources without recursion', async () => {
+  it('shows standard Scarp sources and scans safe nested folders', async () => {
     vi.mocked(open).mockResolvedValue('C:/project');
     vi.mocked(readDir).mockImplementation(async (path) => {
       if (path === 'C:/project') return [
@@ -57,6 +57,7 @@ describe('selected-folder Scarp source reads', () => {
         { name: 'main.srp', isFile: true, isDirectory: false, isSymlink: false },
         { name: 'child', isFile: false, isDirectory: true, isSymlink: false },
       ];
+      if (path === 'C:/project/src/child') return [];
       if (path === 'C:/project/tests') return [
         { name: 'hello.srp', isFile: true, isDirectory: false, isSymlink: false },
       ];
@@ -74,7 +75,8 @@ describe('selected-folder Scarp source reads', () => {
     ]);
     expect(listing?.truncated).toBe(false);
     expect(listing?.unavailableFolders).toEqual([]);
-    expect(readDir).toHaveBeenCalledTimes(4);
+    expect(listing?.directories).toEqual(['src', 'tests', 'examples', 'src/child']);
+    expect(readDir).toHaveBeenCalledTimes(5);
   });
 
   it('reports unreadable project subdirectories while retaining root files', async () => {
