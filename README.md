@@ -121,3 +121,5 @@ Optional [GitHub sponsorship](https://github.com/sponsors/sanskarIN) supports de
 - **Local parameter hints (Ctrl+Shift+Space):** declared function parameter names and types, active argument tracking for nested and multiline calls; editor-only, no imported symbol resolution.
 
 - **Local function autocomplete:** typed declaration names and parameter labels, case-sensitive prefix matching, unique names only, and identifier-only insertion to preserve existing call syntax.
+
+- **Adjustable compiler output:** Ctrl+J collapse/show, expand/restore, separate setup and input controls, independent scroll regions and always-visible Run/Verify/Stop.

@@ -299,3 +299,44 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .disk-review-excerpts > div { min-width: 0; }
 .disk-review-excerpts strong { display: block; padding-bottom: 3px; }
 .disk-review-excerpts pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.5 Consolas, monospace; margin: 0; padding: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; }
+
+/* Output panel layout: keep essential commands visible even when the
+   workspace is narrow or controls have been collapsed. Scroll each area
+   independently so program input cannot cover compiler diagnostics. */
+.compiler-panel {
+  flex: 0 0 min(42vh, 400px);
+  min-height: 0;
+  max-height: 70%;
+}
+.compiler-panel.output-expanded { flex-basis: min(65vh, 680px); max-height: 75%; }
+.compiler-panel.output-collapsed { flex: 0 0 auto; max-height: none; }
+.compiler-heading { flex: 0 0 auto; flex-wrap: wrap; gap: 6px 14px; padding: 8px 12px; }
+.compiler-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.compiler-state { font-size: 11px; color: var(--muted); }
+.compiler-actions { align-items: center; }
+.compiler-actions button { min-height: 28px; }
+.compiler-actions .compiler-run-primary {
+  color: #fff; background: #215cb8; border-color: #3274d9; font-weight: 600;
+}
+.compiler-actions button[aria-pressed="true"],
+.compiler-actions button[aria-expanded="true"] { border-color: var(--accent); }
+.compiler-panel-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.compiler-panel-body[hidden], .compiler-controls[hidden] { display: none; }
+.compiler-controls {
+  flex: 0 1 auto; min-height: 0; max-height: 48%; overflow: auto;
+  overscroll-behavior: contain; border-bottom: 1px solid var(--border);
+}
+.compiler-setup-actions { padding: 6px 12px; }
+.compiler-controls .compiler-meta { font-size: 11px; overflow-wrap: anywhere; }
+.compiler-results {
+  display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; min-width: 0;
+  overflow: auto; overscroll-behavior: contain; background: var(--bg);
+}
+.compiler-results > .project-test-report { flex: 0 0 auto; }
+.compiler-results > .compiler-diagnostic { flex: 0 0 auto; overflow-wrap: anywhere; }
+.compiler-results > .compiler-output { flex: 1 0 auto; overflow: visible; }
+.compiler-results:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-height: 660px) {
+  .compiler-panel:not(.output-expanded):not(.output-collapsed) { flex-basis: 42%; }
+  .compiler-heading { padding: 5px 8px; gap: 4px 8px; }
+}

@@ -75,6 +75,8 @@ import {
 } from './model/projectSearch';
 import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplaceUndo } from './model/openFileReplaceUndo';
 
+import { nextOutputPanelMode, revealOutputPanel, type OutputPanelMode } from './model/outputPanelLayout';
+
 type Theme = 'dark' | 'light';
 type FolderEntry = { name: string; path: string };
 type PaletteMode = 'files' | 'commands' | 'line' | 'symbols';
@@ -109,6 +111,9 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'run-scarp', label: 'Run Current Scarp Source', detail: 'F5 · saved .srp only' },
   { id: 'verify-scarp', label: 'Verify Current Scarp Source', detail: 'Ctrl+F5 · static analysis' },
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
+  { id: 'toggle-output', label: 'Toggle Scarp Output Panel', detail: 'Ctrl+J' },
+  { id: 'expand-output', label: 'Expand Scarp Output Panel', detail: 'More room for diagnostics' },
+  { id: 'compiler-controls', label: 'Show Compiler Setup and Program Input', detail: 'Output panel controls' },
   ...scarpStarterTemplates.map((starter) => ({
     id: 'template:' + starter.id,
     label: 'Template: ' + starter.title,
@@ -254,6 +259,9 @@ export default function App() {
   const [completedRunInputGeneration, setCompletedRunInputGeneration] =
     useState<number | null>(null);
   const [compilerBusy, setCompilerBusy] = useState(false);
+  const [outputPanelMode, setOutputPanelMode] = useState<OutputPanelMode>('normal');
+  const [compilerControlsOpen, setCompilerControlsOpen] = useState(true);
+  const outputToggle = useRef<HTMLButtonElement | null>(null);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
   const [compilerOutputSource, setCompilerOutputSource] = useState<VerifiedSourceSnapshot | null>(null);
@@ -464,6 +472,9 @@ export default function App() {
       case 'run-scarp': void runCompiler('exec'); break;
       case 'verify-scarp': void runCompiler('verify'); break;
       case 'stop-scarp': void stopCompiler(); break;
+      case 'toggle-output': setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle')); break;
+      case 'expand-output': setOutputPanelMode('expanded'); break;
+      case 'compiler-controls': setOutputPanelMode(revealOutputPanel); setCompilerControlsOpen(true); break;
     }
   }
 
@@ -1145,6 +1156,7 @@ export default function App() {
       setError(toMessage(caught));
       return;
     }
+    setOutputPanelMode(revealOutputPanel);
     let binary = compilerPath;
     if (!binary) {
       // A first Run is one explicit user action, but it never implicitly
@@ -1301,6 +1313,7 @@ export default function App() {
         return;
       }
     }
+    setOutputPanelMode(revealOutputPanel);
     // Capture the current listing instance AND the selected-project source
     // generation before the async compiler begins. Edits during Run Tests can
     // leave its disk-backed JSON report stale by the time the process exits.
@@ -1720,7 +1733,11 @@ export default function App() {
         return;
       }
       if (paletteMode !== null) return;
-      if (key === 'tab' && event.ctrlKey) {
+      if (key === 'j' && !event.shiftKey) {
+        event.preventDefault();
+        setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle'));
+        outputToggle.current?.focus();
+      } else if (key === 'tab' && event.ctrlKey) {
         event.preventDefault();
         cycleTab(event.shiftKey ? -1 : 1);
       } else if (key === 'b' && !event.shiftKey) {
@@ -2275,10 +2292,41 @@ export default function App() {
               </div>
             )}
           </div>
-          <section className="compiler-panel" aria-label="Scarp compiler output">
+          <section className={'compiler-panel output-' + outputPanelMode} aria-label="Scarp compiler output">
             <div className="compiler-heading">
-              <strong>SCARP OUTPUT</strong>
+              <div className="compiler-title">
+                <strong>SCARP OUTPUT</strong>
+                <span className="compiler-state" role="status">{compilerBusy ? 'Running…' : compilerSelecting ? 'Checking compiler…' : compilerPath ? 'Ready' : 'Setup needed'}</span>
+              </div>
               <div className="compiler-actions">
+                <button onClick={() => void runCompiler('exec')}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active) || stdinValidationError !== null}
+                  className="compiler-run-primary"
+                  title={stdinValidationError ?? 'Execute the saved Scarp source using the official compiler (F5)'}>▶ Run</button>
+                <button onClick={() => void runCompiler('verify')}
+                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
+                  title="Statically verify saved Scarp source without runtime execution">Verify</button>
+                <button onClick={() => void stopCompiler()} disabled={!compilerBusy && !compilerSelecting}
+                  title="Stop a running Scarp process or compiler capability probe">Stop</button>
+                <button type="button"
+                  aria-expanded={compilerControlsOpen && outputPanelMode !== 'collapsed'} aria-controls="compiler-controls"
+                  onClick={() => {
+                    if (outputPanelMode === 'collapsed') {
+                      setOutputPanelMode(revealOutputPanel); setCompilerControlsOpen(true);
+                    } else setCompilerControlsOpen(open => !open);
+                  }}>Setup &amp; Input</button>
+                <button type="button" disabled={outputPanelMode === 'collapsed'}
+                  aria-pressed={outputPanelMode === 'expanded'}
+                  onClick={() => setOutputPanelMode(current => nextOutputPanelMode(current, 'expand'))}
+                  title="Toggle expanded output panel">{outputPanelMode === 'expanded' ? 'Restore size' : 'Expand'}</button>
+                <button type="button" ref={outputToggle} aria-expanded={outputPanelMode !== 'collapsed'}
+                  aria-controls="compiler-panel-body" onClick={() => setOutputPanelMode(current => nextOutputPanelMode(current, 'toggle'))}
+                  title="Toggle output panel (Ctrl+J)">{outputPanelMode === 'collapsed' ? 'Show output' : 'Hide output'}</button>
+              </div>
+            </div>
+            <div id="compiler-panel-body" className="compiler-panel-body" hidden={outputPanelMode === 'collapsed'}>
+            <div id="compiler-controls" className="compiler-controls" hidden={!compilerControlsOpen}>
+            <div className="compiler-setup-actions compiler-actions">
                 <button type="button" onClick={() => void rescanCompilers()}
                   disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
                   title="Scan PATH, standard installed locations and extracted Scarp Downloads folders without executing software">
@@ -2291,15 +2339,6 @@ export default function App() {
                   title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
                   {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}
                 </button>
-                <button onClick={() => void runCompiler('exec')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active) || stdinValidationError !== null}
-                  title={stdinValidationError ?? 'Execute the saved Scarp source using the official compiler'}>Run</button>
-                <button onClick={() => void runCompiler('verify')}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy || !active || !active.path || isDirty(active)}
-                  title="Statically verify saved Scarp source without runtime execution">Verify</button>
-                <button onClick={() => void stopCompiler()} disabled={!compilerBusy && !compilerSelecting}
-                  title="Stop a running Scarp process or compiler capability probe">Stop</button>
-              </div>
             </div>
             <div className="compiler-meta">
               {compilerInfo || (compilerPath
@@ -2395,6 +2434,8 @@ export default function App() {
                 )}
               </div>
             </div>
+            </div>
+            <div className="compiler-results" tabIndex={0} aria-label="Compiler results and diagnostics">
             {projectTestResult && projectTestResult.folder === folderPath && (
               <section className="project-test-report" aria-label="Scarp project test results">
                 <div className="project-test-heading">
@@ -2449,6 +2490,8 @@ export default function App() {
             )}
             <pre className="compiler-output" role="log" aria-live="polite">{outputFreshnessWarning
                     ? outputFreshnessWarning + '\n\n' + compilerOutput : compilerOutput}</pre>
+            </div>
+            </div>
           </section>
         </main>
       </div>
