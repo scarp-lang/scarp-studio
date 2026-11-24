@@ -5,17 +5,18 @@ import type { ListedProjectSource } from '../model/projectQuickOpen';
 
 interface Props {
   files: readonly ListedProjectSource[];
+  directories?: readonly string[];
   documents: readonly StudioDocument[];
   activeId: string | null;
   busy: boolean;
   onOpen: (path: string) => void;
 }
 
-export function ProjectExplorer({ files, documents, activeId, busy, onOpen }: Props) {
+export function ProjectExplorer({ files, directories = [], documents, activeId, busy, onOpen }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ExplorerFilter>('all');
   const [collapsed, setCollapsed] = useState<ReadonlySet<ExplorerDirectory>>(() => new Set());
-  const groups = useMemo(() => buildExplorerGroups(files, documents, activeId), [files, documents, activeId]);
+  const groups = useMemo(() => buildExplorerGroups(files, documents, activeId, directories), [files, documents, activeId, directories]);
   const filtered = useMemo(() => filterExplorerGroups(groups, query, filter), [groups, query, filter]);
   const total = groups.reduce((sum, group) => sum + group.sources.length, 0);
   const shown = filtered.reduce((sum, group) => sum + group.sources.length, 0);
@@ -47,11 +48,12 @@ export function ProjectExplorer({ files, documents, activeId, busy, onOpen }: Pr
       <button type="button" disabled={searching} onClick={() => setCollapsed(new Set())}>Expand all</button>
       <button type="button" disabled={searching} onClick={() => setCollapsed(new Set(groups.map(g => g.directory)))}>Collapse all</button>
     </div>
-    {filtered.map(group => {
+    {filtered.map((group, index) => {
       const expanded = searching || !collapsed.has(group.directory);
-      const groupId = 'studio-explorer-group-' + (group.directory || 'root');
+      const groupId = 'studio-explorer-group-' + index;
       return <section key={group.directory} className="explorer-group">
         <button type="button" className="explorer-group-heading" aria-expanded={expanded} aria-controls={groupId}
+          style={{ paddingLeft: 12 + 12 * Math.min(5, group.directory ? group.directory.split('/').length - 1 : 0) }}
           disabled={searching} onClick={() => toggle(group.directory)}>
           <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
           <strong>{group.directory ? group.directory + '/' : 'Project root'}</strong>
@@ -70,6 +72,6 @@ export function ProjectExplorer({ files, documents, activeId, busy, onOpen }: Pr
         </div>
       </section>;
     })}
-    {!shown && <p className="sidebar-note">{total ? 'No listed sources match the filters.' : 'No .srp files found.'}</p>}
+    {!shown && <p className="sidebar-note">{searching ? 'No listed sources match the filters.' : groups.length ? 'No .srp files found in these folders.' : 'No .srp files or folders found.'}</p>}
   </div>;
 }

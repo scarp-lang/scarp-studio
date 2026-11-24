@@ -4,100 +4,99 @@ import { readDir } from '@tauri-apps/plugin-fs';
 import { readScarpSource } from './sourceRead';
 import { isScarpPath, sameFilePath } from '../model/documents';
 import {
-  collectTopLevelScarpNames, selectBalancedScarpProjectNames,
-  MAX_DISPLAYED_SCARP_FILES, type ScarpProjectNameGroup,
+  collectTopLevelScarpNames, collectBrowseableScarpFolders,
+  selectBalancedScarpProjectNames, MAX_DISPLAYED_SCARP_FILES,
+  MAX_SCANNED_SCARP_DIRECTORIES, MAX_SCARP_FOLDER_DEPTH,
+  type ScarpProjectNameGroup,
 } from '../model/folderListing';
 
 export interface FolderFile {
   name: string;
   path: string;
 }
-
-/** A fixed, Scarp-specific project view: no unbounded recursion or arbitrary
- * directory names. The user-selected dialog folder is the only search root.
- * Tauri FS scope is the ultimate access boundary for every read.
- */
-const SCARP_PROJECT_SUBFOLDERS = ['src', 'tests', 'examples'] as const;
-
 export interface ScarpFolderScan {
   path: string;
   files: FolderFile[];
+  /** Safe relative folder names include empty folders. */
+  directories: string[];
   truncated: boolean;
   unavailableFolders: string[];
 }
-
 export async function chooseSourceFolder(): Promise<ScarpFolderScan | null> {
-  const path = await open({ directory: true, multiple: false, title: 'Choose Scarp folder' });
+  const path = await open({ directory: true, multiple: false, title: 'Choose Scarp workspace folder' });
   if (typeof path !== 'string') return null;
   return scanSourceFolder(path);
 }
 
-/** Re-scan only a folder previously selected by the user. No automatic
- * watchers, unbounded recursion or source-file content reads.
- * The caller owns the current selected-folder identity and Tauri scope.
+/** Bounded breadth-first scanning from the native user-selected root.
+ * Only validated non-symlink entries returned by readDir are ever joined.
+ * No arbitrary filesystem roots, file-content scans or execution on open.
+ * The Tauri native filesystem scope remains the actual permission boundary.
  */
 export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
-  const entries = await readDir(path);
-  const root = collectTopLevelScarpNames(entries);
-  const groups: ScarpProjectNameGroup[] = [{ directory: '', names: root.names }];
-  const directoryPaths = new Map<string, string>();
-  let truncated = root.truncated;
+  const queue: { directory: string; absolute: string; depth: number }[] = [
+    { directory: '', absolute: path, depth: 0 },
+  ];
+  const directoryPaths = new Map<string, string>([['', path]]);
+  const directories: string[] = [];
+  const groups: ScarpProjectNameGroup[] = [];
   const unavailableFolders: string[] = [];
-  // The generic 4096-entry budget still bounds ordinary .srp candidates.
-  // Check only these three fixed directory names across the already-read
-  // root entries: otherwise a crowded root can hide the entire src/tests/
-  // examples project structure simply due to filesystem enumeration order.
-  // Never follow a symlink, recurse, or join an untrusted directory name.
-  const namedDirectories = new Map<string, boolean>();
-  for (const entry of entries) {
-    if (SCARP_PROJECT_SUBFOLDERS.some((name) => name === entry.name) &&
-        !namedDirectories.has(entry.name)) {
-      namedDirectories.set(entry.name, entry.isDirectory && !entry.isSymlink);
-      if (namedDirectories.size === SCARP_PROJECT_SUBFOLDERS.length) break;
-    }
-  }
-  for (const directoryName of SCARP_PROJECT_SUBFOLDERS) {
-    if (!namedDirectories.get(directoryName)) continue;
+  let truncated = false;
+
+  for (let index = 0; index < queue.length; index++) {
+    const current = queue[index];
+    let entries: Awaited<ReturnType<typeof readDir>>;
     try {
-      const subdir = await join(path, directoryName);
-      const childListing = collectTopLevelScarpNames(await readDir(subdir));
-      truncated ||= childListing.truncated;
-      groups.push({ directory: directoryName, names: childListing.names });
-      directoryPaths.set(directoryName, subdir);
-    } catch {
-      // A denied/removed directory must not silently masquerade as empty.
-      unavailableFolders.push(directoryName);
+      entries = await readDir(current.absolute);
+    } catch (error) {
+      if (!current.directory) throw error;
+      unavailableFolders.push(current.directory);
+      continue;
+    }
+    const listing = collectTopLevelScarpNames(entries);
+    groups.push({ directory: current.directory, names: listing.names });
+    truncated ||= listing.truncated;
+    const children = collectBrowseableScarpFolders(entries);
+    if (current.depth >= MAX_SCARP_FOLDER_DEPTH) {
+      if (children.length) truncated = true;
+      continue;
+    }
+    for (const name of children) {
+      if (queue.length >= MAX_SCANNED_SCARP_DIRECTORIES) {
+        truncated = true;
+        break;
+      }
+      const relative = current.directory ? current.directory + '/' + name : name;
+      directories.push(relative);
+      try {
+        const childPath = await join(current.absolute, name);
+        directoryPaths.set(relative, childPath);
+        queue.push({ directory: relative, absolute: childPath, depth: current.depth + 1 });
+      } catch {
+        unavailableFolders.push(relative);
+      }
     }
   }
 
-  // Selection is fair across populated directories and always bounded.
-  // Build paths only for the selected entries, not up to 800 candidates.
-  const availableNames = groups.reduce((sum, group) => sum + group.names.length, 0);
-  truncated ||= availableNames > MAX_DISPLAYED_SCARP_FILES;
+  const available = groups.reduce((sum, group) => sum + group.names.length, 0);
+  truncated ||= available > MAX_DISPLAYED_SCARP_FILES;
   const names = selectBalancedScarpProjectNames(groups);
-  const files: FolderFile[] = await Promise.all(names.map(async (name) => {
-    const separator = name.indexOf('/');
-    const folder = separator < 0 ? path : directoryPaths.get(name.slice(0, separator));
-    if (!folder) throw new Error('The Scarp Explorer listing is inconsistent.');
-    return {
-      name,
-      path: await join(folder, separator < 0 ? name : name.slice(separator + 1)),
-    };
+  const files: FolderFile[] = await Promise.all(names.map(async name => {
+    const slash = name.lastIndexOf('/');
+    const directory = slash < 0 ? '' : name.slice(0, slash);
+    const parent = directoryPaths.get(directory);
+    if (!parent) throw new Error('The Scarp Explorer listing is inconsistent.');
+    return { name, path: await join(parent, name.slice(slash + 1)) };
   }));
-  return { path, files, truncated, unavailableFolders };
+  return { path, files, directories, truncated, unavailableFolders };
 }
 
-/** A caller can read only a Scarp entry listed in the current chosen folder.
- * The native Tauri scope remains the actual permission boundary.
- */
+/** Only currently listed Scarp paths can be opened through the Explorer. */
 export async function readFolderSource(
-  path: string,
-  selectedFiles: readonly FolderFile[],
+  path: string, selectedFiles: readonly FolderFile[],
 ): Promise<string> {
   if (!isScarpPath(path)) throw new Error('Only .srp files can be opened.');
-  const selected = selectedFiles.find((file) => sameFilePath(file.path, path));
-  if (!selected) {
-    throw new Error('Choose a Scarp file from the current folder listing.');
-  }
+  const selected = selectedFiles.find(file => sameFilePath(file.path, path));
+  if (!selected) throw new Error('Choose a Scarp file from the current folder listing.');
   return readScarpSource(selected.path);
 }

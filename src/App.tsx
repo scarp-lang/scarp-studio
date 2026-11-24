@@ -207,6 +207,7 @@ export default function App() {
   const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
+  const [folderDirectories, setFolderDirectories] = useState<string[]>([]);
   // Preserve exact folder-listing identity across asynchronous source reads.
   const selectedFolderRef = useRef<{ path: string; files: FolderEntry[] } | null>(null);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
@@ -814,6 +815,7 @@ export default function App() {
       selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderPath(result.path);
       setFolderEntries(result.files);
+      setFolderDirectories(result.directories);
       setFolderListingLimited(result.truncated);
       setUnavailableProjectFolders(result.unavailableFolders);
       setNotice(result.files.length + ' Scarp sources shown' +
@@ -854,6 +856,7 @@ export default function App() {
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files };
       setFolderEntries(result.files);
+      setFolderDirectories(result.directories);
       setFolderListingLimited(result.truncated);
       setUnavailableProjectFolders(result.unavailableFolders);
       setNotice('Refreshed ' + result.files.length + ' Scarp project sources' +
@@ -2116,11 +2119,11 @@ export default function App() {
                 onClick={() => void refreshFolder()} title="Re-scan selected Scarp project sources without opening a folder dialog">
                 Refresh Explorer
               </button>
-              <div className="sidebar-note">Scarp sources: root, src/, tests/, examples/</div>
+              <div className="sidebar-note">Scarp workspace: nested folders (up to 5 levels, 64 folders and 200 sources).</div>
               {folderListingLimited && (
                 <p className="sidebar-note" role="status">
-                  Project file listing limited to 200 sources (at most 4096 entries
-                  inspected per directory). Some files may not appear.
+                  Workspace listing limited to 64 folders, 5 levels, 200 sources and at most 4096
+                  inspected entries per folder. Some sources may not appear.
                 </p>
               )}
               {unavailableProjectFolders.length > 0 && (
@@ -2129,7 +2132,7 @@ export default function App() {
                   Check folder access permissions.
                 </p>
               )}
-              <ProjectExplorer key={folderPath} files={folderEntries} documents={documents} activeId={activeId}
+              <ProjectExplorer key={folderPath} files={folderEntries} directories={folderDirectories} documents={documents} activeId={activeId}
                 busy={busy || compilerBusy || compilerSelecting} onOpen={path => void openFolderFile(path)} />
             </section>
           ) : (

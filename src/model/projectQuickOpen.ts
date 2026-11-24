@@ -1,5 +1,5 @@
 import { isDirty, isScarpPath, sameFilePath, type StudioDocument } from './documents';
-import { MAX_DISPLAYED_SCARP_FILES } from './folderListing';
+import { MAX_DISPLAYED_SCARP_FILES, safeRelativeScarpSourceName } from './folderListing';
 import type { NavigationEntry } from './navigation';
 
 export interface ListedProjectSource {
@@ -32,9 +32,8 @@ export function buildQuickOpenEntries(
   const listedPaths: string[] = [];
   // An extra guard protects the palette if a caller ever supplies an
   // oversized or malformed listing. It never widens filesystem access.
-  const relativeScarpName = /^(?:(?:src|tests|examples)\/)?[^/\\\0]+\.srp$/i;
   for (const [index, source] of listedFiles.slice(0, MAX_DISPLAYED_SCARP_FILES).entries()) {
-    if (!relativeScarpName.test(source.name) || !isScarpPath(source.path)) continue;
+    if (!safeRelativeScarpSourceName(source.name) || !isScarpPath(source.path)) continue;
     if (documents.some((document) =>
       document.path !== null && sameFilePath(document.path, source.path))) continue;
     if (listedPaths.some((path) => sameFilePath(path, source.path))) continue;
