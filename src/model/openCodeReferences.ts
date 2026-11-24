@@ -118,9 +118,15 @@ export function scarpIdentifierAtCursor(
   const lex = scanScarpSource(source);
   if (!lex.complete) return null;
   let token = tokenAtOffset(lex.tokens,offset);
-  if (!token && column > 1) {
+  // Monaco often places the caret just after an identifier, directly
+  // before an opening parenthesis or operator. Prefer the immediately
+  // preceding complete identifier at that boundary, even when the next
+  // punctuation also has its own lexical token.
+  if ((!token || token.kind !== 'identifier') && column > 1) {
     const preceding = tokenAtOffset(lex.tokens,offset-1);
-    if (preceding?.end === offset) token = preceding;
+    if (preceding?.kind === 'identifier' && preceding.end === offset) {
+      token = preceding;
+    }
   }
   if (!token || token.kind !== 'identifier' ||
       !validIdentifier(token.text) || token.line !== line) return null;
