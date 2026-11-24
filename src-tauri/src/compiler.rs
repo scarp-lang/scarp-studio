@@ -384,6 +384,16 @@ fn supports_prompt_input(version: &str) -> bool {
 
 /// Project actions never write source and only accept a selected manifest root.
 /// The CLI validates manifest fields, paths and dependency traversal itself.
+/// Match the Explorer's file-entry policy: only a regular, non-symlink manifest
+/// can activate project actions. Do not follow a manifest symlink outside the
+/// selected workspace after a directory scan.
+fn has_regular_project_manifest(root: &Path) -> bool {
+    ["scarp.project", "Scarp.project"].iter().any(|name| {
+        fs::symlink_metadata(root.join(name))
+            .is_ok_and(|metadata| metadata.file_type().is_file())
+    })
+}
+
 fn selected_project_root(folder: &str) -> Result<PathBuf, String> {
     let root = Path::new(folder);
     if !root.is_absolute() {
@@ -393,7 +403,7 @@ fn selected_project_root(folder: &str) -> Result<PathBuf, String> {
     if !root.is_dir() {
         return Err("The selected Scarp project path is not a directory.".into());
     }
-    if !root.join("scarp.project").is_file() && !root.join("Scarp.project").is_file() {
+    if !has_regular_project_manifest(&root) {
         return Err("No scarp.project manifest found. Choose the Scarp project root.".into());
     }
     Ok(root)
@@ -1025,11 +1035,35 @@ mod tests {
             std::env::temp_dir().join(format!("studio-project-{}-{unique}", std::process::id()));
         fs::create_dir(&root).unwrap();
         assert!(selected_project_root(root.to_str().unwrap()).is_err());
+        // A same-named directory is not a regular manifest.
+        fs::create_dir(root.join("scarp.project")).unwrap();
+        assert!(selected_project_root(root.to_str().unwrap()).is_err());
+        fs::remove_dir(root.join("scarp.project")).unwrap();
         fs::write(root.join("scarp.project"), "scarp-project: 1\n").unwrap();
         assert_eq!(
             selected_project_root(root.to_str().unwrap()).unwrap(),
             fs::canonicalize(&root).unwrap()
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_manifest_symlink_is_rejected_before_native_compiler_launch() {
+        use std::os::unix::fs::symlink;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "studio-symlink-project-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("real-manifest"), "scarp-project: 1\n").unwrap();
+        symlink(root.join("real-manifest"), root.join("scarp.project")).unwrap();
+        assert!(selected_project_root(root.to_str().unwrap()).is_err());
         fs::remove_dir_all(root).unwrap();
     }
 
