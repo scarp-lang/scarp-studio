@@ -14,7 +14,7 @@ import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder, type ScarpProjectRoot } from './services/folders';
 import { disambiguateDocumentNames } from './model/documentLabels';
 import { saveChangesWorkspaceListing } from './model/workspaceSaveRefresh';
-import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForListedSource } from './model/projectTargets';
+import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForListedSource, selectedManifestPath } from './model/projectTargets';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
@@ -42,6 +42,11 @@ import { verifiedProblemMarker } from './model/problemMarkers';
 import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
+import { OpenEditorManager } from './components/OpenEditorManager';
+import { resolveBulkClose, type TabSelection } from './model/openEditorManagement';
+import { WorkspaceCreatePanel } from './components/WorkspaceCreatePanel';
+import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/workspaceCreate';
+import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
@@ -49,6 +54,19 @@ import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
 import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
+import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
+import { WorkspaceSessionPanel } from './components/WorkspaceSessionPanel';
+import { RecentlyClosedPanel } from './components/RecentlyClosedPanel';
+import { emptyRecentlyClosed, reconcileRecentlyClosed, resolveRecentlyClosed,
+  forgetRecentlyClosed, clearRecentlyClosed, type RecentlyClosedSource,
+  type RecentlyClosedState } from './model/recentlyClosed';
+import { WorkspaceSessionStore } from './model/workspaceSessionStore';
+import { captureWorkspaceSession, sameWorkspaceCapture, type CapturedWorkspaceSession,
+  type WorkspaceSession, type WorkspaceRestorePlan } from './model/workspaceSessions';
+import { assertRecentlyClosedReadCurrent, prepareRecentlyClosedRead } from './services/recentlyClosedRead';
+import { prepareWorkspaceRestore } from './services/workspaceRestore';
+import { DraftRecoveryJournal, type RecoveryView } from './model/draftRecoveryJournal';
+import type { RecoveryCheckpoint } from './model/draftRecovery';
 import {
   createSourceBookmark, resolveSourceBookmarks, bookmarkTargetForCurrentSource,
   removeSourceBookmark, type SourceBookmark,
@@ -114,6 +132,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'reload', label: 'Reload Current Scarp File from Disk', detail: 'Confirms before discarding unsaved edits' },
   { id: 'compare-disk', label: 'Compare Current Scarp File with Disk', detail: 'Read-only preview before Reload or Save As' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
+  { id: 'reopen-closed', label: 'Reopen Last Closed Saved Source', detail: 'Ctrl+Shift+T' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
   { id: 'find-project', label: 'Find in Selected Scarp Project', detail: 'Read-only and bounded' },
   { id: 'replace-open-files', label: 'Find and Replace in Open Scarp Files', detail: 'Preview and confirm; editor buffers only' },
@@ -128,7 +147,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
   { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
   { id: 'scan-compiler', label: 'Scan for Installed Scarp Compiler', detail: 'Non-executing discovery' },
-  { id: 'download-compiler', label: 'Download Official Scarp Compiler', detail: 'Official alpha.20 Windows ZIP' },
+  { id: 'download-compiler', label: 'Download Official Scarp Compiler', detail: 'Latest official compiler download' },
   { id: 'run-scarp', label: 'Run Current Scarp Source', detail: 'F5 · saved .srp only' },
   { id: 'verify-scarp', label: 'Verify Current Scarp Source', detail: 'Ctrl+F5 · static analysis' },
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
@@ -164,11 +183,42 @@ function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function createDraftRecoveryJournal(): DraftRecoveryJournal {
+  try {
+    // Browser previews must never persist source contents.
+    return new DraftRecoveryJournal(isTauri() ? localStorage : null);
+  } catch {
+    return new DraftRecoveryJournal(null);
+  }
+}
+
+function createWorkspaceSessionStore(): WorkspaceSessionStore {
+  try {
+    return new WorkspaceSessionStore(isTauri() ? localStorage : null);
+  } catch {
+    return new WorkspaceSessionStore(null);
+  }
+}
+
+function sameRecoveryView(left: RecoveryView, right: RecoveryView): boolean {
+  return left.available === right.available && left.enabled === right.enabled &&
+    left.blocked === right.blocked && left.paused === right.paused &&
+    left.previous === right.previous && left.checkpointTime === right.checkpointTime &&
+    left.checkpointCount === right.checkpointCount && left.error === right.error;
+}
+
 export default function App() {
   const [editorState, setEditorState] = useState(initialEditorState);
   // Apply actions synchronously to the live state so native close requests and
   // file operations observe new edits before React renders the next frame.
   const liveEditor = useRef(editorState);
+  const [recentlyClosed, setRecentlyClosed] = useState(emptyRecentlyClosed);
+  const recentlyClosedRef = useRef(recentlyClosed);
+  const [draftRecovery] = useState(createDraftRecoveryJournal);
+  const [workspaceSessions] = useState(createWorkspaceSessionStore);
+  const [workspaceSessionView, setWorkspaceSessionView] = useState(() => workspaceSessions.view());
+  const [recoveryView, setRecoveryView] = useState(() => draftRecovery.view());
+  const lastRecoveryAttempt = useRef<readonly StudioDocument[] | null>(null);
   // Advances whenever a selected-project source changes or its Explorer is
   // successfully replaced. In-flight test reports must match this generation.
   const projectResultEpoch = useRef(0);
@@ -209,6 +259,15 @@ export default function App() {
       retainVerifiedSourceSnapshot(previous, next.documents));
     liveEditor.current = next;
     setEditorState(next);
+    if (before.documents.length !== next.documents.length || action.type === 'saved') {
+      publishRecentlyClosed(reconcileRecentlyClosed(recentlyClosedRef.current,
+        before.documents, next.documents, before.activeId));
+    }
+    // A successful Save or an explicitly confirmed discard must retire its
+    // checkpoint immediately, rather than waiting for the next typing delay.
+    if (action.type === 'saved' || action.type === 'reload' || action.type === 'close') {
+      flushDraftRecovery(true);
+    }
   }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
@@ -218,12 +277,13 @@ export default function App() {
   const autoSaveReview = useRef(new AutoSaveReviewGate());
   const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
   const autoSaveAction = useRef<(document: StudioDocument) => boolean | void>(() => true);
-  const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
+  const [editorSettingsOpen, setEditorSettingsOpen] = useState(() =>
+    recoveryView.previous !== null || recoveryView.blocked);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [folderDirectories, setFolderDirectories] = useState<string[]>([]);
   const [projectRoots, setProjectRoots] = useState<ScarpProjectRoot[]>([]);
-  const [projectDirectory, setProjectDirectory] = useState('');
+  const [projectDirectory, setProjectDirectory] = useState<string | null>(null);
   // Preserve exact folder-listing identity across asynchronous source reads.
   const selectedFolderRef = useRef<{ path: string; files: FolderEntry[]; projectRoots: ScarpProjectRoot[] } | null>(null);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
@@ -393,13 +453,9 @@ export default function App() {
 
   // The workspace is a browsing root. Project operations deliberately use
   // a chosen manifest directory, which may be nested several levels down.
-  // The empty target preserves the old workspace-root behavior.
-  const selectedProjectPath = projectDirectory
-    ? projectRoots.find(root => root.directory === projectDirectory)?.path ?? null
-    : folderPath;
-  const selectedProjectHasManifest = projectRoots.some(root =>
-    root.directory === projectDirectory &&
-    selectedProjectPath !== null && sameFilePath(root.path, selectedProjectPath));
+  // null means no project is selected; '' is a real root manifest.
+  const selectedProjectPath = selectedManifestPath(projectDirectory, projectRoots);
+  const selectedProjectHasManifest = selectedProjectPath !== null;
   // A file is never allowed to redirect project execution automatically.
   // Offer an explicit switch to its closest discovered manifest root instead.
   const activeSourceProjectDirectory = projectTargetForListedSource(
@@ -658,6 +714,7 @@ export default function App() {
     switch (entry.id) {
       case 'new': newFile(); break;
       case 'open': void openFile(); break;
+      case 'reopen-closed': void reopenLastClosedSource(); break;
       case 'folder': void openFolder(); break;
       case 'refresh-folder': void refreshFolder(); break;
       case 'save': void saveFile(); break;
@@ -750,6 +807,89 @@ export default function App() {
       autoSavePreferences.delay, compilerBusy || compilerSelecting || compilerScanning || busy);
   }, [documents, autoSavePreferences, compilerBusy, compilerSelecting, compilerScanning, busy]);
 
+  function syncRecoveryView(): void {
+    const next = draftRecovery.view();
+    setRecoveryView(previous => sameRecoveryView(previous, next) ? previous : next);
+  }
+
+  function flushDraftRecovery(force = false): void {
+    const view = draftRecovery.view();
+    if (!view.enabled || view.previous || view.blocked || view.paused) return;
+    const current = liveEditor.current.documents;
+    if (!force && lastRecoveryAttempt.current === current) return;
+    lastRecoveryAttempt.current = current;
+    draftRecovery.flush(current, Date.now());
+    syncRecoveryView();
+  }
+
+  function recoveryOperationsBlocked(): boolean {
+    return saveInProgress.current || commandInProgress.current ||
+      selectionInProgress.current || filePickerInProgress.current ||
+      nativeDialogGate.current.isActive;
+  }
+
+  function enableDraftRecovery(): void {
+    if (recoveryOperationsBlocked()) return;
+    if (draftRecovery.enable(liveEditor.current.documents, Date.now())) {
+      setNotice('Local draft recovery enabled. Continue to save your Scarp files normally.');
+    }
+    syncRecoveryView();
+  }
+
+  function disableDraftRecovery(): void {
+    if (recoveryOperationsBlocked()) return;
+    if (draftRecovery.disable()) setNotice('Local draft recovery disabled and local copies removed.');
+    syncRecoveryView();
+  }
+
+  function restorePreviousDrafts(checkpoint: RecoveryCheckpoint): void {
+    if (recoveryOperationsBlocked()) return;
+    const action: EditorAction = { type: 'restore-drafts', drafts: checkpoint.drafts };
+    const next = editorReducer(liveEditor.current, action);
+    if (next === liveEditor.current) {
+      setError('Recovery drafts could not be restored safely.');
+      return;
+    }
+    // Persist the complete new checkpoint first. A failed/quota-limited write
+    // must neither retire the prior checkpoint nor append only some drafts.
+    if (draftRecovery.resolvePrevious(checkpoint, next.documents, Date.now())) {
+      dispatch(action);
+      setNotice('Restored ' + checkpoint.drafts.length + ' draft(s) as new unsaved copies.');
+    }
+    syncRecoveryView();
+  }
+
+  function discardPreviousDrafts(checkpoint: RecoveryCheckpoint): void {
+    if (recoveryOperationsBlocked()) return;
+    if (draftRecovery.resolvePrevious(checkpoint, liveEditor.current.documents, Date.now())) {
+      setNotice('Previous recovery drafts removed. Current editor tabs are unchanged.');
+    }
+    syncRecoveryView();
+  }
+
+  // Checkpoint after a short pause, but also during sustained typing. The
+  // periodic tick reads the live editor, never a captured stale React render.
+  // React Strict Mode cleanup removes both timers without changing storage.
+  useEffect(() => {
+    if (!recoveryView.enabled || recoveryView.previous || recoveryView.blocked || recoveryView.paused) return;
+    const timer = window.setTimeout(() => flushDraftRecovery(), 750);
+    return () => window.clearTimeout(timer);
+  }, [documents, recoveryView.enabled, recoveryView.previous, recoveryView.blocked, recoveryView.paused]);
+
+  useEffect(() => {
+    if (!recoveryView.enabled || recoveryView.previous || recoveryView.blocked || recoveryView.paused) return;
+    const interval = window.setInterval(() => flushDraftRecovery(draftRecovery.shouldRetryFlush()), 4000);
+    const flush = () => flushDraftRecovery(true);
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [recoveryView.enabled, recoveryView.previous, recoveryView.blocked, recoveryView.paused]);
+
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
     if (!isTauri()) return;
@@ -762,33 +902,52 @@ export default function App() {
         saveInProgress.current, commandInProgress.current, selectionInProgress.current,
         filePickerInProgress.current,
       );
-      if (!pending.length && !blocked && !nativeDialogGate.current.isActive) return;
+      if (!pending.length && !blocked && !nativeDialogGate.current.isActive &&
+          !draftRecovery.requiresExitPreparation()) return;
       event.preventDefault();
       if (blocked) {
         setError(blocked);
         return;
       }
       if (!nativeDialogGate.current.begin('window-exit')) return;
+      let prepared = false;
+      let destroyed = false;
+      const exitStillValid = () => {
+        const newBlocker = exitBlockReason(
+          saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+          filePickerInProgress.current,
+        );
+        if (newBlocker || !sameExitEditorState(exitSnapshot, liveEditor.current)) {
+          setError(newBlocker || 'Files changed while confirming exit. Review your edits and try again.');
+          return false;
+        }
+        return true;
+      };
       try {
-        if (await ask('Discard unsaved Scarp changes and exit?', {
+        if (pending.length && !await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
           kind: 'warning',
-        })) {
-          const newBlocker = exitBlockReason(
-            saveInProgress.current, commandInProgress.current, selectionInProgress.current,
-            filePickerInProgress.current,
-          );
-          if (newBlocker ||
-              !sameExitEditorState(exitSnapshot, liveEditor.current)) {
-            setError(newBlocker ||
-              'Files changed while confirming exit. Review your edits and try again.');
-            return;
-          }
-          await getCurrentWindow().destroy();
+        })) return;
+        if (!exitStillValid()) return;
+        prepared = true;
+        const cleared = draftRecovery.prepareExit();
+        syncRecoveryView();
+        if (!cleared) {
+          if (!await ask('The local draft recovery copy could not be removed. Exit anyway? The copy may remain in this desktop profile.', {
+            title: 'Local recovery storage',
+            kind: 'warning',
+          })) return;
+          if (!exitStillValid()) return;
         }
+        await getCurrentWindow().destroy();
+        destroyed = true;
       } catch (caught) {
         setError(toMessage(caught));
       } finally {
+        if (prepared && !destroyed) {
+          draftRecovery.resumeAfterExitFailure(liveEditor.current.documents, Date.now());
+          syncRecoveryView();
+        }
         nativeDialogGate.current.finish('window-exit');
       }
     }).then((cleanup) => {
@@ -959,6 +1118,185 @@ export default function App() {
       // Keep previously listed files and open dirty buffers intact if scan
       // fails; only a successful scan may replace Explorer membership.
       setError('Could not refresh Scarp folder: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function createExplorerItem(request: WorkspaceCreateRequest): Promise<boolean> {
+    const selection = selectedFolderRef.current;
+    if (!isTauri() || !selection || filePickerInProgress.current ||
+        saveInProgress.current || selectionInProgress.current ||
+        commandInProgress.current || nativeDialogGate.current.isActive ||
+        compilerScanning) return false;
+    const targets = workspaceCreationTargets(folderDirectories, unavailableProjectFolders);
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const item = await createWorkspaceItem({
+        root: selection.path, targets, request,
+        isCurrent: () => selectedFolderRef.current === selection,
+        openPaths: () => liveEditor.current.documents.flatMap(document =>
+          document.path === null ? [] : [document.path]),
+      });
+      const refreshed = await updateExplorerAfterSave();
+      setNotice('Created ' + item.relativePath +
+        (refreshed ? '. Explorer refreshed.' : '. Refresh Explorer to update the listing.'));
+      return true;
+    } catch (caught) {
+      setError('Could not create workspace item: ' + toMessage(caught));
+      return false;
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  function rememberWorkspaceTabs(reviewed: CapturedWorkspaceSession, expected: WorkspaceSession | null): void {
+    if (recoveryOperationsBlocked()) return;
+    const selection = selectedFolderRef.current;
+    const editor = liveEditor.current;
+    if (!selection || !reviewed.session) {
+      setError('Choose a workspace and open at least one clean listed source before remembering tabs.');
+      return;
+    }
+    const capture = captureWorkspaceSession(selection.path, selection.files, editor.documents, editor.activeId, Date.now());
+    if (!capture.session || !sameWorkspaceCapture(reviewed, capture)) {
+      setError('The workspace or open tabs changed. Review the current remembered-tab preview and retry.');
+      return;
+    }
+    if (workspaceSessions.remember(capture.session, expected)) {
+      setError(null);
+      setNotice('Remembered ' + capture.rememberedCount + ' clean workspace tab(s). No source content was stored.');
+    }
+    setWorkspaceSessionView(workspaceSessions.view());
+  }
+
+  function forgetWorkspaceTabs(session: WorkspaceSession): void {
+    if (recoveryOperationsBlocked()) return;
+    if (workspaceSessions.forget(session)) {
+      setError(null);
+      setNotice('Removed remembered workspace metadata. Source files are unchanged.');
+    }
+    setWorkspaceSessionView(workspaceSessions.view());
+  }
+
+  function clearRememberedWorkspaces(sessions: readonly WorkspaceSession[]): void {
+    if (recoveryOperationsBlocked()) return;
+    if (workspaceSessions.clearAll(sessions)) {
+      setError(null);
+      setNotice('Removed all remembered workspace metadata. Open tabs are unchanged.');
+    }
+    setWorkspaceSessionView(workspaceSessions.view());
+  }
+
+  async function restoreWorkspaceTabs(session: WorkspaceSession, expectedPlan: WorkspaceRestorePlan): Promise<void> {
+    if (recoveryOperationsBlocked()) return;
+    const selection = selectedFolderRef.current;
+    const editorAtStart = liveEditor.current;
+    if (!selection || !workspaceSessions.canRestore(session)) {
+      setWorkspaceSessionView(workspaceSessions.view());
+      setError('Choose and review the current remembered workspace before restoring tabs.');
+      return;
+    }
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    // Treat every awaited disk read as a stale-operation boundary. Neither
+    // workspace refresh, editor ABA, nor a changed storage record may publish
+    // any of the staged tabs.
+    const isCurrent = () => selectedFolderRef.current === selection &&
+      hasUnchangedEditorSession(editorAtStart, liveEditor.current) &&
+      workspaceSessions.canRestore(session);
+    try {
+      const prepared = await prepareWorkspaceRestore({
+        session, expectedPlan, selectedRoot: selection.path, listedFiles: selection.files,
+        documents: editorAtStart.documents, isCurrent, read: readScarpSource,
+      });
+      if (!isCurrent()) throw new Error('The workspace or editor changed during restore.');
+      const action: EditorAction = {
+        type: 'restore-workspace-tabs', files: prepared.files, activePath: prepared.activePath,
+      };
+      const next = editorReducer(liveEditor.current, action);
+      if (prepared.files.length && next === liveEditor.current) {
+        throw new Error('The prepared workspace tabs could not be opened safely.');
+      }
+      dispatch(action);
+      setNotice('Opened ' + prepared.files.length + ' remembered tab(s), preserved ' +
+        prepared.alreadyOpen + ' already-open tab(s)' +
+        (prepared.skipped ? ', skipped ' + prepared.skipped + ' unlisted or ambiguous source(s).' : '.'));
+    } catch (caught) {
+      setError('Could not restore remembered workspace: ' + toMessage(caught));
+    } finally {
+      setWorkspaceSessionView(workspaceSessions.view());
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  function publishRecentlyClosed(next: RecentlyClosedState): void {
+    if (next === recentlyClosedRef.current) return;
+    recentlyClosedRef.current = next;
+    setRecentlyClosed(next);
+  }
+
+  function forgetClosedSource(entry: RecentlyClosedSource): void {
+    if (recoveryOperationsBlocked()) return;
+    publishRecentlyClosed(forgetRecentlyClosed(recentlyClosedRef.current, entry));
+  }
+
+  function clearClosedSources(expected: readonly RecentlyClosedSource[]): void {
+    if (recoveryOperationsBlocked() || recentlyClosedRef.current.entries !== expected) return;
+    publishRecentlyClosed(clearRecentlyClosed(recentlyClosedRef.current));
+  }
+
+  async function reopenLastClosedSource(): Promise<void> {
+    const entry = recentlyClosedRef.current.entries[0];
+    if (!entry) {
+      setNotice('No recently closed saved sources.');
+      return;
+    }
+    await reopenClosedSource(entry);
+  }
+
+  async function reopenClosedSource(entry: RecentlyClosedSource): Promise<void> {
+    if (!isTauri() || recoveryOperationsBlocked()) return;
+    const before = liveEditor.current;
+    const selection = selectedFolderRef.current;
+    const decision = resolveRecentlyClosed(recentlyClosedRef.current, entry, before.documents);
+    if (decision.kind === 'stale' || decision.kind === 'ambiguous') {
+      setError('The recently closed source is no longer unambiguous. Review the history and retry.');
+      return;
+    }
+    if (decision.kind === 'activate') {
+      dispatch({ type: 'activate', id: decision.documentId });
+      publishRecentlyClosed(forgetRecentlyClosed(recentlyClosedRef.current, entry));
+      setError(null);
+      return;
+    }
+    // This exact path came from a previously open clean tab in this desktop
+    // session. The native filesystem scope still decides whether it can be
+    // read. Do not request wider access or guess a new path if it was moved.
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const request = {
+        entry, expectedPath: decision.path, read: readScarpSource,
+        getCurrent: () => ({ history: recentlyClosedRef.current, documents: liveEditor.current.documents }),
+        isCurrent: () => selectedFolderRef.current === selection &&
+          hasUnchangedEditorSession(before, liveEditor.current),
+      };
+      const content = await prepareRecentlyClosedRead(request);
+      // The service's final check precedes resolution of its promise. Check
+      // again in this continuation immediately before committing editor state.
+      assertRecentlyClosedReadCurrent(request);
+      activateOpenedFile(decision.path, content);
+      setNotice('Reopened ' + entry.name + ' from its current disk contents.');
+    } catch (caught) {
+      setError('Could not reopen ' + entry.name + ': ' + toMessage(caught));
     } finally {
       filePickerInProgress.current = false;
       setBusy(false);
@@ -1352,7 +1690,7 @@ export default function App() {
         nativeDialogGate.current.isActive) return;
     try {
       await openCompilerDownloads();
-      setNotice('Opened the official Scarp alpha.20 download; extract it and scan for the compiler.');
+      setNotice('Opened the Scarp download destination; verify the download, extract it and scan for the compiler.');
     } catch (caught) {
       setError('Could not open official compiler download: ' + toMessage(caught));
     }
@@ -1586,7 +1924,7 @@ export default function App() {
     if (commandInProgress.current || saveInProgress.current ||
         filePickerInProgress.current || selectionInProgress.current ||
         nativeDialogGate.current.isActive) return;
-    if (directory && !projectRoots.some(root => root.directory === directory)) return;
+    if (!projectRoots.some(root => root.directory === directory)) return;
     if (directory === projectDirectory) return;
     setProjectDirectory(directory);
     projectResultEpoch.current++;
@@ -1601,7 +1939,9 @@ export default function App() {
         nativeDialogGate.current.isActive) return;
     if (!compilerPath || !selectedProjectPath) {
       if (!compilerPath) showCompilerSetup();
-      setError('Select the official compiler and a Scarp project folder first.');
+      setError(!compilerPath
+        ? 'Select the official compiler first.'
+        : 'Choose a discovered manifest-bearing Scarp project target first.');
       return;
     }
     if (!selectedProjectHasManifest) {
@@ -1954,6 +2294,40 @@ export default function App() {
     }
   }
 
+  function closeSelectedCleanTabs(selections: readonly TabSelection[]): boolean {
+    // Share the live native-operation guards; never interfere with pending
+    // writes, compiler reads, picker operations or discard confirmations.
+    if (saveInProgress.current || filePickerInProgress.current ||
+        commandInProgress.current || selectionInProgress.current ||
+        nativeDialogGate.current.isActive) {
+      setError('Finish the current operation before closing selected tabs.');
+      return false;
+    }
+    const before = liveEditor.current;
+    const snapshots = resolveBulkClose(selections, before.documents);
+    if (!snapshots) {
+      setError('The selected tabs changed. Review your selection and try again.');
+      return false;
+    }
+    dispatch({ type: 'close-clean-tabs', snapshots });
+    if (liveEditor.current === before) {
+      setError('The selected tabs could not be closed safely.');
+      return false;
+    }
+    setError(null);
+    setNotice('Closed ' + snapshots.length + ' saved tab(s). No source files changed.');
+    return true;
+  }
+
+  function activateManagedTab(snapshot: StudioDocument): void {
+    const current = liveEditor.current.documents.find(document => document.id === snapshot.id);
+    if (!current || !isUnchangedSnapshot(current, snapshot)) {
+      setError('This editor tab changed. Choose its current entry again.');
+      return;
+    }
+    dispatch({ type: 'activate', id: current.id });
+  }
+
   async function closeFile(id: string): Promise<void> {
     if (saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current) {
@@ -2057,7 +2431,10 @@ export default function App() {
         return;
       }
       if (paletteMode !== null) return;
-      if (key === 'm' && event.shiftKey) {
+      if (key === 't' && event.shiftKey) {
+        event.preventDefault();
+        if (!event.repeat) void reopenLastClosedSource();
+      } else if (key === 'm' && event.shiftKey) {
         event.preventDefault();
         showProblems();
       } else if (key === 'j' && !event.shiftKey) {
@@ -2109,6 +2486,8 @@ export default function App() {
           <div className="toolbar-group" role="group" aria-label="File actions">
           <button onClick={newFile} title="New (Ctrl+N)">New</button>
           <button onClick={() => void openFile()} title="Open (Ctrl+O)">Open</button>
+          <button onClick={() => void reopenLastClosedSource()} title="Reopen last closed saved source (Ctrl+Shift+T)"
+            disabled={!isTauri() || !recentlyClosed.entries.length || busy || compilerBusy || compilerSelecting}>Reopen</button>
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
           </div>
           <div className="toolbar-group" role="group" aria-label="Navigation">
@@ -2157,6 +2536,11 @@ export default function App() {
 
       {editorSettingsOpen && (
         <section id="editor-settings" className="editor-settings" aria-label="Scarp editor settings">
+          <DraftRecoveryPanel view={recoveryView}
+            blocked={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onEnable={enableDraftRecovery} onDisable={disableDraftRecovery}
+            onRestore={restorePreviousDrafts} onDiscard={discardPreviousDrafts}
+            onCheckpoint={() => flushDraftRecovery(true)} />
           <label className="editor-setting-checkbox" htmlFor="studio-auto-save">
             <input id="studio-auto-save" type="checkbox"
               checked={autoSavePreferences.enabled}
@@ -2258,10 +2642,10 @@ export default function App() {
               setAutoSavePreferences(restored.autoSave);
               setEditorPreferences(restored.editor);
               resetWorkspaceLayout();
-              setNotice('Restored Studio Settings defaults; Auto Save is off.');
+              setNotice('Restored appearance and Auto Save defaults. Recovery and remembered workspace metadata are unchanged.');
             }}
-            title="Reset editor appearance and disable Auto Save"
-          >Restore all defaults</button>
+            title="Reset editor appearance and disable Auto Save; does not erase recovery copies"
+          >Restore appearance and Auto Save defaults</button>
         </section>
       )}
       <div className="studio-main" ref={studioMainElement}>
@@ -2289,6 +2673,10 @@ export default function App() {
                   Check folder access permissions.
                 </p>
               )}
+              <WorkspaceCreatePanel key={'create:' + folderPath}
+                directories={folderDirectories} unavailable={unavailableProjectFolders}
+                busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
+                onCreate={createExplorerItem} />
               <ProjectExplorer key={folderPath} files={folderEntries} directories={folderDirectories}
                 projectRoots={projectRoots} selectedProjectDirectory={projectDirectory}
                 onSelectProject={chooseProjectTarget} documents={documents} activeId={activeId}
@@ -2298,6 +2686,11 @@ export default function App() {
           ) : (
             <div className="sidebar-note">Choose a folder to browse its .srp files.</div>
           )}
+          <WorkspaceSessionPanel key={folderPath ?? 'no-workspace'} root={folderPath}
+            files={folderEntries} documents={documents} activeId={activeId}
+            view={workspaceSessionView} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onRemember={rememberWorkspaceTabs} onRestore={(session, plan) => void restoreWorkspaceTabs(session, plan)}
+            onForget={forgetWorkspaceTabs} onClearAll={clearRememberedWorkspaces} />
           <section className="sidebar-section open-editors">
             <div className="sidebar-heading">OPEN EDITORS</div>
             {documents.map((document) => (
@@ -2320,6 +2713,13 @@ export default function App() {
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
           </section>
+          <OpenEditorManager documents={documents} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onActivate={activateManagedTab} onClose={closeSelectedCleanTabs} />
+          <RecentlyClosedPanel entries={recentlyClosed.entries}
+            busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
+            onReopen={entry => void reopenClosedSource(entry)}
+            onForget={forgetClosedSource} onClear={clearClosedSources} />
           <section className="sidebar-section" aria-label="Scarp declaration outline">
             <div className="sidebar-heading">DECLARATION OUTLINE</div>
             <button type="button" className="file-row" disabled={!active}
@@ -2771,7 +3171,7 @@ export default function App() {
                 </button>
                 <button type="button" onClick={() => void downloadCompiler()}
                   disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
-                  title="Open the official Scarp alpha.20 ZIP. Verify its published SHA-256 before trusting the extracted executable.">Download Compiler</button>
+                  title="Open the Scarp compiler download destination. Verify the published SHA-256 before trusting the extracted executable.">Download Compiler</button>
                 <button onClick={() => void selectCompiler()} disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
                   title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
                   {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}
@@ -2807,13 +3207,17 @@ export default function App() {
               <span>PROJECT</span>
               {folderPath && <label htmlFor="studio-project-root" className="project-target-label">Project target</label>}
               {folderPath && <select id="studio-project-root" className="project-target-select" aria-label="Choose Scarp project root"
-                value={projectDirectory}
+                value={projectDirectory === null ? '' : '/' + projectDirectory}
                 disabled={busy || compilerBusy || compilerSelecting || !isTauri()}
-                title="Choose a manifest-bearing nested project for Info, Verify, Run and Tests"
-                onChange={event => chooseProjectTarget(event.target.value)}>
-                <option value="">Workspace root{projectRoots.some(root => root.directory === '') ? ' (manifest)' : ' (no manifest detected)'}</option>
-                {projectRoots.filter(root => root.directory !== '').map(root =>
-                  <option key={root.directory} value={root.directory}>{root.directory}/</option>)}
+                title="Choose a manifest-bearing project for Info, Verify, Run and Tests"
+                onChange={event => {
+                  if (event.target.value.startsWith('/')) chooseProjectTarget(event.target.value.slice(1));
+                }}>
+                <option value="" disabled>Choose project target…</option>
+                {projectRoots.map(root =>
+                  <option key={root.directory} value={'/' + root.directory}>
+                    {root.directory ? root.directory + '/' : 'Workspace root (manifest)'}
+                  </option>)}
               </select>}
               {activeSourceHasOtherProject && <button type="button"
                 className="project-target-from-source"
@@ -2849,8 +3253,9 @@ export default function App() {
               <span>{selectedProjectPath ? fileName(selectedProjectPath) : 'Choose a Scarp project folder'}</span>
               {folderPath && !selectedProjectHasManifest && (
                 <span className="project-dirty-warning" role="status">
-                  No Scarp project manifest detected at this target. Choose a manifest-bearing
-                  folder above or refresh the Explorer after creating one.
+                  {projectRoots.length
+                    ? 'Choose a project target explicitly. Refresh never switches execution to another project.'
+                    : 'No Scarp project manifest detected. Refresh Explorer after creating one.'}
                 </span>
               )}
               {dirtySelectedProjectSources.length > 0 && (
@@ -3070,6 +3475,11 @@ export default function App() {
           Auto Save: {autoSavePreferences.enabled ? 'On' : 'Off'}
           {autoSaveReview.current.reviewCount(documents) > 0 &&
             ' · Review ' + autoSaveReview.current.reviewCount(documents)}
+        </button>
+        <button type="button" className="status-nav recovery-status" onClick={() => setEditorSettingsOpen(true)}
+          title={recoveryView.error || "Local draft recovery (Settings)"}>
+          Recovery: {recoveryView.previous ? "Review" : recoveryView.error && recoveryView.enabled ? "Warning" :
+            recoveryView.blocked ? "Review" : recoveryView.paused ? "Paused" : recoveryView.enabled ? "On" : "Off"}
         </button>
         <span>Scarp · .srp</span>
         <span className="status-version" title="Unreleased development candidate">0.0.2-alpha.1 · development candidate</span>

@@ -20,6 +20,7 @@ Choose the **Scarp-Practice** parent folder once. Explorer headings include nest
 - Hidden, dependency/build and unsafe traversal directory entries are skipped.
 - At most **64 directories** (including selected root), **5 nested levels**, and **200 listed Scarp sources**, with the prior **4096-entry** ordinary inspection budget per directory. Native readDir materializes its immediate directory before these frontend limits apply.
 - Unreadable nested folders are reported; accessible siblings remain visible.
+- Failed native directory path joins consume the same bounded directory slots as successful joins. Unrepresentable relative names and individual source path join failures are omitted with the partial-listing warning rather than discarding accessible siblings.
 - Existing editor snapshot guards, 4 MiB source limits, external-modification protection, Save As checks and post-write read-back stay intact.
 - Scarp **project** compiler actions use the explicitly chosen manifest-bearing **Project target** (which can be a nested folder). To run a standalone nested practice file, open that .srp source in the editor.
 
@@ -84,8 +85,11 @@ target its root by default. If the workspace root has **no** manifest but
 contains exactly one scanned manifest-bearing child, that child is selected
 automatically. When two or more nested projects exist, the user must choose
 the intended **Project target** explicitly. Refresh preserves a selected,
-still-present project, but retires a removed project target instead of running
-against its stale path.
+still-present project, but clears a removed or inaccessible project target.
+It does not automatically switch to a sibling or the workspace-root manifest,
+and repeated refreshes cannot reselect a vanished project. All project
+commands remain disabled until the user explicitly selects a discovered
+manifest root again. This also applies to rescans after Save As.
 
 ## Automated compiler integration coverage
 
@@ -256,3 +260,56 @@ The inventory is explicitly bounded to 24 open buffers, a 1.5 Mi UTF-16
 aggregate source budget and 300 listed tasks. Incomplete scans visibly
 say so rather than implying a complete task inventory. All task text is
 rendered as escaped source data, never executable markup or links.
+
+
+## Manage Open Editors
+
+Expand **MANAGE OPEN EDITORS** under the Explorer's open-editor list to
+review filenames, full paths, the current editor, unsaved changes and
+untitled buffers. The manager filters by filename/path and editor state,
+sorts by tab order, filename or modified status, and shows 20 rows per
+page (up to 200 open editors). A limited inventory explicitly reports its
+cap. Activating a row only switches to its exact current open buffer.
+
+Batch Close is an explicit saved-tab operation, not a discard operation.
+Only named, unmodified sources can be selected. Modified tabs and all
+untitled tabs (including empty untitled tabs) cannot be bulk-closed.
+Select individual saved tabs or **Select saved on page**, then click
+**Close selected**. Changing the filter, sort or page clears the selection.
+An edit, Save, Save As or close/reopen invalidates a selected revision;
+the entire batch is rejected if any selected tab changed. Native file
+operations and compiler actions block batch close.
+
+The reducer validates every selected snapshot atomically before removing
+any tab. If the active tab closes, focus moves to the closest surviving
+tab to its right or, if none, to its left. Existing dirty buffers remain
+unchanged, and no file is saved, deleted, renamed or read from disk.
+
+
+## Create a source or nested folder
+
+Choose a workspace in Explorer, then expand **New source or folder**.
+Choose a visible, currently available parent directory and an item name.
+The destination preview shows the relative path before the explicit Create
+action. Source names receive a .srp extension if necessary; the source is
+created empty. Folder creation creates only one directory level.
+
+Studio checks portable filename components and excludes hidden, reserved,
+dependency and build directory names. It re-reads each selected parent
+component before creation, refuses observed symbolic links, checks for
+case-insensitive collisions and checks open editor paths. The source uses
+the native exclusive create-new operation, not a truncating write.
+Directory creation is non-recursive. No existing file is opened for writing.
+
+Tauri's existing user-selected recursive filesystem scope remains the
+permission boundary. Folder creation adds only the scoped mkdir command;
+it does not enable shell access, arbitrary filesystem roots or deletion.
+Parent revalidation is best effort and not an atomic defense against all
+external filesystem races. If native permissions deny the operation, Studio
+reports the error rather than retrying outside the selected scope.
+
+After successful creation Studio refreshes the existing workspace listing.
+Open tabs and unsaved edits stay unchanged; no compiler is launched. If the
+refresh fails or listing limits omit the item, use Refresh Explorer or the
+normal file picker. If native close fails, the source may already exist;
+refresh and inspect before retrying.

@@ -17,20 +17,29 @@ export interface ScannedManifestRoot {
  */
 export function preferredProjectDirectory(
   roots: readonly ScannedManifestRoot[],
-): string {
+): string | null {
   if (roots.some(root => root.directory === '')) return '';
-  return roots.length === 1 ? roots[0].directory : '';
+  return roots.length === 1 ? roots[0].directory : null;
 }
 
-/** A normal Explorer refresh keeps an explicit target. If that manifest was
- * removed/renamed, fall back to the only safe discovered alternative (or root
- * placeholder); never continue targeting a stale nested directory.
+/** Refresh never silently redirects execution to a sibling project or root.
+ * An unavailable or unselected target stays unselected until an explicit
+ * choice, even if the next refresh finds a single project.
  */
 export function retainedProjectDirectory(
-  previous: string, roots: readonly ScannedManifestRoot[],
-): string {
-  if (!previous || roots.some(root => root.directory === previous)) return previous;
-  return preferredProjectDirectory(roots);
+  previous: string | null, roots: readonly ScannedManifestRoot[],
+): string | null {
+  return previous !== null && roots.some(root => root.directory === previous)
+    ? previous : null;
+}
+
+/** Resolve only an exact discovered manifest root; null and the root's empty
+ * relative directory have distinct meanings. */
+export function selectedManifestPath(
+  directory: string | null, roots: readonly ScannedManifestRoot[],
+): string | null {
+  return directory === null ? null :
+    roots.find(root => root.directory === directory)?.path ?? null;
 }
 
 export interface ListedWorkspaceSource {
