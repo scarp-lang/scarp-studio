@@ -41,7 +41,8 @@ export type EditorAction =
   | { type: 'reload'; id: string; snapshot: StudioDocument; content: string }
   | { type: 'replace-open-files'; changes: readonly BufferReplacement[]; allSnapshots: readonly StudioDocument[] }
   | { type: 'activate'; id: string }
-  | { type: 'close'; id: string; snapshot: StudioDocument };
+  | { type: 'close'; id: string; snapshot: StudioDocument }
+  | { type: 'close-clean-tabs'; snapshots: readonly StudioDocument[] };
 
 export const initialEditorState: EditorState = {
   documents: [createUntitled(1)],
@@ -168,6 +169,30 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
       if (state.activeId === action.id ||
           !state.documents.some((document) => document.id === action.id)) return state;
       return { ...state, activeId: action.id };
+    case 'close-clean-tabs': {
+      // A bulk action is deliberately not a discard path. Validate every
+      // exact snapshot before removing even one tab, including the case
+      // where an editor was saved, edited and reverted, or reopened.
+      if (!action.snapshots.length || action.snapshots.length > 200) return state;
+      const ids = new Set<string>();
+      for (const snapshot of action.snapshots) {
+        if (ids.has(snapshot.id) || !snapshot.path || isDirty(snapshot)) return state;
+        ids.add(snapshot.id);
+        const current = state.documents.find(document => document.id === snapshot.id);
+        if (!current || !current.path || isDirty(current) ||
+            !isUnchangedSnapshot(current, snapshot)) return state;
+      }
+      const remaining = state.documents.filter(document => !ids.has(document.id));
+      let activeId = state.activeId;
+      if (activeId !== null && ids.has(activeId)) {
+        const originalIndex = state.documents.findIndex(document => document.id === activeId);
+        // Choose the next surviving tab in original order, or the closest
+        // predecessor, without changing focus if the active tab survives.
+        activeId = state.documents.slice(originalIndex + 1).find(document => !ids.has(document.id))?.id ??
+          state.documents.slice(0, originalIndex).reverse().find(document => !ids.has(document.id))?.id ?? null;
+      }
+      return { ...state, documents: remaining, activeId };
+    }
     case 'close': {
       const current = state.documents.find((document) => document.id === action.id);
       if (!current || !isUnchangedSnapshot(current, action.snapshot)) return state;
