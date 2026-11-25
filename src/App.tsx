@@ -63,7 +63,7 @@ import { emptyRecentlyClosed, reconcileRecentlyClosed, resolveRecentlyClosed,
 import { WorkspaceSessionStore } from './model/workspaceSessionStore';
 import { captureWorkspaceSession, sameWorkspaceCapture, type CapturedWorkspaceSession,
   type WorkspaceSession, type WorkspaceRestorePlan } from './model/workspaceSessions';
-import { prepareRecentlyClosedRead } from './services/recentlyClosedRead';
+import { assertRecentlyClosedReadCurrent, prepareRecentlyClosedRead } from './services/recentlyClosedRead';
 import { prepareWorkspaceRestore } from './services/workspaceRestore';
 import { DraftRecoveryJournal, type RecoveryView } from './model/draftRecoveryJournal';
 import type { RecoveryCheckpoint } from './model/draftRecovery';
@@ -878,7 +878,7 @@ export default function App() {
 
   useEffect(() => {
     if (!recoveryView.enabled || recoveryView.previous || recoveryView.blocked || recoveryView.paused) return;
-    const interval = window.setInterval(() => flushDraftRecovery(), 4000);
+    const interval = window.setInterval(() => flushDraftRecovery(draftRecovery.shouldRetryFlush()), 4000);
     const flush = () => flushDraftRecovery(true);
     const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
     window.addEventListener('pagehide', flush);
@@ -903,7 +903,7 @@ export default function App() {
         filePickerInProgress.current,
       );
       if (!pending.length && !blocked && !nativeDialogGate.current.isActive &&
-          !draftRecovery.view().enabled) return;
+          !draftRecovery.requiresExitPreparation()) return;
       event.preventDefault();
       if (blocked) {
         setError(blocked);
@@ -1283,12 +1283,16 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const content = await prepareRecentlyClosedRead({
+      const request = {
         entry, expectedPath: decision.path, read: readScarpSource,
         getCurrent: () => ({ history: recentlyClosedRef.current, documents: liveEditor.current.documents }),
         isCurrent: () => selectedFolderRef.current === selection &&
           hasUnchangedEditorSession(before, liveEditor.current),
-      });
+      };
+      const content = await prepareRecentlyClosedRead(request);
+      // The service's final check precedes resolution of its promise. Check
+      // again in this continuation immediately before committing editor state.
+      assertRecentlyClosedReadCurrent(request);
       activateOpenedFile(decision.path, content);
       setNotice('Reopened ' + entry.name + ' from its current disk contents.');
     } catch (caught) {

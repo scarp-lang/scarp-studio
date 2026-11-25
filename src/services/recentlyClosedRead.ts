@@ -15,18 +15,19 @@ export interface RecentlyClosedReadRequest {
  * Revalidate after the asynchronous read, including history entry identity,
  * so a close/reopen/close cycle cannot revive a stale request.
  */
-export async function prepareRecentlyClosedRead(request: RecentlyClosedReadRequest): Promise<string> {
-  function checkCurrent(): void {
-    const current = request.getCurrent();
-    const decision = resolveRecentlyClosed(current.history, request.entry, current.documents);
-    if (!request.isCurrent() || decision.kind !== 'read' ||
-        decision.path !== request.expectedPath) {
-      throw new Error('The editor or closed-source history changed. Review the history and retry.');
-    }
+export function assertRecentlyClosedReadCurrent(request: RecentlyClosedReadRequest): void {
+  const current = request.getCurrent();
+  const decision = resolveRecentlyClosed(current.history, request.entry, current.documents);
+  if (!request.isCurrent() || decision.kind !== 'read' ||
+      decision.path !== request.expectedPath) {
+    throw new Error('The editor or closed-source history changed. Review the history and retry.');
   }
-  checkCurrent();
+}
+
+export async function prepareRecentlyClosedRead(request: RecentlyClosedReadRequest): Promise<string> {
+  assertRecentlyClosedReadCurrent(request);
   const content = await request.read(request.expectedPath);
-  checkCurrent();
+  assertRecentlyClosedReadCurrent(request);
   assertScarpSourceText(content);
   return content;
 }

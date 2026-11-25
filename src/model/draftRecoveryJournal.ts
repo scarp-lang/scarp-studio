@@ -34,6 +34,7 @@ export class DraftRecoveryJournal {
   private suspended = false;
   private disableRequested = false;
   private readable = false;
+  private retryableFailure = false;
 
   constructor(private readonly storage: RecoveryStorage | null) {
     if (!storage) {
@@ -69,8 +70,23 @@ export class DraftRecoveryJournal {
     };
   }
 
-  private fail(message: string): false {
+  /** Retry unchanged buffers on the existing periodic timer only after
+   * transient storage errors. Validation/budget failures need new input,
+   * and a pending review, blocked writer or explicit disable never retries. */
+  shouldRetryFlush(): boolean {
+    return this.retryableFailure && this.record !== null && !this.previous &&
+      !this.blocked && !this.suspended;
+  }
+
+  /** Even a corrupt record has an outstanding cleanup request after a
+   * failed explicit disable, despite not having a parsed enabled record. */
+  requiresExitPreparation(): boolean {
+    return this.record !== null || this.disableRequested;
+  }
+
+  private fail(message: string, retryable = false): false {
     this.error = message;
+    this.retryableFailure = retryable;
     return false;
   }
 
@@ -83,7 +99,7 @@ export class DraftRecoveryJournal {
       }
       return true;
     } catch {
-      return this.fail('Local recovery storage could not be checked.');
+      return this.fail('Local recovery storage could not be checked.', true);
     }
   }
 
@@ -98,10 +114,11 @@ export class DraftRecoveryJournal {
       this.raw = raw;
       this.record = next;
       this.error = null;
+      this.retryableFailure = false;
       this.blocked = false;
       return true;
     } catch {
-      return this.fail('Recovery storage write failed. The previous complete checkpoint has been retained if storage permits.');
+      return this.fail('Recovery storage write failed. The previous complete checkpoint has been retained if storage permits.', true);
     }
   }
 
@@ -136,6 +153,7 @@ export class DraftRecoveryJournal {
     if (!checkpoint.ok) return this.fail(checkpoint.error);
     if (sameRecoveryDrafts(checkpoint.value, this.record.checkpoint)) {
       this.error = null;
+      this.retryableFailure = false;
       return true;
     }
     return this.replace({ version: 1, enabled: true, checkpoint: checkpoint.value });

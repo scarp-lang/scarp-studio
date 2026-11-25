@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { StudioDocument } from '../model/documents';
 import { emptyRecentlyClosed, reconcileRecentlyClosed, clearRecentlyClosed } from '../model/recentlyClosed';
 import { MAX_SCARP_SOURCE_BYTES } from '../model/sourceLimits';
-import { prepareRecentlyClosedRead } from './recentlyClosedRead';
+import { assertRecentlyClosedReadCurrent, prepareRecentlyClosedRead } from './recentlyClosedRead';
 
 function fixture() {
   const document: StudioDocument = {
@@ -80,6 +80,24 @@ describe('prepareRecentlyClosedRead', () => {
       });
       await expect(prepareRecentlyClosedRead(f.request)).rejects.toThrow('changed');
     }
+  });
+
+  it('requires a final commit check even after a successful prepared read', async () => {
+    for (const change of ['invalidate', 'clear', 'reopen', 'cycle'] as const) {
+      const f = fixture();
+      const content = await prepareRecentlyClosedRead(f.request);
+      expect(content).toBe('new disk contents');
+      f[change]();
+      expect(() => assertRecentlyClosedReadCurrent(f.request)).toThrow('changed');
+      expect(f.read).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('accepts a still-current prepared result without an extra disk read', async () => {
+    const f = fixture();
+    await prepareRecentlyClosedRead(f.request);
+    expect(() => assertRecentlyClosedReadCurrent(f.request)).not.toThrow();
+    expect(f.read).toHaveBeenCalledTimes(1);
   });
 
   it('preserves exact newlines and Unicode source', async () => {

@@ -113,6 +113,50 @@ describe('opt-in recovery journal', () => {
     expect(journal.flush([dirty('new')], time + 2)).toBe(true);
   });
 
+  it('permits periodic retries of unchanged buffers only for storage failures', () => {
+    const { storage, journal } = start();
+    const documents = [dirty('new checkpoint')];
+    const old = storage.raw();
+    storage.failWrite = true;
+    expect(journal.flush(documents, time + 1)).toBe(false);
+    expect(journal.shouldRetryFlush()).toBe(true);
+    expect(storage.raw()).toBe(old);
+    storage.failWrite = false;
+    expect(journal.flush(documents, time + 2)).toBe(true);
+    expect(journal.shouldRetryFlush()).toBe(false);
+    expect(new DraftRecoveryJournal(storage).view().previous?.drafts[0].content).toBe('new checkpoint');
+
+    storage.failRead = true;
+    expect(journal.flush(documents, time + 3)).toBe(false);
+    expect(journal.shouldRetryFlush()).toBe(true);
+    storage.failRead = false;
+    expect(journal.flush(documents, time + 4)).toBe(true);
+    expect(journal.shouldRetryFlush()).toBe(false);
+  });
+
+  it('does not retry permanent validation failures or externally changed storage', () => {
+    const { storage, journal } = start();
+    expect(journal.flush([dirty('x'.repeat(MAX_RECOVERY_SOURCE_UNITS + 1))], time + 1)).toBe(false);
+    expect(journal.shouldRetryFlush()).toBe(false);
+    storage.data.set(DRAFT_RECOVERY_KEY, 'external');
+    expect(journal.flush([dirty('new')], time + 2)).toBe(false);
+    expect(journal.shouldRetryFlush()).toBe(false);
+    expect(storage.raw()).toBe('external');
+  });
+
+  it('does not retry background writes while review or disable is pending', () => {
+    const { storage, journal } = start();
+    const restarted = new DraftRecoveryJournal(storage);
+    storage.failWrite = true;
+    expect(restarted.resolvePrevious(restarted.view().previous!, [dirty('new')], time + 1)).toBe(false);
+    expect(restarted.shouldRetryFlush()).toBe(false);
+    expect(journal.flush([dirty('new')], time + 1)).toBe(false);
+    expect(journal.shouldRetryFlush()).toBe(true);
+    storage.failRemove = true;
+    expect(journal.disable()).toBe(false);
+    expect(journal.shouldRetryFlush()).toBe(false);
+  });
+
   it('handles inaccessible or missing desktop storage without enabling recovery', () => {
     const storage = new MemoryStorage();
     storage.failRead = true;
@@ -212,6 +256,23 @@ describe('external changes and explicit deletion', () => {
     expect(journal.disable()).toBe(true);
     expect(storage.raw()).toBeNull();
     expect(journal.view()).toMatchObject({ blocked: false, enabled: false, paused: false, error: null });
+  });
+
+  it('requires shutdown cleanup after a failed explicit removal of a corrupt record', () => {
+    const storage = new MemoryStorage();
+    storage.data.set(DRAFT_RECOVERY_KEY, '{invalid');
+    const journal = new DraftRecoveryJournal(storage);
+    expect(journal.requiresExitPreparation()).toBe(false);
+    storage.failRemove = true;
+    expect(journal.disable()).toBe(false);
+    expect(journal.view().enabled).toBe(false);
+    expect(journal.requiresExitPreparation()).toBe(true);
+    expect(journal.prepareExit()).toBe(false);
+    expect(storage.raw()).toBe('{invalid');
+    storage.failRemove = false;
+    expect(journal.prepareExit()).toBe(true);
+    expect(journal.requiresExitPreparation()).toBe(false);
+    expect(storage.raw()).toBeNull();
   });
 
   it('rejects a concurrent writer without overwriting or deleting their data', () => {
