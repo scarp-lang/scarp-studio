@@ -14,7 +14,7 @@ import { readScarpSource } from './services/sourceRead';
 import { chooseSourceFolder, readFolderSource, scanSourceFolder, type ScarpProjectRoot } from './services/folders';
 import { disambiguateDocumentNames } from './model/documentLabels';
 import { saveChangesWorkspaceListing } from './model/workspaceSaveRefresh';
-import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForListedSource } from './model/projectTargets';
+import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForListedSource, selectedManifestPath } from './model/projectTargets';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
@@ -42,6 +42,11 @@ import { verifiedProblemMarker } from './model/problemMarkers';
 import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
+import { OpenEditorManager } from './components/OpenEditorManager';
+import { resolveBulkClose, type TabSelection } from './model/openEditorManagement';
+import { WorkspaceCreatePanel } from './components/WorkspaceCreatePanel';
+import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/workspaceCreate';
+import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
@@ -278,7 +283,7 @@ export default function App() {
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [folderDirectories, setFolderDirectories] = useState<string[]>([]);
   const [projectRoots, setProjectRoots] = useState<ScarpProjectRoot[]>([]);
-  const [projectDirectory, setProjectDirectory] = useState('');
+  const [projectDirectory, setProjectDirectory] = useState<string | null>(null);
   // Preserve exact folder-listing identity across asynchronous source reads.
   const selectedFolderRef = useRef<{ path: string; files: FolderEntry[]; projectRoots: ScarpProjectRoot[] } | null>(null);
   const [folderListingLimited, setFolderListingLimited] = useState(false);
@@ -448,13 +453,9 @@ export default function App() {
 
   // The workspace is a browsing root. Project operations deliberately use
   // a chosen manifest directory, which may be nested several levels down.
-  // The empty target preserves the old workspace-root behavior.
-  const selectedProjectPath = projectDirectory
-    ? projectRoots.find(root => root.directory === projectDirectory)?.path ?? null
-    : folderPath;
-  const selectedProjectHasManifest = projectRoots.some(root =>
-    root.directory === projectDirectory &&
-    selectedProjectPath !== null && sameFilePath(root.path, selectedProjectPath));
+  // null means no project is selected; '' is a real root manifest.
+  const selectedProjectPath = selectedManifestPath(projectDirectory, projectRoots);
+  const selectedProjectHasManifest = selectedProjectPath !== null;
   // A file is never allowed to redirect project execution automatically.
   // Offer an explicit switch to its closest discovered manifest root instead.
   const activeSourceProjectDirectory = projectTargetForListedSource(
@@ -1117,6 +1118,36 @@ export default function App() {
       // Keep previously listed files and open dirty buffers intact if scan
       // fails; only a successful scan may replace Explorer membership.
       setError('Could not refresh Scarp folder: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function createExplorerItem(request: WorkspaceCreateRequest): Promise<boolean> {
+    const selection = selectedFolderRef.current;
+    if (!isTauri() || !selection || filePickerInProgress.current ||
+        saveInProgress.current || selectionInProgress.current ||
+        commandInProgress.current || nativeDialogGate.current.isActive ||
+        compilerScanning) return false;
+    const targets = workspaceCreationTargets(folderDirectories, unavailableProjectFolders);
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const item = await createWorkspaceItem({
+        root: selection.path, targets, request,
+        isCurrent: () => selectedFolderRef.current === selection,
+        openPaths: () => liveEditor.current.documents.flatMap(document =>
+          document.path === null ? [] : [document.path]),
+      });
+      const refreshed = await updateExplorerAfterSave();
+      setNotice('Created ' + item.relativePath +
+        (refreshed ? '. Explorer refreshed.' : '. Refresh Explorer to update the listing.'));
+      return true;
+    } catch (caught) {
+      setError('Could not create workspace item: ' + toMessage(caught));
+      return false;
     } finally {
       filePickerInProgress.current = false;
       setBusy(false);
@@ -1889,7 +1920,7 @@ export default function App() {
     if (commandInProgress.current || saveInProgress.current ||
         filePickerInProgress.current || selectionInProgress.current ||
         nativeDialogGate.current.isActive) return;
-    if (directory && !projectRoots.some(root => root.directory === directory)) return;
+    if (!projectRoots.some(root => root.directory === directory)) return;
     if (directory === projectDirectory) return;
     setProjectDirectory(directory);
     projectResultEpoch.current++;
@@ -1904,7 +1935,9 @@ export default function App() {
         nativeDialogGate.current.isActive) return;
     if (!compilerPath || !selectedProjectPath) {
       if (!compilerPath) showCompilerSetup();
-      setError('Select the official compiler and a Scarp project folder first.');
+      setError(!compilerPath
+        ? 'Select the official compiler first.'
+        : 'Choose a discovered manifest-bearing Scarp project target first.');
       return;
     }
     if (!selectedProjectHasManifest) {
@@ -2257,6 +2290,40 @@ export default function App() {
     }
   }
 
+  function closeSelectedCleanTabs(selections: readonly TabSelection[]): boolean {
+    // Share the live native-operation guards; never interfere with pending
+    // writes, compiler reads, picker operations or discard confirmations.
+    if (saveInProgress.current || filePickerInProgress.current ||
+        commandInProgress.current || selectionInProgress.current ||
+        nativeDialogGate.current.isActive) {
+      setError('Finish the current operation before closing selected tabs.');
+      return false;
+    }
+    const before = liveEditor.current;
+    const snapshots = resolveBulkClose(selections, before.documents);
+    if (!snapshots) {
+      setError('The selected tabs changed. Review your selection and try again.');
+      return false;
+    }
+    dispatch({ type: 'close-clean-tabs', snapshots });
+    if (liveEditor.current === before) {
+      setError('The selected tabs could not be closed safely.');
+      return false;
+    }
+    setError(null);
+    setNotice('Closed ' + snapshots.length + ' saved tab(s). No source files changed.');
+    return true;
+  }
+
+  function activateManagedTab(snapshot: StudioDocument): void {
+    const current = liveEditor.current.documents.find(document => document.id === snapshot.id);
+    if (!current || !isUnchangedSnapshot(current, snapshot)) {
+      setError('This editor tab changed. Choose its current entry again.');
+      return;
+    }
+    dispatch({ type: 'activate', id: current.id });
+  }
+
   async function closeFile(id: string): Promise<void> {
     if (saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current) {
@@ -2602,6 +2669,10 @@ export default function App() {
                   Check folder access permissions.
                 </p>
               )}
+              <WorkspaceCreatePanel key={'create:' + folderPath}
+                directories={folderDirectories} unavailable={unavailableProjectFolders}
+                busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
+                onCreate={createExplorerItem} />
               <ProjectExplorer key={folderPath} files={folderEntries} directories={folderDirectories}
                 projectRoots={projectRoots} selectedProjectDirectory={projectDirectory}
                 onSelectProject={chooseProjectTarget} documents={documents} activeId={activeId}
@@ -2638,6 +2709,9 @@ export default function App() {
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
           </section>
+          <OpenEditorManager documents={documents} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onActivate={activateManagedTab} onClose={closeSelectedCleanTabs} />
           <RecentlyClosedPanel entries={recentlyClosed.entries}
             busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
             onReopen={entry => void reopenClosedSource(entry)}
@@ -3129,13 +3203,17 @@ export default function App() {
               <span>PROJECT</span>
               {folderPath && <label htmlFor="studio-project-root" className="project-target-label">Project target</label>}
               {folderPath && <select id="studio-project-root" className="project-target-select" aria-label="Choose Scarp project root"
-                value={projectDirectory}
+                value={projectDirectory === null ? '' : '/' + projectDirectory}
                 disabled={busy || compilerBusy || compilerSelecting || !isTauri()}
-                title="Choose a manifest-bearing nested project for Info, Verify, Run and Tests"
-                onChange={event => chooseProjectTarget(event.target.value)}>
-                <option value="">Workspace root{projectRoots.some(root => root.directory === '') ? ' (manifest)' : ' (no manifest detected)'}</option>
-                {projectRoots.filter(root => root.directory !== '').map(root =>
-                  <option key={root.directory} value={root.directory}>{root.directory}/</option>)}
+                title="Choose a manifest-bearing project for Info, Verify, Run and Tests"
+                onChange={event => {
+                  if (event.target.value.startsWith('/')) chooseProjectTarget(event.target.value.slice(1));
+                }}>
+                <option value="" disabled>Choose project target…</option>
+                {projectRoots.map(root =>
+                  <option key={root.directory} value={'/' + root.directory}>
+                    {root.directory ? root.directory + '/' : 'Workspace root (manifest)'}
+                  </option>)}
               </select>}
               {activeSourceHasOtherProject && <button type="button"
                 className="project-target-from-source"
@@ -3171,8 +3249,9 @@ export default function App() {
               <span>{selectedProjectPath ? fileName(selectedProjectPath) : 'Choose a Scarp project folder'}</span>
               {folderPath && !selectedProjectHasManifest && (
                 <span className="project-dirty-warning" role="status">
-                  No Scarp project manifest detected at this target. Choose a manifest-bearing
-                  folder above or refresh the Explorer after creating one.
+                  {projectRoots.length
+                    ? 'Choose a project target explicitly. Refresh never switches execution to another project.'
+                    : 'No Scarp project manifest detected. Refresh Explorer after creating one.'}
                 </span>
               )}
               {dirtySelectedProjectSources.length > 0 && (
