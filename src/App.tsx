@@ -50,6 +50,11 @@ import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
+import { WorkspaceSessionPanel } from './components/WorkspaceSessionPanel';
+import { WorkspaceSessionStore } from './model/workspaceSessionStore';
+import { captureWorkspaceSession, sameWorkspaceCapture, type CapturedWorkspaceSession,
+  type WorkspaceSession, type WorkspaceRestorePlan } from './model/workspaceSessions';
+import { prepareWorkspaceRestore } from './services/workspaceRestore';
 import { DraftRecoveryJournal, type RecoveryView } from './model/draftRecoveryJournal';
 import type { RecoveryCheckpoint } from './model/draftRecovery';
 import {
@@ -176,6 +181,14 @@ function createDraftRecoveryJournal(): DraftRecoveryJournal {
   }
 }
 
+function createWorkspaceSessionStore(): WorkspaceSessionStore {
+  try {
+    return new WorkspaceSessionStore(isTauri() ? localStorage : null);
+  } catch {
+    return new WorkspaceSessionStore(null);
+  }
+}
+
 function sameRecoveryView(left: RecoveryView, right: RecoveryView): boolean {
   return left.available === right.available && left.enabled === right.enabled &&
     left.blocked === right.blocked && left.paused === right.paused &&
@@ -189,6 +202,8 @@ export default function App() {
   // file operations observe new edits before React renders the next frame.
   const liveEditor = useRef(editorState);
   const [draftRecovery] = useState(createDraftRecoveryJournal);
+  const [workspaceSessions] = useState(createWorkspaceSessionStore);
+  const [workspaceSessionView, setWorkspaceSessionView] = useState(() => workspaceSessions.view());
   const [recoveryView, setRecoveryView] = useState(() => draftRecovery.view());
   const lastRecoveryAttempt = useRef<readonly StudioDocument[] | null>(null);
   // Advances whenever a selected-project source changes or its Explorer is
@@ -1090,6 +1105,88 @@ export default function App() {
       // fails; only a successful scan may replace Explorer membership.
       setError('Could not refresh Scarp folder: ' + toMessage(caught));
     } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  function rememberWorkspaceTabs(reviewed: CapturedWorkspaceSession, expected: WorkspaceSession | null): void {
+    if (recoveryOperationsBlocked()) return;
+    const selection = selectedFolderRef.current;
+    const editor = liveEditor.current;
+    if (!selection || !reviewed.session) {
+      setError('Choose a workspace and open at least one clean listed source before remembering tabs.');
+      return;
+    }
+    const capture = captureWorkspaceSession(selection.path, selection.files, editor.documents, editor.activeId, Date.now());
+    if (!capture.session || !sameWorkspaceCapture(reviewed, capture)) {
+      setError('The workspace or open tabs changed. Review the current remembered-tab preview and retry.');
+      return;
+    }
+    if (workspaceSessions.remember(capture.session, expected)) {
+      setError(null);
+      setNotice('Remembered ' + capture.rememberedCount + ' clean workspace tab(s). No source content was stored.');
+    }
+    setWorkspaceSessionView(workspaceSessions.view());
+  }
+
+  function forgetWorkspaceTabs(session: WorkspaceSession): void {
+    if (recoveryOperationsBlocked()) return;
+    if (workspaceSessions.forget(session)) {
+      setError(null);
+      setNotice('Removed remembered workspace metadata. Source files are unchanged.');
+    }
+    setWorkspaceSessionView(workspaceSessions.view());
+  }
+
+  function clearRememberedWorkspaces(sessions: readonly WorkspaceSession[]): void {
+    if (recoveryOperationsBlocked()) return;
+    if (workspaceSessions.clearAll(sessions)) {
+      setError(null);
+      setNotice('Removed all remembered workspace metadata. Open tabs are unchanged.');
+    }
+    setWorkspaceSessionView(workspaceSessions.view());
+  }
+
+  async function restoreWorkspaceTabs(session: WorkspaceSession, expectedPlan: WorkspaceRestorePlan): Promise<void> {
+    if (recoveryOperationsBlocked()) return;
+    const selection = selectedFolderRef.current;
+    const editorAtStart = liveEditor.current;
+    if (!selection || !workspaceSessions.canRestore(session)) {
+      setWorkspaceSessionView(workspaceSessions.view());
+      setError('Choose and review the current remembered workspace before restoring tabs.');
+      return;
+    }
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    // Treat every awaited disk read as a stale-operation boundary. Neither
+    // workspace refresh, editor ABA, nor a changed storage record may publish
+    // any of the staged tabs.
+    const isCurrent = () => selectedFolderRef.current === selection &&
+      hasUnchangedEditorSession(editorAtStart, liveEditor.current) &&
+      workspaceSessions.canRestore(session);
+    try {
+      const prepared = await prepareWorkspaceRestore({
+        session, expectedPlan, selectedRoot: selection.path, listedFiles: selection.files,
+        documents: editorAtStart.documents, isCurrent, read: readScarpSource,
+      });
+      if (!isCurrent()) throw new Error('The workspace or editor changed during restore.');
+      const action: EditorAction = {
+        type: 'restore-workspace-tabs', files: prepared.files, activePath: prepared.activePath,
+      };
+      const next = editorReducer(liveEditor.current, action);
+      if (prepared.files.length && next === liveEditor.current) {
+        throw new Error('The prepared workspace tabs could not be opened safely.');
+      }
+      dispatch(action);
+      setNotice('Opened ' + prepared.files.length + ' remembered tab(s), preserved ' +
+        prepared.alreadyOpen + ' already-open tab(s)' +
+        (prepared.skipped ? ', skipped ' + prepared.skipped + ' unlisted or ambiguous source(s).' : '.'));
+    } catch (caught) {
+      setError('Could not restore remembered workspace: ' + toMessage(caught));
+    } finally {
+      setWorkspaceSessionView(workspaceSessions.view());
       filePickerInProgress.current = false;
       setBusy(false);
     }
@@ -2393,7 +2490,7 @@ export default function App() {
               setAutoSavePreferences(restored.autoSave);
               setEditorPreferences(restored.editor);
               resetWorkspaceLayout();
-              setNotice('Restored appearance and Auto Save defaults. Local draft recovery is unchanged.');
+              setNotice('Restored appearance and Auto Save defaults. Recovery and remembered workspace metadata are unchanged.');
             }}
             title="Reset editor appearance and disable Auto Save; does not erase recovery copies"
           >Restore appearance and Auto Save defaults</button>
@@ -2433,6 +2530,11 @@ export default function App() {
           ) : (
             <div className="sidebar-note">Choose a folder to browse its .srp files.</div>
           )}
+          <WorkspaceSessionPanel key={folderPath ?? 'no-workspace'} root={folderPath}
+            files={folderEntries} documents={documents} activeId={activeId}
+            view={workspaceSessionView} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onRemember={rememberWorkspaceTabs} onRestore={(session, plan) => void restoreWorkspaceTabs(session, plan)}
+            onForget={forgetWorkspaceTabs} onClearAll={clearRememberedWorkspaces} />
           <section className="sidebar-section open-editors">
             <div className="sidebar-heading">OPEN EDITORS</div>
             {documents.map((document) => (

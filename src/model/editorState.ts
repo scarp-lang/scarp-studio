@@ -1,8 +1,11 @@
 import {
-  createUntitled, isDirty, markSaved, openedDocument, updateContent,
+  createUntitled, isDirty, isScarpPath, sameFilePath, markSaved, openedDocument, updateContent,
   type StudioDocument,
 } from './documents';
 import { validateRecoveryDrafts, type RecoveryDraft } from './draftRecovery';
+import { MAX_WORKSPACE_SESSION_TABS, MAX_WORKSPACE_RESTORE_BYTES, validWorkspaceRoot } from './workspaceSessions';
+import { assertScarpSourceText } from './sourceLimits';
+import { utf8ByteLength } from './utf8Text';
 
 export interface EditorState {
   documents: StudioDocument[];
@@ -37,6 +40,7 @@ export function canApplyReplacementSnapshots(
 export type EditorAction =
   | { type: 'new' }
   | { type: 'restore-drafts'; drafts: readonly RecoveryDraft[] }
+  | { type: 'restore-workspace-tabs'; files: readonly { path: string; content: string }[]; activePath: string | null }
   | { type: 'open'; path: string; content: string }
   | { type: 'edit'; id: string; content: string }
   | { type: 'saved'; id: string; path: string; savedContent: string }
@@ -142,6 +146,36 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
         activeId: restored[0].id,
         nextUntitled: state.nextUntitled + restored.length,
       };
+    }
+    case 'restore-workspace-tabs': {
+      if (action.files.length > MAX_WORKSPACE_SESSION_TABS) return state;
+      const paths: string[] = [];
+      let bytes = 0;
+      for (const file of action.files) {
+        if (!validWorkspaceRoot(file.path) || !isScarpPath(file.path) ||
+            paths.some(path => sameFilePath(path, file.path))) return state;
+        paths.push(file.path);
+        try {
+          assertScarpSourceText(file.content);
+        } catch {
+          return state;
+        }
+        bytes += utf8ByteLength(file.content);
+        if (bytes > MAX_WORKSPACE_RESTORE_BYTES) return state;
+      }
+      let documents = state.documents;
+      let firstNew: string | null = null;
+      for (const file of action.files) {
+        const opened = openedDocument(documents, file.path, file.content, state.sessionRevision + 1);
+        if (opened.documents !== documents && firstNew === null) firstNew = opened.id;
+        documents = opened.documents;
+      }
+      const rememberedActive = action.activePath === null ? null :
+        documents.find(doc => doc.path !== null && sameFilePath(doc.path, action.activePath!))?.id;
+      if (action.activePath !== null && !rememberedActive) return state;
+      const activeId = rememberedActive ?? state.activeId ?? firstNew;
+      if (documents === state.documents && activeId === state.activeId) return state;
+      return { ...state, documents, activeId };
     }
     case 'open': {
       const opened = openedDocument(
