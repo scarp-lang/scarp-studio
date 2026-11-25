@@ -2,6 +2,7 @@ import {
   isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_SCARP_OUTLINE_SYMBOLS,
   type ScarpFunctionSymbol,
 } from './assist';
+import { scanScarpSource, tokenAtOffset, scarpInsightIdentifier } from './sourceLex';
 
 /** Editor-only, bounded lookup for unqualified function calls. It is not
  * compiler symbol resolution: imports, field access, and duplicate names
@@ -28,6 +29,38 @@ export function scarpCallNameAt(line: string, column: number): string | null {
     return match[0];
   }
   return null;
+}
+
+/** Resolve a call from a complete bounded lexical snapshot, not an isolated
+ * line. Newlines and line comments are trivia, but strings are not. This
+ * prevents multiline module access and declaration headers being confused
+ * with unqualified calls. A partial token inventory is never authoritative.
+ * The offset is a zero-based UTF-16 position inside the identifier.
+ */
+export function scarpCallNameAtOffset(source: string, offset: number): string | null {
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset >= source.length ||
+      source.length > MAX_DEFINITION_SOURCE_UNITS) return null;
+  const lexical = scanScarpSource(source);
+  if (!lexical.complete || lexical.issues.length) return null;
+  const token = tokenAtOffset(lexical.tokens, offset);
+  if (!token || token.kind !== 'identifier' || token.previewTruncated ||
+      !scarpInsightIdentifier(token.text) || token.column > MAX_ASSIST_SCAN_UNITS) return null;
+  const index = lexical.tokens.indexOf(token);
+  let previous = index - 1;
+  while (previous >= 0 && lexical.tokens[previous].kind === 'comment') previous--;
+  let next = index + 1;
+  while (next < lexical.tokens.length && lexical.tokens[next].kind === 'comment') next++;
+  const before = lexical.tokens[previous];
+  const after = lexical.tokens[next];
+  if (!after || after.kind !== 'delimiter' || after.text !== '(') return null;
+  if (before && (before.kind === 'identifier' &&
+      ['funcra', 'new', 'record', 'variant', 'bind', 'var', 'import', 'as'].includes(before.text) ||
+      before.kind === 'operator' && /[.:>]$/.test(before.text))) return null;
+  // Unsupported adjacent non-ASCII identifier characters must not make a
+  // suffix appear to be an independent ASCII Scarp name.
+  if (token.start > 0 && /[^\x00-\x7f]/.test(source[token.start - 1]) ||
+      token.end < source.length && /[^\x00-\x7f]/.test(source[token.end])) return null;
+  return token.text;
 }
 
 /** Lexical top-level inventory for definition lookup. Unlike the sidebar's
