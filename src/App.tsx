@@ -49,6 +49,9 @@ import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
 import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
+import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
+import { DraftRecoveryJournal, type RecoveryView } from './model/draftRecoveryJournal';
+import type { RecoveryCheckpoint } from './model/draftRecovery';
 import {
   createSourceBookmark, resolveSourceBookmarks, bookmarkTargetForCurrentSource,
   removeSourceBookmark, type SourceBookmark,
@@ -164,11 +167,30 @@ function toMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function createDraftRecoveryJournal(): DraftRecoveryJournal {
+  try {
+    // Browser previews must never persist source contents.
+    return new DraftRecoveryJournal(isTauri() ? localStorage : null);
+  } catch {
+    return new DraftRecoveryJournal(null);
+  }
+}
+
+function sameRecoveryView(left: RecoveryView, right: RecoveryView): boolean {
+  return left.available === right.available && left.enabled === right.enabled &&
+    left.blocked === right.blocked && left.paused === right.paused &&
+    left.previous === right.previous && left.checkpointTime === right.checkpointTime &&
+    left.checkpointCount === right.checkpointCount && left.error === right.error;
+}
+
 export default function App() {
   const [editorState, setEditorState] = useState(initialEditorState);
   // Apply actions synchronously to the live state so native close requests and
   // file operations observe new edits before React renders the next frame.
   const liveEditor = useRef(editorState);
+  const [draftRecovery] = useState(createDraftRecoveryJournal);
+  const [recoveryView, setRecoveryView] = useState(() => draftRecovery.view());
+  const lastRecoveryAttempt = useRef<readonly StudioDocument[] | null>(null);
   // Advances whenever a selected-project source changes or its Explorer is
   // successfully replaced. In-flight test reports must match this generation.
   const projectResultEpoch = useRef(0);
@@ -209,6 +231,11 @@ export default function App() {
       retainVerifiedSourceSnapshot(previous, next.documents));
     liveEditor.current = next;
     setEditorState(next);
+    // A successful Save or an explicitly confirmed discard must retire its
+    // checkpoint immediately, rather than waiting for the next typing delay.
+    if (action.type === 'saved' || action.type === 'reload' || action.type === 'close') {
+      flushDraftRecovery(true);
+    }
   }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
@@ -218,7 +245,8 @@ export default function App() {
   const autoSaveReview = useRef(new AutoSaveReviewGate());
   const autoSaveScheduler = useRef<AutoSaveScheduler | null>(null);
   const autoSaveAction = useRef<(document: StudioDocument) => boolean | void>(() => true);
-  const [editorSettingsOpen, setEditorSettingsOpen] = useState(false);
+  const [editorSettingsOpen, setEditorSettingsOpen] = useState(() =>
+    recoveryView.previous !== null || recoveryView.blocked);
   const [folderPath, setFolderPath] = useState<string | null>(null);
   const [folderEntries, setFolderEntries] = useState<FolderEntry[]>([]);
   const [folderDirectories, setFolderDirectories] = useState<string[]>([]);
@@ -750,6 +778,89 @@ export default function App() {
       autoSavePreferences.delay, compilerBusy || compilerSelecting || compilerScanning || busy);
   }, [documents, autoSavePreferences, compilerBusy, compilerSelecting, compilerScanning, busy]);
 
+  function syncRecoveryView(): void {
+    const next = draftRecovery.view();
+    setRecoveryView(previous => sameRecoveryView(previous, next) ? previous : next);
+  }
+
+  function flushDraftRecovery(force = false): void {
+    const view = draftRecovery.view();
+    if (!view.enabled || view.previous || view.blocked || view.paused) return;
+    const current = liveEditor.current.documents;
+    if (!force && lastRecoveryAttempt.current === current) return;
+    lastRecoveryAttempt.current = current;
+    draftRecovery.flush(current, Date.now());
+    syncRecoveryView();
+  }
+
+  function recoveryOperationsBlocked(): boolean {
+    return saveInProgress.current || commandInProgress.current ||
+      selectionInProgress.current || filePickerInProgress.current ||
+      nativeDialogGate.current.isActive;
+  }
+
+  function enableDraftRecovery(): void {
+    if (recoveryOperationsBlocked()) return;
+    if (draftRecovery.enable(liveEditor.current.documents, Date.now())) {
+      setNotice('Local draft recovery enabled. Continue to save your Scarp files normally.');
+    }
+    syncRecoveryView();
+  }
+
+  function disableDraftRecovery(): void {
+    if (recoveryOperationsBlocked()) return;
+    if (draftRecovery.disable()) setNotice('Local draft recovery disabled and local copies removed.');
+    syncRecoveryView();
+  }
+
+  function restorePreviousDrafts(checkpoint: RecoveryCheckpoint): void {
+    if (recoveryOperationsBlocked()) return;
+    const action: EditorAction = { type: 'restore-drafts', drafts: checkpoint.drafts };
+    const next = editorReducer(liveEditor.current, action);
+    if (next === liveEditor.current) {
+      setError('Recovery drafts could not be restored safely.');
+      return;
+    }
+    // Persist the complete new checkpoint first. A failed/quota-limited write
+    // must neither retire the prior checkpoint nor append only some drafts.
+    if (draftRecovery.resolvePrevious(checkpoint, next.documents, Date.now())) {
+      dispatch(action);
+      setNotice('Restored ' + checkpoint.drafts.length + ' draft(s) as new unsaved copies.');
+    }
+    syncRecoveryView();
+  }
+
+  function discardPreviousDrafts(checkpoint: RecoveryCheckpoint): void {
+    if (recoveryOperationsBlocked()) return;
+    if (draftRecovery.resolvePrevious(checkpoint, liveEditor.current.documents, Date.now())) {
+      setNotice('Previous recovery drafts removed. Current editor tabs are unchanged.');
+    }
+    syncRecoveryView();
+  }
+
+  // Checkpoint after a short pause, but also during sustained typing. The
+  // periodic tick reads the live editor, never a captured stale React render.
+  // React Strict Mode cleanup removes both timers without changing storage.
+  useEffect(() => {
+    if (!recoveryView.enabled || recoveryView.previous || recoveryView.blocked || recoveryView.paused) return;
+    const timer = window.setTimeout(() => flushDraftRecovery(), 750);
+    return () => window.clearTimeout(timer);
+  }, [documents, recoveryView.enabled, recoveryView.previous, recoveryView.blocked, recoveryView.paused]);
+
+  useEffect(() => {
+    if (!recoveryView.enabled || recoveryView.previous || recoveryView.blocked || recoveryView.paused) return;
+    const interval = window.setInterval(() => flushDraftRecovery(), 4000);
+    const flush = () => flushDraftRecovery(true);
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [recoveryView.enabled, recoveryView.previous, recoveryView.blocked, recoveryView.paused]);
+
   // The close event must be cancelled synchronously before any native dialog.
   useEffect(() => {
     if (!isTauri()) return;
@@ -762,33 +873,52 @@ export default function App() {
         saveInProgress.current, commandInProgress.current, selectionInProgress.current,
         filePickerInProgress.current,
       );
-      if (!pending.length && !blocked && !nativeDialogGate.current.isActive) return;
+      if (!pending.length && !blocked && !nativeDialogGate.current.isActive &&
+          !draftRecovery.view().enabled) return;
       event.preventDefault();
       if (blocked) {
         setError(blocked);
         return;
       }
       if (!nativeDialogGate.current.begin('window-exit')) return;
+      let prepared = false;
+      let destroyed = false;
+      const exitStillValid = () => {
+        const newBlocker = exitBlockReason(
+          saveInProgress.current, commandInProgress.current, selectionInProgress.current,
+          filePickerInProgress.current,
+        );
+        if (newBlocker || !sameExitEditorState(exitSnapshot, liveEditor.current)) {
+          setError(newBlocker || 'Files changed while confirming exit. Review your edits and try again.');
+          return false;
+        }
+        return true;
+      };
       try {
-        if (await ask('Discard unsaved Scarp changes and exit?', {
+        if (pending.length && !await ask('Discard unsaved Scarp changes and exit?', {
           title: 'Unsaved changes',
           kind: 'warning',
-        })) {
-          const newBlocker = exitBlockReason(
-            saveInProgress.current, commandInProgress.current, selectionInProgress.current,
-            filePickerInProgress.current,
-          );
-          if (newBlocker ||
-              !sameExitEditorState(exitSnapshot, liveEditor.current)) {
-            setError(newBlocker ||
-              'Files changed while confirming exit. Review your edits and try again.');
-            return;
-          }
-          await getCurrentWindow().destroy();
+        })) return;
+        if (!exitStillValid()) return;
+        prepared = true;
+        const cleared = draftRecovery.prepareExit();
+        syncRecoveryView();
+        if (!cleared) {
+          if (!await ask('The local draft recovery copy could not be removed. Exit anyway? The copy may remain in this desktop profile.', {
+            title: 'Local recovery storage',
+            kind: 'warning',
+          })) return;
+          if (!exitStillValid()) return;
         }
+        await getCurrentWindow().destroy();
+        destroyed = true;
       } catch (caught) {
         setError(toMessage(caught));
       } finally {
+        if (prepared && !destroyed) {
+          draftRecovery.resumeAfterExitFailure(liveEditor.current.documents, Date.now());
+          syncRecoveryView();
+        }
         nativeDialogGate.current.finish('window-exit');
       }
     }).then((cleanup) => {
@@ -2157,6 +2287,11 @@ export default function App() {
 
       {editorSettingsOpen && (
         <section id="editor-settings" className="editor-settings" aria-label="Scarp editor settings">
+          <DraftRecoveryPanel view={recoveryView}
+            blocked={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onEnable={enableDraftRecovery} onDisable={disableDraftRecovery}
+            onRestore={restorePreviousDrafts} onDiscard={discardPreviousDrafts}
+            onCheckpoint={() => flushDraftRecovery(true)} />
           <label className="editor-setting-checkbox" htmlFor="studio-auto-save">
             <input id="studio-auto-save" type="checkbox"
               checked={autoSavePreferences.enabled}
@@ -2258,10 +2393,10 @@ export default function App() {
               setAutoSavePreferences(restored.autoSave);
               setEditorPreferences(restored.editor);
               resetWorkspaceLayout();
-              setNotice('Restored Studio Settings defaults; Auto Save is off.');
+              setNotice('Restored appearance and Auto Save defaults. Local draft recovery is unchanged.');
             }}
-            title="Reset editor appearance and disable Auto Save"
-          >Restore all defaults</button>
+            title="Reset editor appearance and disable Auto Save; does not erase recovery copies"
+          >Restore appearance and Auto Save defaults</button>
         </section>
       )}
       <div className="studio-main" ref={studioMainElement}>
@@ -3070,6 +3205,11 @@ export default function App() {
           Auto Save: {autoSavePreferences.enabled ? 'On' : 'Off'}
           {autoSaveReview.current.reviewCount(documents) > 0 &&
             ' · Review ' + autoSaveReview.current.reviewCount(documents)}
+        </button>
+        <button type="button" className="status-nav recovery-status" onClick={() => setEditorSettingsOpen(true)}
+          title={recoveryView.error || "Local draft recovery (Settings)"}>
+          Recovery: {recoveryView.previous ? "Review" : recoveryView.error && recoveryView.enabled ? "Warning" :
+            recoveryView.blocked ? "Review" : recoveryView.paused ? "Paused" : recoveryView.enabled ? "On" : "Off"}
         </button>
         <span>Scarp · .srp</span>
         <span className="status-version" title="Unreleased development candidate">0.0.2-alpha.1 · development candidate</span>
