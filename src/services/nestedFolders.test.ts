@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readDir } from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
 import { scanSourceFolder } from './folders';
 
 vi.mock('@tauri-apps/api/path', () => ({
@@ -61,6 +62,45 @@ describe('nested Scarp-Practice workspaces', () => {
     expect(scanned.files.map(item => item.name)).toEqual(['basic_tuple/main.srp']);
     expect(scanned.directories).toContain('closed');
     expect(scanned.unavailableFolders).toEqual(['closed']);
+  });
+
+  it('counts failed directory joins against the traversal budget', async () => {
+    vi.mocked(readDir).mockResolvedValue(
+      Array.from({ length: 120 }, (_, i) => dir('practice' + String(i).padStart(3, '0'))));
+    vi.mocked(join).mockRejectedValue(new Error('Native join failed'));
+    const scanned = await scanSourceFolder('C:/Scarp-Practice');
+    expect(scanned.directories).toHaveLength(63);
+    expect(scanned.unavailableFolders).toEqual(scanned.directories);
+    expect(scanned.files).toEqual([]);
+    expect(scanned.truncated).toBe(true);
+    expect(join).toHaveBeenCalledTimes(63);
+    expect(readDir).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves valid sibling sources when a source path join fails', async () => {
+    vi.mocked(readDir).mockResolvedValue([file('broken.srp'), file('main.srp')]);
+    vi.mocked(join).mockImplementation(async (parent, name) => {
+      if (name === 'broken.srp') throw new Error('Native join failed');
+      return parent + '/' + name;
+    });
+    const scanned = await scanSourceFolder('C:/Scarp-Practice');
+    expect(scanned.files).toEqual([
+      { name: 'main.srp', path: 'C:/Scarp-Practice/main.srp' },
+    ]);
+    expect(scanned.truncated).toBe(true);
+  });
+
+  it('does not join relative names that cannot be displayed by Explorer', async () => {
+    const invalid = 'x'.repeat(1025);
+    vi.mocked(readDir).mockResolvedValue([
+      dir(invalid), file(invalid + '.srp'), file('main.srp'),
+    ]);
+    const scanned = await scanSourceFolder('C:/Scarp-Practice');
+    expect(scanned.directories).toEqual([]);
+    expect(scanned.files.map(item => item.name)).toEqual(['main.srp']);
+    expect(scanned.truncated).toBe(true);
+    expect(join).toHaveBeenCalledTimes(1);
+    expect(readDir).toHaveBeenCalledTimes(1);
   });
 
   it('caps traversal and makes large directory listings visibly incomplete', async () => {
