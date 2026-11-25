@@ -256,3 +256,32 @@ The inventory is explicitly bounded to 24 open buffers, a 1.5 Mi UTF-16
 aggregate source budget and 300 listed tasks. Incomplete scans visibly
 say so rather than implying a complete task inventory. All task text is
 rendered as escaped source data, never executable markup or links.
+
+
+## Create a source or nested folder
+
+Choose a workspace in Explorer, then expand **New source or folder**.
+Choose a visible, currently available parent directory and an item name.
+The destination preview shows the relative path before the explicit Create
+action. Source names receive a .srp extension if necessary; the source is
+created empty. Folder creation creates only one directory level.
+
+Studio checks portable filename components and excludes hidden, reserved,
+dependency and build directory names. It re-reads each selected parent
+component before creation, refuses observed symbolic links, checks for
+case-insensitive collisions and checks open editor paths. The source uses
+the native exclusive create-new operation, not a truncating write.
+Directory creation is non-recursive. No existing file is opened for writing.
+
+Tauri's existing user-selected recursive filesystem scope remains the
+permission boundary. Folder creation adds only the scoped mkdir command;
+it does not enable shell access, arbitrary filesystem roots or deletion.
+Parent revalidation is best effort and not an atomic defense against all
+external filesystem races. If native permissions deny the operation, Studio
+reports the error rather than retrying outside the selected scope.
+
+After successful creation Studio refreshes the existing workspace listing.
+Open tabs and unsaved edits stay unchanged; no compiler is launched. If the
+refresh fails or listing limits omit the item, use Refresh Explorer or the
+normal file picker. If native close fails, the source may already exist;
+refresh and inspect before retrying.
