@@ -132,7 +132,7 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
           path: null,
           content: draft.content,
           savedContent: '',
-          recoveredDraft: true,
+          recoveredDraft: draft.name,
           revision: state.sessionRevision + 1,
         };
       });
