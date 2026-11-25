@@ -147,7 +147,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
   { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
   { id: 'scan-compiler', label: 'Scan for Installed Scarp Compiler', detail: 'Non-executing discovery' },
-  { id: 'download-compiler', label: 'Download Official Scarp Compiler', detail: 'Official alpha.20 Windows ZIP' },
+  { id: 'download-compiler', label: 'Download Official Scarp Compiler', detail: 'Latest official compiler download' },
   { id: 'run-scarp', label: 'Run Current Scarp Source', detail: 'F5 · saved .srp only' },
   { id: 'verify-scarp', label: 'Verify Current Scarp Source', detail: 'Ctrl+F5 · static analysis' },
   { id: 'stop-scarp', label: 'Stop Running Scarp Program', detail: 'Shift+F5' },
@@ -1686,7 +1686,7 @@ export default function App() {
         nativeDialogGate.current.isActive) return;
     try {
       await openCompilerDownloads();
-      setNotice('Opened the official Scarp alpha.20 download; extract it and scan for the compiler.');
+      setNotice('Opened the Scarp download destination; verify the download, extract it and scan for the compiler.');
     } catch (caught) {
       setError('Could not open official compiler download: ' + toMessage(caught));
     }
@@ -3167,7 +3167,7 @@ export default function App() {
                 </button>
                 <button type="button" onClick={() => void downloadCompiler()}
                   disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
-                  title="Open the official Scarp alpha.20 ZIP. Verify its published SHA-256 before trusting the extracted executable.">Download Compiler</button>
+                  title="Open the Scarp compiler download destination. Verify the published SHA-256 before trusting the extracted executable.">Download Compiler</button>
                 <button onClick={() => void selectCompiler()} disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
                   title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
                   {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}
