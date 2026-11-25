@@ -250,3 +250,15 @@ export function sameWorkspaceRestorePlan(a: WorkspaceRestorePlan, b: WorkspaceRe
     return true;
   });
 }
+
+/** Revalidate the exact reviewed capture before a manual remember/replace.
+ * Timestamp changes are intentional; no other change is silently accepted. */
+export function sameWorkspaceCapture(a: CapturedWorkspaceSession, b: CapturedWorkspaceSession): boolean {
+  if (a.rememberedCount !== b.rememberedCount || a.omittedDirty !== b.omittedDirty ||
+      a.omittedUntitled !== b.omittedUntitled || a.omittedUnlisted !== b.omittedUnlisted ||
+      a.omittedAmbiguous !== b.omittedAmbiguous || a.omittedLimit !== b.omittedLimit) return false;
+  if (a.session === null || b.session === null) return a.session === b.session;
+  return sameFilePath(a.session.root, b.session.root) && a.session.active === b.session.active &&
+    a.session.names.length === b.session.names.length &&
+    a.session.names.every((name, index) => name === b.session!.names[index]);
+}
