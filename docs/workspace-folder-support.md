@@ -84,8 +84,11 @@ target its root by default. If the workspace root has **no** manifest but
 contains exactly one scanned manifest-bearing child, that child is selected
 automatically. When two or more nested projects exist, the user must choose
 the intended **Project target** explicitly. Refresh preserves a selected,
-still-present project, but retires a removed project target instead of running
-against its stale path.
+still-present project, but clears a removed or inaccessible project target.
+It does not automatically switch to a sibling or the workspace-root manifest,
+and repeated refreshes cannot reselect a vanished project. All project
+commands remain disabled until the user explicitly selects a discovered
+manifest root again. This also applies to rescans after Save As.
 
 ## Automated compiler integration coverage
 
