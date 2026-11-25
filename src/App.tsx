@@ -42,6 +42,8 @@ import { verifiedProblemMarker } from './model/problemMarkers';
 import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
+import { OpenEditorManager } from './components/OpenEditorManager';
+import { resolveBulkClose, type TabSelection } from './model/openEditorManagement';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
@@ -1954,6 +1956,40 @@ export default function App() {
     }
   }
 
+  function closeSelectedCleanTabs(selections: readonly TabSelection[]): boolean {
+    // Share the live native-operation guards; never interfere with pending
+    // writes, compiler reads, picker operations or discard confirmations.
+    if (saveInProgress.current || filePickerInProgress.current ||
+        commandInProgress.current || selectionInProgress.current ||
+        nativeDialogGate.current.isActive) {
+      setError('Finish the current operation before closing selected tabs.');
+      return false;
+    }
+    const before = liveEditor.current;
+    const snapshots = resolveBulkClose(selections, before.documents);
+    if (!snapshots) {
+      setError('The selected tabs changed. Review your selection and try again.');
+      return false;
+    }
+    dispatch({ type: 'close-clean-tabs', snapshots });
+    if (liveEditor.current === before) {
+      setError('The selected tabs could not be closed safely.');
+      return false;
+    }
+    setError(null);
+    setNotice('Closed ' + snapshots.length + ' saved tab(s). No source files changed.');
+    return true;
+  }
+
+  function activateManagedTab(snapshot: StudioDocument): void {
+    const current = liveEditor.current.documents.find(document => document.id === snapshot.id);
+    if (!current || !isUnchangedSnapshot(current, snapshot)) {
+      setError('This editor tab changed. Choose its current entry again.');
+      return;
+    }
+    dispatch({ type: 'activate', id: current.id });
+  }
+
   async function closeFile(id: string): Promise<void> {
     if (saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current) {
@@ -2320,6 +2356,9 @@ export default function App() {
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
           </section>
+          <OpenEditorManager documents={documents} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onActivate={activateManagedTab} onClose={closeSelectedCleanTabs} />
           <section className="sidebar-section" aria-label="Scarp declaration outline">
             <div className="sidebar-heading">DECLARATION OUTLINE</div>
             <button type="button" className="file-row" disabled={!active}
