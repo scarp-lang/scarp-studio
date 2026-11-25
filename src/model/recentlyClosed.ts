@@ -64,7 +64,8 @@ export function clearRecentlyClosed(state: RecentlyClosedState): RecentlyClosedS
 }
 
 export type ReopenClosedDecision =
-  | { kind: 'stale' | 'ambiguous' }
+  | { kind: 'stale' }
+  | { kind: 'ambiguous' }
   | { kind: 'activate'; documentId: string }
   | { kind: 'read'; path: string };
 
