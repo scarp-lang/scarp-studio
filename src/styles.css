@@ -858,3 +858,90 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 }
 .workspace-task-row button:hover:not(:disabled) { border-color: var(--accent); }
 .workspace-task-row button:disabled { opacity: .5; cursor: not-allowed; }
+
+
+/* Open Editor Manager: explicit, saved-only bulk tab operations. */
+.open-editor-manager { border-top: 1px solid var(--border); }
+.editor-manager-content { padding: 4px 8px 12px; }
+.editor-manager-summary {
+  font-size: 11px;
+  font-weight: 600;
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.editor-manager-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+.editor-manager-filters input,
+.editor-manager-filters select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 5px;
+  font-size: 11px;
+}
+.editor-manager-filters input { grid-column: 1 / -1; }
+.editor-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 8px 0;
+}
+.editor-manager-actions button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--raised);
+  padding: 4px 6px;
+  font-size: 10px;
+}
+.editor-manager-actions button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+.editor-manager-actions button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.editor-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.editor-manager-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.editor-manager-row.selected {
+  border-inline-start: 3px solid var(--accent);
+}
+.editor-manager-row input { accent-color: var(--accent); }
+.editor-manager-row button {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  padding: 2px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.editor-manager-row small { color: var(--muted); font-size: 10px; }
+.editor-manager-row button:hover:not(:disabled) { color: var(--accent); }
+.editor-manager-content :is(input, select, button):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
