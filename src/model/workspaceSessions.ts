@@ -7,7 +7,7 @@ export const MAX_REMEMBERED_WORKSPACES = 8;
 export const MAX_WORKSPACE_SESSION_TABS = 24;
 export const MAX_WORKSPACE_SESSION_JSON_UNITS = 256 * 1024;
 export const MAX_WORKSPACE_ROOT_UNITS = 4096;
-export const MAX_WORKSPACE_RESTORE_UNITS = 4 * 1024 * 1024;
+export const MAX_WORKSPACE_RESTORE_BYTES = 4 * 1024 * 1024;
 
 export interface WorkspaceListedSource {
   name: string;
