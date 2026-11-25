@@ -32,6 +32,7 @@ export class DraftRecoveryJournal {
   private blocked = false;
   private error: string | null = null;
   private suspended = false;
+  private disableRequested = false;
   private readable = false;
 
   constructor(private readonly storage: RecoveryStorage | null) {
@@ -117,9 +118,11 @@ export class DraftRecoveryJournal {
    * revoke writes immediately but retain the visible error and data status. */
   disable(): boolean {
     this.suspended = true;
+    this.disableRequested = true;
     if (!this.readable) return this.fail('Local recovery storage is unavailable.');
     if (!this.replace(null)) return false;
     this.previous = null;
+    this.disableRequested = false;
     this.suspended = false;
     return true;
   }
@@ -160,6 +163,12 @@ export class DraftRecoveryJournal {
    * so a later pagehide callback cannot recreate discarded drafts. */
   prepareExit(): boolean {
     this.suspended = true;
+    if (this.disableRequested) {
+      if (!this.replace(null)) return false;
+      this.previous = null;
+      this.disableRequested = false;
+      return true;
+    }
     if (!this.record || this.previous || this.blocked) return true;
     if (this.record.checkpoint === null) return true;
     return this.replace({ version: 1, enabled: true, checkpoint: null });
@@ -167,6 +176,7 @@ export class DraftRecoveryJournal {
 
   /** A native destroy failure must not leave the current session suspended. */
   resumeAfterExitFailure(documents: readonly StudioDocument[], now: number): void {
+    if (this.disableRequested) return;
     this.suspended = false;
     this.flush(documents, now);
   }
