@@ -966,3 +966,109 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .recovery-status {
   white-space: nowrap;
 }
+
+
+/* Workspace session: metadata capture and live restore review. */
+.workspace-session-panel {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 7px;
+}
+.workspace-session-body,
+.workspace-session-review,
+.workspace-session-capture {
+  display: grid;
+  gap: 7px;
+}
+.workspace-session-body {
+  padding: 4px 8px 9px;
+  font-size: 12px;
+  min-width: 0;
+}
+.workspace-session-body p {
+  margin: 0;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.workspace-session-body .sidebar-note {
+  padding: 0;
+}
+.workspace-session-capture,
+.workspace-session-review {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 7px;
+  min-width: 0;
+}
+.workspace-session-body button {
+  justify-self: start;
+  max-width: 100%;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--raised);
+  padding: 5px 7px;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.workspace-session-body button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.workspace-session-body button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.workspace-session-body button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.workspace-session-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.workspace-session-row {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.workspace-session-row > span {
+  overflow-wrap: anywhere;
+}
+.workspace-session-row > span:last-child {
+  font-size: 10px;
+  color: var(--muted);
+}
+.workspace-session-missing,
+.workspace-session-ambiguous {
+  background: var(--raised);
+}
+.workspace-session-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--raised);
+  padding: 7px;
+  border-radius: 5px;
+}
+.workspace-session-confirm p {
+  flex-basis: 100%;
+}
+.workspace-session-error {
+  padding: 6px;
+  border-inline-start: 3px solid var(--accent);
+  background: var(--raised);
+}
+.workspace-session-count {
+  font-size: 11px;
+  color: var(--muted);
+}
