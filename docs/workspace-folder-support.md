@@ -20,6 +20,7 @@ Choose the **Scarp-Practice** parent folder once. Explorer headings include nest
 - Hidden, dependency/build and unsafe traversal directory entries are skipped.
 - At most **64 directories** (including selected root), **5 nested levels**, and **200 listed Scarp sources**, with the prior **4096-entry** ordinary inspection budget per directory. Native readDir materializes its immediate directory before these frontend limits apply.
 - Unreadable nested folders are reported; accessible siblings remain visible.
+- Failed native directory path joins consume the same bounded directory slots as successful joins. Unrepresentable relative names and individual source path join failures are omitted with the partial-listing warning rather than discarding accessible siblings.
 - Existing editor snapshot guards, 4 MiB source limits, external-modification protection, Save As checks and post-write read-back stay intact.
 - Scarp **project** compiler actions use the explicitly chosen manifest-bearing **Project target** (which can be a nested folder). To run a standalone nested practice file, open that .srp source in the editor.
 
