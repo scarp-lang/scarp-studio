@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForListedSource } from './projectTargets';
+import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForListedSource, selectedManifestPath } from './projectTargets';
 
 const root = { directory: '', path: 'C:/Scarp-Practice' };
 const tuples = { directory: 'basic_tuple', path: 'C:/Scarp-Practice/basic_tuple' };
@@ -17,17 +17,44 @@ describe('Scarp workspace manifest target selection', () => {
   });
 
   it('requires the user to choose when multiple nested projects exist', () => {
-    expect(preferredProjectDirectory([])).toBe('');
-    expect(preferredProjectDirectory([tuples, loops])).toBe('');
-    expect(preferredProjectDirectory([loops, tuples])).toBe('');
+    expect(preferredProjectDirectory([])).toBeNull();
+    expect(preferredProjectDirectory([tuples, loops])).toBeNull();
+    expect(preferredProjectDirectory([loops, tuples])).toBeNull();
   });
 
-  it('preserves selected project across successful refresh and reverts removed project', () => {
+  it('preserves only the selected project across refresh', () => {
     expect(retainedProjectDirectory('basic_tuple', [tuples, loops])).toBe('basic_tuple');
-    expect(retainedProjectDirectory('basic_tuple', [loops])).toBe('loops');
-    expect(retainedProjectDirectory('basic_tuple', [root, loops])).toBe('');
-    expect(retainedProjectDirectory('basic_tuple', [])).toBe('');
-    expect(retainedProjectDirectory('', [tuples])).toBe('');
+    expect(retainedProjectDirectory('', [root, loops])).toBe('');
+    expect(retainedProjectDirectory('loops', [root, loops])).toBe('loops');
+  });
+
+  it('never redirects a removed project to the root or another child', () => {
+    expect(retainedProjectDirectory('basic_tuple', [loops])).toBeNull();
+    expect(retainedProjectDirectory('basic_tuple', [root, loops])).toBeNull();
+    expect(retainedProjectDirectory('basic_tuple', [])).toBeNull();
+    expect(retainedProjectDirectory('', [tuples])).toBeNull();
+  });
+
+  it('does not silently reselect a project on successive refreshes', () => {
+    let target = retainedProjectDirectory('basic_tuple', [loops]);
+    expect(target).toBeNull();
+    target = retainedProjectDirectory(target, [tuples]);
+    expect(target).toBeNull();
+    target = retainedProjectDirectory(target, [root]);
+    expect(target).toBeNull();
+  });
+
+  it('keeps an unselected workspace distinct from a real root manifest', () => {
+    expect(selectedManifestPath(null, [root, tuples])).toBeNull();
+    expect(selectedManifestPath('', [root, tuples])).toBe(root.path);
+    expect(selectedManifestPath('', [tuples])).toBeNull();
+    expect(selectedManifestPath('basic_tuple', [root, tuples])).toBe(tuples.path);
+    expect(selectedManifestPath('loops', [root, tuples])).toBeNull();
+  });
+
+  it('does not restore a stale target when the manifest disappears from a partial listing', () => {
+    const target = retainedProjectDirectory('basic_tuple', []);
+    expect(selectedManifestPath(target, [tuples, loops])).toBeNull();
   });
 });
 
