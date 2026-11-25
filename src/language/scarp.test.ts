@@ -327,6 +327,7 @@ describe('Scarp editor assistance registration', () => {
     const definitionModel = {
       uri, getValue: () => source, getValueLength: () => source.length,
       getLineContent: () => 'print(add(1));', getLineMaxColumn: () => 15,
+      getOffsetAt: () => source.lastIndexOf('add'),
     };
     expect(definitions.provideDefinition(definitionModel,
       { lineNumber: 2, column: 7 }, { isCancellationRequested: false })).toEqual({
@@ -338,6 +339,23 @@ describe('Scarp editor assistance registration', () => {
       getValue: () => { throw new Error('large buffer must not be copied'); } };
     expect(definitions.provideDefinition(oversized,
       { lineNumber: 2, column: 7 }, { isCancellationRequested: false })).toBeNull();
+    for (const [call, expected] of [
+      ['add\n// args\n(1)', true],
+      ['math.\nadd(1)', false],
+      ['funcra\nadd(1)', false],
+    ] as const) {
+      const multi = 'funcra add(a: integer) -> integer {}\n' + call;
+      const multilineModel = {
+        ...definitionModel, getValue: () => multi, getValueLength: () => multi.length,
+        getOffsetAt: () => multi.lastIndexOf('add'),
+      };
+      const result = definitions.provideDefinition(multilineModel,
+        { lineNumber: 2, column: 1 }, { isCancellationRequested: false });
+      if (expected) expect(result).toEqual({
+        uri, range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 11 },
+      });
+      else expect(result).toBeNull();
+    }
     const signatures = provideSignature.mock.calls[0][1] as {
       provideSignatureHelp: (model: unknown, position: unknown, token: unknown) => unknown;
     };

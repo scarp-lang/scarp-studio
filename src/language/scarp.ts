@@ -1,7 +1,7 @@
 import type * as Monaco from 'monaco-editor';
 import { localSignatureAt } from './signature';
 import { canCompleteLocalFunction, completeLocalFunctions } from './localCompletion';
-import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAt } from './definition';
+import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAtOffset } from './definition';
 import {
   isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
   type ScarpCompletion,
@@ -209,9 +209,10 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       if (token.isCancellationRequested || !canAssistAtColumn(position.column) ||
           model.getLineMaxColumn(position.lineNumber) > MAX_ASSIST_SCAN_UNITS + 1 ||
           model.getValueLength() > MAX_DEFINITION_SOURCE_UNITS) return null;
-      const name = scarpCallNameAt(model.getLineContent(position.lineNumber), position.column);
-      if (!name) return null;
-      const target = findLocalFunctionDefinition(model.getValue(), name);
+      const source = model.getValue();
+      const name = scarpCallNameAtOffset(source, model.getOffsetAt(position));
+      if (!name || token.isCancellationRequested) return null;
+      const target = findLocalFunctionDefinition(source, name);
       if (!target || token.isCancellationRequested) return null;
       return {
         uri: model.uri,
