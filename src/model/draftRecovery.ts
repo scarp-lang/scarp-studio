@@ -110,7 +110,7 @@ export function captureRecoveryCheckpoint(
     } catch {
       return failure('An unsaved tab contains invalid or oversized source text.');
     }
-    drafts.push({ name: recoveryDraftName(document.name), content: document.content });
+    drafts.push({ name: recoveryDraftName(document.recoveredDraft ?? document.name), content: document.content });
   }
   return { ok: true, value: drafts.length ? { version: 1, createdAt, drafts } : null };
 }
