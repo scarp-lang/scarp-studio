@@ -5,7 +5,8 @@ import { readScarpSource } from './sourceRead';
 import { isScarpPath, sameFilePath } from '../model/documents';
 import {
   collectTopLevelScarpNames, collectBrowseableScarpFolders,
-  selectBalancedScarpProjectNames, MAX_DISPLAYED_SCARP_FILES,
+  selectBalancedScarpProjectNames, safeRelativeScarpDirectory, safeRelativeScarpSourceName,
+  MAX_DISPLAYED_SCARP_FILES,
   MAX_SCANNED_SCARP_DIRECTORIES, MAX_SCARP_FOLDER_DEPTH,
   type ScarpProjectNameGroup,
 } from '../model/folderListing';
@@ -81,11 +82,17 @@ export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
       continue;
     }
     for (const name of children) {
-      if (queue.length >= MAX_SCANNED_SCARP_DIRECTORIES) {
+      // Count discovered directory slots even when native join fails. Otherwise
+      // failing paths never enter the queue and can bypass the 64-slot cap.
+      if (directories.length + 1 >= MAX_SCANNED_SCARP_DIRECTORIES) {
         truncated = true;
         break;
       }
       const relative = current.directory ? current.directory + '/' + name : name;
+      if (!safeRelativeScarpDirectory(relative)) {
+        truncated = true;
+        continue;
+      }
       directories.push(relative);
       try {
         const childPath = await join(current.absolute, name);
@@ -100,13 +107,23 @@ export async function scanSourceFolder(path: string): Promise<ScarpFolderScan> {
   const available = groups.reduce((sum, group) => sum + group.names.length, 0);
   truncated ||= available > MAX_DISPLAYED_SCARP_FILES;
   const names = selectBalancedScarpProjectNames(groups);
-  const files: FolderFile[] = await Promise.all(names.map(async name => {
+  const resolved = await Promise.all(names.map(async (name): Promise<FolderFile | null> => {
+    // Keep the scan and Explorer's relative-name validation aligned, including
+    // the full nested path length. An omitted source makes the scan partial.
+    if (!safeRelativeScarpSourceName(name)) return null;
     const slash = name.lastIndexOf('/');
     const directory = slash < 0 ? '' : name.slice(0, slash);
     const parent = directoryPaths.get(directory);
     if (!parent) throw new Error('The Scarp Explorer listing is inconsistent.');
-    return { name, path: await join(parent, name.slice(slash + 1)) };
+    try {
+      return { name, path: await join(parent, name.slice(slash + 1)) };
+    } catch {
+      // A single native path resolution failure must not hide valid siblings.
+      return null;
+    }
   }));
+  const files = resolved.filter((file): file is FolderFile => file !== null);
+  truncated ||= files.length !== resolved.length;
   return { path, files, directories, projectRoots, truncated, unavailableFolders };
 }
 
