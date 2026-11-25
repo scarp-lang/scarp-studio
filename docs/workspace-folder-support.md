@@ -256,3 +256,27 @@ The inventory is explicitly bounded to 24 open buffers, a 1.5 Mi UTF-16
 aggregate source budget and 300 listed tasks. Incomplete scans visibly
 say so rather than implying a complete task inventory. All task text is
 rendered as escaped source data, never executable markup or links.
+
+
+## Manage Open Editors
+
+Expand **MANAGE OPEN EDITORS** under the Explorer's open-editor list to
+review filenames, full paths, the current editor, unsaved changes and
+untitled buffers. The manager filters by filename/path and editor state,
+sorts by tab order, filename or modified status, and shows 20 rows per
+page (up to 200 open editors). A limited inventory explicitly reports its
+cap. Activating a row only switches to its exact current open buffer.
+
+Batch Close is an explicit saved-tab operation, not a discard operation.
+Only named, unmodified sources can be selected. Modified tabs and all
+untitled tabs (including empty untitled tabs) cannot be bulk-closed.
+Select individual saved tabs or **Select saved on page**, then click
+**Close selected**. Changing the filter, sort or page clears the selection.
+An edit, Save, Save As or close/reopen invalidates a selected revision;
+the entire batch is rejected if any selected tab changed. Native file
+operations and compiler actions block batch close.
+
+The reducer validates every selected snapshot atomically before removing
+any tab. If the active tab closes, focus moves to the closest surviving
+tab to its right or, if none, to its left. Existing dirty buffers remain
+unchanged, and no file is saved, deleted, renamed or read from disk.
