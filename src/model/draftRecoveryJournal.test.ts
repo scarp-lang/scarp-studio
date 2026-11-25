@@ -247,6 +247,20 @@ describe('external changes and explicit deletion', () => {
     expect(journal.flush([dirty()], time + 2)).toBe(false);
   });
 
+  it('does not revive an explicitly disabled writer after an interrupted close', () => {
+    const { storage, journal } = start();
+    storage.failRemove = true;
+    expect(journal.disable()).toBe(false);
+    expect(journal.prepareExit()).toBe(false);
+    journal.resumeAfterExitFailure([dirty('must not persist')], time + 1);
+    expect(journal.view().paused).toBe(true);
+    expect(journal.flush([dirty('must not persist')], time + 2)).toBe(false);
+    storage.failRemove = false;
+    expect(journal.prepareExit()).toBe(true);
+    expect(storage.raw()).toBeNull();
+    expect(new DraftRecoveryJournal(storage).view().enabled).toBe(false);
+  });
+
   it('does not erase source files or current editor objects when disabled', () => {
     const doc = dirty();
     const { storage, journal } = start(new MemoryStorage(), [doc]);
