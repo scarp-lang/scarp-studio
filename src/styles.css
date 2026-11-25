@@ -858,3 +858,111 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 }
 .workspace-task-row button:hover:not(:disabled) { border-color: var(--accent); }
 .workspace-task-row button:disabled { opacity: .5; cursor: not-allowed; }
+
+
+/* Draft recovery is deliberately distinct from Auto Save. */
+.draft-recovery-panel {
+  flex: 1 0 100%;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+}
+.draft-recovery-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.draft-recovery-state {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+}
+.draft-recovery-panel p {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.draft-recovery-explanation,
+.draft-recovery-review > p {
+  color: var(--muted);
+  font-size: 11px;
+}
+.draft-recovery-warning {
+  border-inline-start: 3px solid var(--accent);
+  padding: 6px 8px;
+  background: var(--raised);
+}
+.draft-recovery-review {
+  display: grid;
+  gap: 7px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.draft-recovery-actions,
+.draft-recovery-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.draft-recovery-confirm {
+  padding: 8px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.draft-recovery-confirm p {
+  flex-basis: 100%;
+}
+.draft-recovery-panel button {
+  justify-self: start;
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.draft-recovery-panel button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+.draft-recovery-panel button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.draft-recovery-panel button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.draft-recovery-list {
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+}
+.draft-recovery-list li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 5px 6px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.draft-recovery-list li > span:last-child {
+  color: var(--muted);
+  font-size: 11px;
+}
+.recovery-status {
+  white-space: nowrap;
+}

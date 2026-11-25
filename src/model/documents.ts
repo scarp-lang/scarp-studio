@@ -7,6 +7,8 @@ export interface StudioDocument {
   savedContent: string;
   /** In-session generation to reject A-to-B-to-A (ABA) source edits. */
   revision: number;
+  /** Original recovery basename; restored drafts are unsaved even when empty. */
+  recoveredDraft?: string;
 }
 
 export function isScarpPath(path: string): boolean {
@@ -88,7 +90,7 @@ export function createUntitled(sequence: number): StudioDocument {
 }
 
 export function isDirty(document: StudioDocument): boolean {
-  return document.content !== document.savedContent;
+  return document.recoveredDraft !== undefined || document.content !== document.savedContent;
 }
 
 export function updateContent(
@@ -141,9 +143,10 @@ export function markSaved(
   path: string,
   savedContent: string,
 ): StudioDocument[] {
-  return documents.map((document) =>
-    document.id === id
-      ? { ...document, name: fileName(path), path, savedContent, revision: document.revision + 1 }
-      : document,
-  );
+  return documents.map((document) => {
+    if (document.id !== id) return document;
+    const updated = { ...document, name: fileName(path), path, savedContent, revision: document.revision + 1 };
+    delete updated.recoveredDraft;
+    return updated;
+  });
 }

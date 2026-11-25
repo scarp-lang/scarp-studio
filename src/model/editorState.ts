@@ -2,6 +2,7 @@ import {
   createUntitled, isDirty, markSaved, openedDocument, updateContent,
   type StudioDocument,
 } from './documents';
+import { validateRecoveryDrafts, type RecoveryDraft } from './draftRecovery';
 
 export interface EditorState {
   documents: StudioDocument[];
@@ -35,6 +36,7 @@ export function canApplyReplacementSnapshots(
 
 export type EditorAction =
   | { type: 'new' }
+  | { type: 'restore-drafts'; drafts: readonly RecoveryDraft[] }
   | { type: 'open'; path: string; content: string }
   | { type: 'edit'; id: string; content: string }
   | { type: 'saved'; id: string; path: string; savedContent: string }
@@ -60,7 +62,8 @@ export function isUnchangedSnapshot(
     current.name === snapshot.name &&
     current.content === snapshot.content &&
     current.savedContent === snapshot.savedContent &&
-    current.revision === snapshot.revision;
+    current.revision === snapshot.revision &&
+    current.recoveredDraft === snapshot.recoveredDraft;
 }
 
 /** Validate *every* open buffer, not just those with search hits.
@@ -116,6 +119,28 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
         documents: [...state.documents, created],
         activeId: created.id,
         nextUntitled: state.nextUntitled + 1,
+      };
+    }
+    case 'restore-drafts': {
+      const validated = validateRecoveryDrafts(action.drafts);
+      if (!validated.ok) return state;
+      const restored: StudioDocument[] = validated.value.map((draft, index) => {
+        const sequence = state.nextUntitled + index;
+        return {
+          id: 'untitled-' + sequence,
+          name: 'Recovered-' + sequence + '-' + draft.name,
+          path: null,
+          content: draft.content,
+          savedContent: '',
+          recoveredDraft: draft.name,
+          revision: state.sessionRevision + 1,
+        };
+      });
+      return {
+        ...state,
+        documents: [...state.documents, ...restored],
+        activeId: restored[0].id,
+        nextUntitled: state.nextUntitled + restored.length,
       };
     }
     case 'open': {
