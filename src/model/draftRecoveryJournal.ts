@@ -13,6 +13,7 @@ export interface RecoveryView {
   available: boolean;
   enabled: boolean;
   blocked: boolean;
+  paused: boolean;
   previous: RecoveryCheckpoint | null;
   checkpointTime: number | null;
   checkpointCount: number;
@@ -59,6 +60,7 @@ export class DraftRecoveryJournal {
       available: this.readable,
       enabled: this.record !== null,
       blocked: this.blocked,
+      paused: this.suspended,
       previous: this.previous,
       checkpointTime: this.record?.checkpoint?.createdAt ?? null,
       checkpointCount: this.record?.checkpoint?.drafts.length ?? 0,
