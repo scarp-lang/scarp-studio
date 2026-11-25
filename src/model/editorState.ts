@@ -2,6 +2,7 @@ import {
   createUntitled, isDirty, markSaved, openedDocument, updateContent,
   type StudioDocument,
 } from './documents';
+import { canBulkClose, MAX_MANAGED_TABS } from './openEditorManagement';
 
 export interface EditorState {
   documents: StudioDocument[];
@@ -173,13 +174,13 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
       // A bulk action is deliberately not a discard path. Validate every
       // exact snapshot before removing even one tab, including the case
       // where an editor was saved, edited and reverted, or reopened.
-      if (!action.snapshots.length || action.snapshots.length > 200) return state;
+      if (!action.snapshots.length || action.snapshots.length > MAX_MANAGED_TABS) return state;
       const ids = new Set<string>();
       for (const snapshot of action.snapshots) {
-        if (ids.has(snapshot.id) || !snapshot.path || isDirty(snapshot)) return state;
+        if (ids.has(snapshot.id) || !canBulkClose(snapshot)) return state;
         ids.add(snapshot.id);
         const current = state.documents.find(document => document.id === snapshot.id);
-        if (!current || !current.path || isDirty(current) ||
+        if (!current || !canBulkClose(current) ||
             !isUnchangedSnapshot(current, snapshot)) return state;
       }
       const remaining = state.documents.filter(document => !ids.has(document.id));
