@@ -51,6 +51,10 @@ import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
 import { WorkspaceSessionPanel } from './components/WorkspaceSessionPanel';
+import { RecentlyClosedPanel } from './components/RecentlyClosedPanel';
+import { emptyRecentlyClosed, reconcileRecentlyClosed, resolveRecentlyClosed,
+  forgetRecentlyClosed, clearRecentlyClosed, type RecentlyClosedSource,
+  type RecentlyClosedState } from './model/recentlyClosed';
 import { WorkspaceSessionStore } from './model/workspaceSessionStore';
 import { captureWorkspaceSession, sameWorkspaceCapture, type CapturedWorkspaceSession,
   type WorkspaceSession, type WorkspaceRestorePlan } from './model/workspaceSessions';
@@ -122,6 +126,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'reload', label: 'Reload Current Scarp File from Disk', detail: 'Confirms before discarding unsaved edits' },
   { id: 'compare-disk', label: 'Compare Current Scarp File with Disk', detail: 'Read-only preview before Reload or Save As' },
   { id: 'close', label: 'Close Current Tab', detail: 'Ctrl+W' },
+  { id: 'reopen-closed', label: 'Reopen Last Closed Saved Source', detail: 'Ctrl+Shift+T' },
   { id: 'find-open-files', label: 'Find in Open Scarp Files', detail: 'Ctrl+Shift+F' },
   { id: 'find-project', label: 'Find in Selected Scarp Project', detail: 'Read-only and bounded' },
   { id: 'replace-open-files', label: 'Find and Replace in Open Scarp Files', detail: 'Preview and confirm; editor buffers only' },
@@ -201,6 +206,8 @@ export default function App() {
   // Apply actions synchronously to the live state so native close requests and
   // file operations observe new edits before React renders the next frame.
   const liveEditor = useRef(editorState);
+  const [recentlyClosed, setRecentlyClosed] = useState(emptyRecentlyClosed);
+  const recentlyClosedRef = useRef(recentlyClosed);
   const [draftRecovery] = useState(createDraftRecoveryJournal);
   const [workspaceSessions] = useState(createWorkspaceSessionStore);
   const [workspaceSessionView, setWorkspaceSessionView] = useState(() => workspaceSessions.view());
@@ -246,6 +253,10 @@ export default function App() {
       retainVerifiedSourceSnapshot(previous, next.documents));
     liveEditor.current = next;
     setEditorState(next);
+    if (before.documents.length !== next.documents.length || action.type === 'saved') {
+      publishRecentlyClosed(reconcileRecentlyClosed(recentlyClosedRef.current,
+        before.documents, next.documents, before.activeId));
+    }
     // A successful Save or an explicitly confirmed discard must retire its
     // checkpoint immediately, rather than waiting for the next typing delay.
     if (action.type === 'saved' || action.type === 'reload' || action.type === 'close') {
@@ -701,6 +712,7 @@ export default function App() {
     switch (entry.id) {
       case 'new': newFile(); break;
       case 'open': void openFile(); break;
+      case 'reopen-closed': void reopenLastClosedSource(); break;
       case 'folder': void openFolder(); break;
       case 'refresh-folder': void refreshFolder(); break;
       case 'save': void saveFile(); break;
@@ -1187,6 +1199,71 @@ export default function App() {
       setError('Could not restore remembered workspace: ' + toMessage(caught));
     } finally {
       setWorkspaceSessionView(workspaceSessions.view());
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  function publishRecentlyClosed(next: RecentlyClosedState): void {
+    if (next === recentlyClosedRef.current) return;
+    recentlyClosedRef.current = next;
+    setRecentlyClosed(next);
+  }
+
+  function forgetClosedSource(entry: RecentlyClosedSource): void {
+    if (recoveryOperationsBlocked()) return;
+    publishRecentlyClosed(forgetRecentlyClosed(recentlyClosedRef.current, entry));
+  }
+
+  function clearClosedSources(expected: readonly RecentlyClosedSource[]): void {
+    if (recoveryOperationsBlocked() || recentlyClosedRef.current.entries !== expected) return;
+    publishRecentlyClosed(clearRecentlyClosed(recentlyClosedRef.current));
+  }
+
+  async function reopenLastClosedSource(): Promise<void> {
+    const entry = recentlyClosedRef.current.entries[0];
+    if (!entry) {
+      setNotice('No recently closed saved sources.');
+      return;
+    }
+    await reopenClosedSource(entry);
+  }
+
+  async function reopenClosedSource(entry: RecentlyClosedSource): Promise<void> {
+    if (!isTauri() || recoveryOperationsBlocked()) return;
+    const before = liveEditor.current;
+    const selection = selectedFolderRef.current;
+    const decision = resolveRecentlyClosed(recentlyClosedRef.current, entry, before.documents);
+    if (decision.kind === 'stale' || decision.kind === 'ambiguous') {
+      setError('The recently closed source is no longer unambiguous. Review the history and retry.');
+      return;
+    }
+    if (decision.kind === 'activate') {
+      dispatch({ type: 'activate', id: decision.documentId });
+      publishRecentlyClosed(forgetRecentlyClosed(recentlyClosedRef.current, entry));
+      setError(null);
+      return;
+    }
+    // This exact path came from a previously open clean tab in this desktop
+    // session. The native filesystem scope still decides whether it can be
+    // read. Do not request wider access or guess a new path if it was moved.
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const content = await readScarpSource(decision.path);
+      const current = resolveRecentlyClosed(recentlyClosedRef.current, entry, liveEditor.current.documents);
+      if (selectedFolderRef.current !== selection ||
+          !hasUnchangedEditorSession(before, liveEditor.current) ||
+          current.kind !== 'read' || current.path !== decision.path) {
+        setError('The editor or closed-source history changed while reading. Reopen the source again.');
+        return;
+      }
+      activateOpenedFile(decision.path, content);
+      setNotice('Reopened ' + entry.name + ' from its current disk contents.');
+    } catch (caught) {
+      setError('Could not reopen ' + entry.name + ': ' + toMessage(caught));
+    } finally {
       filePickerInProgress.current = false;
       setBusy(false);
     }
@@ -2284,7 +2361,10 @@ export default function App() {
         return;
       }
       if (paletteMode !== null) return;
-      if (key === 'm' && event.shiftKey) {
+      if (key === 't' && event.shiftKey) {
+        event.preventDefault();
+        if (!event.repeat) void reopenLastClosedSource();
+      } else if (key === 'm' && event.shiftKey) {
         event.preventDefault();
         showProblems();
       } else if (key === 'j' && !event.shiftKey) {
@@ -2336,6 +2416,8 @@ export default function App() {
           <div className="toolbar-group" role="group" aria-label="File actions">
           <button onClick={newFile} title="New (Ctrl+N)">New</button>
           <button onClick={() => void openFile()} title="Open (Ctrl+O)">Open</button>
+          <button onClick={() => void reopenLastClosedSource()} title="Reopen last closed saved source (Ctrl+Shift+T)"
+            disabled={!isTauri() || !recentlyClosed.entries.length || busy || compilerBusy || compilerSelecting}>Reopen</button>
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
           </div>
           <div className="toolbar-group" role="group" aria-label="Navigation">
@@ -2557,6 +2639,10 @@ export default function App() {
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
           </section>
+          <RecentlyClosedPanel entries={recentlyClosed.entries}
+            busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
+            onReopen={entry => void reopenClosedSource(entry)}
+            onForget={forgetClosedSource} onClear={clearClosedSources} />
           <section className="sidebar-section" aria-label="Scarp declaration outline">
             <div className="sidebar-heading">DECLARATION OUTLINE</div>
             <button type="button" className="file-row" disabled={!active}
