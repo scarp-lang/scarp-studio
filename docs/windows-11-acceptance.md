@@ -105,6 +105,11 @@ actually testing the Studio desktop build.**
 | E76 | Save a restored empty and non-empty draft to new disposable paths; close another dirty recovery tab after confirming discard; exercise normal exit and cancel exit | Saved tabs become clean only through normal verified Save; explicit discard retires its checkpoint; ordinary exit clears current checkpoint without clearing pending earlier-session drafts; cancel preserves open tabs | NOT RUN |
 | E77 | Enable recovery, reset appearance and Auto Save defaults, then explicitly disable recovery; restart | Appearance reset does not erase local copies or toggle recovery; explicit removal disables recovery across restarts without changing original files | NOT RUN |
 
+| E78 | Close several clean saved sources; reopen the latest with Ctrl+Shift+T and select another from the sidebar | Correct current disk text opens, matching entries disappear, and existing open tabs remain untouched | NOT RUN |
+| E79 | Close a dirty source after explicitly discarding edits; close an untitled tab and an unsaved recovered copy | None enter the clean-source history | NOT RUN |
+| E80 | Close a clean file, modify or delete it externally, then reopen it; test a denied scope or invalid file | Current valid disk contents open; missing, denied or invalid files report failure without consuming the entry | NOT RUN |
+| E81 | Forget one entry, clear the history, close Studio and restart | Removed entries do not reappear; no history persists after restart | NOT RUN |
+
 ## Project Explorer, scopes and navigation
 
 | ID | Action | Required outcome | Result / evidence |
