@@ -42,6 +42,9 @@ import { verifiedProblemMarker } from './model/problemMarkers';
 import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
+import { WorkspaceCreatePanel } from './components/WorkspaceCreatePanel';
+import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/workspaceCreate';
+import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
@@ -959,6 +962,36 @@ export default function App() {
       // Keep previously listed files and open dirty buffers intact if scan
       // fails; only a successful scan may replace Explorer membership.
       setError('Could not refresh Scarp folder: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function createExplorerItem(request: WorkspaceCreateRequest): Promise<boolean> {
+    const selection = selectedFolderRef.current;
+    if (!isTauri() || !selection || filePickerInProgress.current ||
+        saveInProgress.current || selectionInProgress.current ||
+        commandInProgress.current || nativeDialogGate.current.isActive ||
+        compilerScanning) return false;
+    const targets = workspaceCreationTargets(folderDirectories, unavailableProjectFolders);
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const item = await createWorkspaceItem({
+        root: selection.path, targets, request,
+        isCurrent: () => selectedFolderRef.current === selection,
+        openPaths: () => liveEditor.current.documents.flatMap(document =>
+          document.path === null ? [] : [document.path]),
+      });
+      const refreshed = await updateExplorerAfterSave();
+      setNotice('Created ' + item.relativePath +
+        (refreshed ? '. Explorer refreshed.' : '. Refresh Explorer to update the listing.'));
+      return true;
+    } catch (caught) {
+      setError('Could not create workspace item: ' + toMessage(caught));
+      return false;
     } finally {
       filePickerInProgress.current = false;
       setBusy(false);
@@ -2289,6 +2322,10 @@ export default function App() {
                   Check folder access permissions.
                 </p>
               )}
+              <WorkspaceCreatePanel key={'create:' + folderPath}
+                directories={folderDirectories} unavailable={unavailableProjectFolders}
+                busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
+                onCreate={createExplorerItem} />
               <ProjectExplorer key={folderPath} files={folderEntries} directories={folderDirectories}
                 projectRoots={projectRoots} selectedProjectDirectory={projectDirectory}
                 onSelectProject={chooseProjectTarget} documents={documents} activeId={activeId}
