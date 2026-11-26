@@ -18,7 +18,7 @@ describe('IntelliSense Settings UI', () => {
   it('renders labeled controls and independent sections', () => {
     const html = render();
     for (const label of ['Completion behavior', 'Suggestion sources', 'Documentation and navigation',
-      'Local analysis performance', 'Reset IntelliSense only', 'Balanced preset', 'Saved IntelliSense profiles', 'Export configuration', 'Import configuration', 'IntelliSense preview', 'Scarp language reference']) expect(html).toContain(label);
+      'Local analysis performance', 'Reset IntelliSense only', 'Balanced preset', 'Saved IntelliSense profiles', 'Export configuration', 'Import configuration', 'IntelliSense preview', 'Scarp language reference', 'IntelliSense availability']) expect(html).toContain(label);
     for (const id of ['mode', 'matching', 'delay', 'limit', 'enter', 'tab', 'hover-delay', 'budget']) {
       expect(html).toContain('for="intellisense-' + id + '"');
       tag(html, 'intellisense-' + id, 'select');

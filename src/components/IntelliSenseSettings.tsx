@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { IntelliSenseProfilePanel } from './IntelliSenseProfilePanel';
 import { IntelliSensePreviewPanel } from './IntelliSensePreviewPanel';
 import { IntelliSenseReferencePanel } from './IntelliSenseReferencePanel';
+import { IntelliSenseDiagnosticsPanel } from './IntelliSenseDiagnosticsPanel';
+import type { DiagnosticDocument, IntelliSenseDocumentReport } from '../language/intelliSenseDiagnostics';
 import { matchIntelliSenseControls, INTELLISENSE_CONTROL_INDEX, MAX_INTELLISENSE_SEARCH_UNITS,
   resetIntelliSensePreference, type IntelliSenseControlGroup } from '../model/intelliSenseSettingsIndex';
 import {
@@ -16,6 +18,8 @@ interface Props {
   persistence: IntelliSenseSnapshot['persistence'];
   onChange: (patch: Partial<IntelliSensePreferences>) => void;
   onReset: () => void;
+  diagnosticDocument?: DiagnosticDocument | null;
+  onInspectDocument?: () => IntelliSenseDocumentReport | null;
 }
 type Flag = 'templates' | 'builtins' | 'keywordsAndTypes' | 'localFunctions' | 'documentWords' |
   'preferLocal' | 'conservativeCatalog' | 'hover' | 'localFunctionHover' | 'signatureHelp' | 'builtinSignatureHelp' | 'inlayBuiltins' | 'goToDefinition' | 'documentSymbols';
@@ -42,7 +46,8 @@ const modeLabels = { automatic: 'Automatic', manual: 'Manual (Ctrl+Space)', off:
 const enterLabels = { on: 'Always', smart: 'Smart', off: 'Never' };
 const tabLabels = { off: 'Off', on: 'On', onlySnippets: 'Only snippets' };
 
-export function IntelliSenseSettings({ preferences: p, persistence, onChange, onReset }: Props) {
+export function IntelliSenseSettings({ preferences: p, persistence, onChange, onReset,
+  diagnosticDocument = null, onInspectDocument }: Props) {
   const preset = currentIntelliSensePreset(p);
   const completionOff = p.completionMode === 'off';
   const [query, setQuery] = useState('');
@@ -207,6 +212,7 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
           <p>Existing lexical token, nesting and identifier limits still apply. This is not a setting for compiler memory or program limits.</p>
         </div>
       </div>
+      <IntelliSenseDiagnosticsPanel preferences={p} document={diagnosticDocument} onInspect={onInspectDocument} />
       <IntelliSensePreviewPanel preferences={p} />
       <IntelliSenseReferencePanel preferences={p} />
       <IntelliSenseProfilePanel preferences={p} onApply={onChange} />

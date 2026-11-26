@@ -303,3 +303,5 @@ actually testing the Studio desktop build.**
 | S34 | Open Scarp language reference in Settings; search by name and documentation, filter category and availability, inspect signature and raw snippet. | Reference shows entries beyond the popup cap; completion filters affect availability badges only. No source is changed; reference remains usable when completion is off. | NOT RUN |
 
 | S35 | Search IntelliSense preferences by aliases, show modified-only, change a value, reset an individual modified control and clear filters. | Only matching controls appear; hidden values are preserved, individual reset changes only that key, and profile/reference/preview remain available. | NOT RUN |
+
+| S36 | Inspect IntelliSense availability with no file, a normal file, a file exceeding the configured budget, and malformed lexical source. Edit the source after inspection or change the budget. | Preference and size eligibility is visible without scanning; explicit inspection returns only aggregate counts and reason categories; stale reports are not reused; no source, paths or compiler state is persisted. | NOT RUN |

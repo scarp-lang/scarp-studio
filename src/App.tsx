@@ -57,6 +57,7 @@ import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
 import { StudioSettingsPanel } from './components/StudioSettingsPanel';
 import { IntelliSenseSettings } from './components/IntelliSenseSettings';
+import { inspectIntelliSenseDocument } from './language/intelliSenseDiagnostics';
 import { intelliSenseStore, intelliSenseEditorOptions } from './model/intelliSensePreferences';
 import { CompilerSetupPanel } from './components/CompilerSetupPanel';
 import { loadCompilerPreferences, persistCompilerPreferences, DEFAULT_COMPILER_PREFERENCES } from './model/compilerPreferences';
@@ -2573,6 +2574,12 @@ export default function App() {
           layout={workspaceLayout} onTheme={setTheme}
           intelliSense={<IntelliSenseSettings preferences={intelligence.preferences}
             persistence={intelligence.persistence}
+            diagnosticDocument={active ? { id: active.id, revision: active.revision, units: active.content.length } : null}
+            onInspectDocument={() => {
+              const current = currentActiveDocument(liveEditor.current);
+              if (!current || !active || current.id !== active.id || current.revision !== active.revision) return null;
+              return inspectIntelliSenseDocument(current.content, intelliSenseStore.getSnapshot().preferences.localAnalysisKiB);
+            }}
             onChange={intelliSenseStore.update}
             onReset={intelliSenseStore.reset} />}
           compiler={<>
