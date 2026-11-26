@@ -143,12 +143,12 @@ export function registerScarpLanguage(monaco: typeof Monaco,
         const end = model.getOffsetAt({ lineNumber: position.lineNumber, column: endColumn });
         return analysis.complete(start, end, word.word, exclude,
           (name, needle) => Number.isFinite(rank(name, needle)), settings.matchingMode === 'subsequence' ? rank : undefined);
-      }, context);
+      }, context, line.slice(endColumn - 1));
       const suggestions: Monaco.languages.CompletionItem[] = planned.map(item => ({
         label: item.label,
         kind: completionKinds[item.kind],
         insertText: item.insertText,
-        ...(item.source === 'catalog' ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet } : {}),
+        ...(item.asSnippet ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet } : {}),
         range, detail: item.detail, documentation: item.documentation, sortText: item.sortText,
       }));
       return { suggestions: token?.isCancellationRequested ? [] : suggestions };

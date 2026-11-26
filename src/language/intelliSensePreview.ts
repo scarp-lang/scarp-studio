@@ -23,6 +23,7 @@ export const INTELLISENSE_EXAMPLES = [
   { id: 'priority', title: 'Local and catalog priority', kind: 'completion', marked: mixedHeader + 'pri|', prefix: 'pri' },
   { id: 'abbreviation', title: 'Ordered-character abbreviation', kind: 'completion', marked: 'bgpw|', prefix: 'bgpw' },
   { id: 'qualified', title: 'Qualified name context', kind: 'completion', marked: 'module.pri|', prefix: 'pri' },
+  { id: 'existing-call', title: 'Complete an existing call', kind: 'completion', marked: 'pri|nt(42);', prefix: 'pri' },
   { id: 'catalog-hover', title: 'Built-in hover documentation', kind: 'hover', marked: 'pri|nt(42);' },
   { id: 'local-hover', title: 'Local function hover', kind: 'hover', marked: header + 'a|dd(1, 2);' },
   { id: 'signature', title: 'Parameter hints', kind: 'signature', marked: header + 'add(1, |2);' },
@@ -35,6 +36,8 @@ export interface PreviewResult {
   label: string;
   kind: string;
   detail: string;
+  insertion?: string;
+  asSnippet?: boolean;
 }
 export interface IntelliSensePreview {
   before: string;
@@ -76,8 +79,9 @@ export function evaluateIntelliSensePreview(id: PreviewId, settings: Readonly<In
       if (!canCompleteLocalFunction(line, start - lineStart, prefix)) return [];
       return local()?.complete(start, end, prefix, exclude, (name, needle) => Number.isFinite(rank(name, needle)),
         settings.matchingMode === 'subsequence' ? rank : undefined) ?? [];
-    }, lineCompletionContext(line, start - lineStart));
-    result.results = items.map(item => ({ label: item.label, kind: item.source + ' · ' + item.kind, detail: item.detail }));
+    }, lineCompletionContext(line, start - lineStart), source.slice(end, lineEnd < 0 ? source.length : lineEnd));
+    result.results = items.map(item => ({ label: item.label, kind: item.source + ' · ' + item.kind, detail: item.detail,
+      insertion: item.insertText, asSnippet: item.asSnippet }));
     result.explanation = settings.completionMode === 'off' ? 'Scarp completion is off.' :
       settings.completionMode === 'manual' ? 'Simulates explicit Ctrl+Space completion. Monaco word suggestions are not included.' :
         'Simulates the Scarp completion provider. Monaco word suggestions and trigger timing are not included.';

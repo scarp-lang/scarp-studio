@@ -308,6 +308,14 @@ describe('Scarp editor assistance registration', () => {
       }).suggestions.find((item) => item.label === 'funcra');
       expect(suggestion?.range).toMatchObject({ startColumn: 1, endColumn: 4 });
     }
+    const existingCall = {
+      ...model, getLineContent: () => 'print(42);',
+      getWordUntilPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+      getWordAtPosition: () => ({ word: 'print', startColumn: 1, endColumn: 6 }),
+    };
+    const existingCallSuggestion = handler.provideCompletionItems(existingCall, { lineNumber: 1, column: 4 }).suggestions.find(item => item.label === 'print');
+    expect(existingCallSuggestion).toMatchObject({ insertText: 'print', range: { startColumn: 1, endColumn: 6 } });
+    expect(existingCallSuggestion).not.toHaveProperty('insertTextRules');
     const localSource = 'funcra add(a: integer) -> integer {}\nadd(1);';
     const localModel = {
       getValueLength: () => localSource.length, getValue: () => localSource,

@@ -54,3 +54,11 @@ describe('matching and context preview', () => {
     expect(evaluateIntelliSensePreview('qualified', { ...defaults, conservativeCatalog: false }).results.some(item => item.label === 'print')).toBe(true);
   });
 });
+
+
+describe('safe insertion preview', () => {
+  it('reuses existing arguments rather than adding a duplicate call', () => {
+    const result = evaluateIntelliSensePreview('existing-call', defaults);
+    expect(result.results.find(item => item.label === 'print')).toMatchObject({ insertion: 'print', asSnippet: false });
+  });
+});

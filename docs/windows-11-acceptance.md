@@ -290,3 +290,5 @@ actually testing the Studio desktop build.**
 | S27 | Import a v1 profile and load saved v1 profiles, then save a new profile and export. | All existing choices survive; new matching/context preferences take defaults; exports and subsequent profile writes use v2; malformed or incomplete schemas rejected. | NOT RUN |
 
 | S28 | Edit an unfinished call, then introduce mismatched brackets and declaration-shaped text inside grouping. | Local navigation and typed assistance retain valid earlier declarations in an unfinished call, but do not resolve from an inconsistent lexical inventory. | NOT RUN |
+
+| S29 | Accept catalog completion within print(42), bigint_pow(...), array<integer, 2>, and before an existing semicolon. | Existing arguments, generic parameters and terminators remain intact; fresh completions still insert supported snippets. | NOT RUN |
