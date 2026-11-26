@@ -10,7 +10,7 @@ function render(overrides: Partial<Parameters<typeof StudioSettingsPanel>[0]> = 
   return renderToStaticMarkup(createElement(StudioSettingsPanel, {
     theme: 'dark', editor: DEFAULT_EDITOR_PREFERENCES, autoSave: DEFAULT_AUTO_SAVE,
     layout: DEFAULT_WORKSPACE_LAYOUT, recovery: createElement('p', null, 'Recovery controls'),
-    recoveryNeedsReview: false,
+    recoveryNeedsReview: false, compiler: createElement('p', null, 'Compiler controls'),
     onTheme: () => {}, onEditorChange: () => {}, onAutoSaveChange: () => {},
     onLayoutChange: () => {}, onResetEditor: () => {}, onResetAutoSave: () => {},
     onResetLayout: () => {}, onResetAll: () => {}, onClose: () => {}, ...overrides,
@@ -20,11 +20,11 @@ describe('Settings center rendered controls', () => {
   it('provides searchable named categories and separate reset actions', () => {
     const html = render();
     for (const label of ['Search settings', 'Appearance', 'Code editor',
-      'Files and Auto Save', 'Workspace layout', 'Recovery controls',
+      'Files and Auto Save', 'Workspace layout', 'Recovery controls', 'Compiler configuration', 'Compiler controls',
       'Reset editor only', 'Reset Auto Save only', 'Reset layout only',
       'Restore preference defaults', 'Close settings']) expect(html).toContain(label);
     expect(html).toContain('Recovery copies and remembered workspace data are unchanged.');
-    expect(html).toContain('5 settings group(s)');
+    expect(html).toContain('6 settings group(s)');
   });
   it('renders explicit labels and current editor flags', () => {
     const html = render({ editor: { ...DEFAULT_EDITOR_PREFERENCES, lineNumbers: false, smoothScrolling: true } });

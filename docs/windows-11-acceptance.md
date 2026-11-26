@@ -230,3 +230,13 @@ actually testing the Studio desktop build.**
 | S02 | Change font family, line numbers, active-line highlight, indentation guides, bracket colors and smooth scrolling; switch tabs and restart Studio | Selected options apply and persist without changing source bytes or dirty state; unavailable fonts use the defined fallback | NOT RUN |
 | S03 | Enable Auto Save, customize editor, theme and layout; reset editor only, then Auto Save only, then all preferences while an automatic save preflight is pending | Individual resets affect only their named category; all resets explicitly restore theme/editor/layout and disable Auto Save synchronously, without erasing recovery or remembered workspace data | NOT RUN |
 | S04 | Open with a previous-session recovery checkpoint or blocked recovery state; search for an unrelated setting | Recovery review remains visible and cannot be removed through settings reset or filtered out; removal still requires explicit recovery confirmation | NOT RUN |
+
+
+### Compiler configuration in Settings (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S05 | Open Settings, search compiler path, choose a detected candidate and confirm. Check output panel and Run/Verify. Restart. | Both setup views agree on exact approved path and version. Restart requires explicit approval. No source executes from discovery or Settings. | NOT RUN |
+| S06 | Disable startup discovery, restart, then Scan Compiler; repeat with first Run of a saved source; reset compiler preference and restart. | Startup scan stays off until reset/re-enable and restart; explicit scan and first Run still discover; approval remains mandatory. | NOT RUN |
+| S07 | During scan, probe or Run, try setup controls in Settings and output. Select a different candidate after prior approval. | Controls disabled during incompatible operations; explicit confirmation required to replace current approval; cancellation retains previous path. | NOT RUN |
+| S08 | Reset all preferences after approving a compiler. | Compiler path is not persisted or cleared by reset; startup discovery resets to on for next launch; recovery and workspace metadata preserved. | NOT RUN |

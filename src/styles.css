@@ -1325,3 +1325,19 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 }
 .studio-settings-center .settings-footer span { color: var(--muted); font-size: 11px; }
 .studio-settings-center .settings-empty { margin: 8px 0; color: var(--muted); }
+
+
+/* Shared compiler setup in output and Settings; paths may be very long. */
+.compiler-setup-shared { min-width: 0; max-width: 100%; }
+.compiler-setup-shared .compiler-setup-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.compiler-setup-shared .compiler-meta { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.compiler-setup-shared .compiler-path { display: block; overflow-wrap: anywhere; user-select: text; }
+.compiler-setup-shared .compiler-candidate-select { display: grid; gap: 5px; min-width: 0; max-width: 100%; }
+.compiler-setup-shared .compiler-candidate-select select { width: 100%; min-width: 0; max-width: 100%; }
+.compiler-setup-shared .compiler-location-approval { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.studio-settings-center .settings-compiler { grid-column: 1 / -1; }
+.studio-settings-center .settings-compiler .compiler-setup-shared { margin: 8px 0; }
+.studio-settings-center .settings-compiler .compiler-setup-shared button {
+  color: var(--text); background: var(--raised); border: 1px solid var(--border);
+  border-radius: 5px; padding: 5px 8px; font-size: 12px;
+}
