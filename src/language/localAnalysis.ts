@@ -3,7 +3,9 @@ import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameFr
 import { canCompleteLocalFunctionAtOffset, completeLocalFunctions, type LocalFunctionCompletion } from './localCompletion';
 import { activeSignatureCall, localSignatureFromCall, localSignatureAt, readLocalParameters, type LocalSignature } from './signature';
 import { scanScarpSource, type SourceLexResult } from './sourceLex';
-import { builtinSignatureAt, hasPotentialCatalogShadow, type AssistedSignature } from './builtinSignatures';
+import { collectParameterInlays, collectParameterShadowIndex, type ParameterInlay } from './parameterInlays';
+import type { InlayHintMode } from '../model/intelliSensePreferences';
+import { builtinSignatureAt, fixedBuiltinParameterLabels, hasPotentialCatalogShadow, type AssistedSignature } from './builtinSignatures';
 
 /** One exact immutable source string, with independently lazy lexical and
  * declaration inventories. No disk access, cross-file resolution or compiler
@@ -13,6 +15,7 @@ export class LocalSourceAnalysis {
   private headers: LocalFunctionHeader[] | null | undefined;
   private readonly parameterCache = new Map<number, readonly string[] | null>();
   private outline: ScarpOutlineSymbol[] | undefined;
+  private readonly inlays = new Map<string, readonly ParameterInlay[]>();
 
   constructor(private readonly source: string) {}
 
@@ -71,6 +74,35 @@ export class LocalSourceAnalysis {
     }
     if (!includeBuiltin || hasPotentialCatalogShadow(this.scan(), call.name)) return null;
     return builtinSignatureAt(call.name, call.argument);
+  }
+  parameterInlays(mode: InlayHintMode, includeBuiltin: boolean): readonly ParameterInlay[] {
+    if (mode === 'off') return [];
+    const key = mode + ':' + includeBuiltin;
+    if (this.inlays.has(key)) return this.inlays.get(key)!;
+    const headers = this.index();
+    if (!headers) return [];
+    const byName = new Map<string, LocalFunctionHeader[]>();
+    for (const header of headers) {
+      const group = byName.get(header.name);
+      if (group) group.push(header);
+      else byName.set(header.name, [header]);
+    }
+    const lexical = this.scan();
+    const shadows = collectParameterShadowIndex(lexical);
+    const names = new Map<string, readonly string[] | null>();
+    const result = collectParameterInlays(this.source, lexical, mode, name => {
+      if (names.has(name)) return names.get(name)!;
+      const group = byName.get(name);
+      const declarationCount = shadows.functions.get(name) ?? 0;
+      const labels = shadows.bindings.has(name) ? null :
+        group ? group.length === 1 && declarationCount === 1 ? this.parameters(group[0].openOffset) : null
+        : includeBuiltin && declarationCount === 0 ? fixedBuiltinParameterLabels(name) : null;
+      names.set(name, labels);
+      return labels;
+    });
+    const immutable = Object.freeze(result.map(hint => Object.freeze(hint)));
+    this.inlays.set(key, immutable);
+    return immutable;
   }
   symbols(): ScarpOutlineSymbol[] {
     if (this.source.length > MAX_DEFINITION_SOURCE_UNITS) return [];

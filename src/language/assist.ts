@@ -395,6 +395,12 @@ const templates: readonly ScarpCompletion[] = [
  * identifier copied into a Monaco buffer on every completion request. */
 export const MAX_COMPLETION_PREFIX_UNITS = 128;
 
+/** Complete read-only catalog for Settings reference; unlike completion,
+ * this is not subject to the suggestion popup result limit. */
+export function scarpReferenceCatalog(): ScarpCompletion[] {
+  return templates.map(entry => ({ ...entry }));
+}
+
 export function scarpCompletions(prefix: string, include: (entry: ScarpCompletion) => boolean = () => true,
   matches: (label: string, needle: string) => boolean = (label, needle) => label.startsWith(needle),
   rank?: (label: string, needle: string) => number,

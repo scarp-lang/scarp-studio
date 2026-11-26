@@ -26,6 +26,7 @@ describe('profile management controls', () => {
       expect(button(html, label)).toContain('disabled');
     }
     expect(html).toContain('Export configuration');
+    expect(html).toContain('Saved-profile backup');
     expect(html).toContain('Import configuration');
     expect(html).not.toContain('Confirm apply');
   });

@@ -7,7 +7,7 @@ import { scarpTokenHelp } from './assist';
 
 const header = 'funcra add(a: integer, b: integer) -> integer { return a + b; }\n';
 const mixedHeader = 'funcra print_total(value: integer) -> integer { return value; }\n';
-type PreviewKind = 'completion' | 'hover' | 'signature' | 'definition' | 'symbols';
+type PreviewKind = 'completion' | 'hover' | 'signature' | 'definition' | 'symbols' | 'inlays';
 interface PreviewExample {
   readonly id: string;
   readonly title: string;
@@ -29,6 +29,7 @@ export const INTELLISENSE_EXAMPLES = [
   { id: 'local-hover', title: 'Local function hover', kind: 'hover', marked: header + 'a|dd(1, 2);' },
   { id: 'signature', title: 'Parameter hints', kind: 'signature', marked: header + 'add(1, |2);' },
   { id: 'builtin-signature', title: 'Built-in parameter hints', kind: 'signature', marked: 'bigint_pow(value, |2);' },
+  { id: 'inline-parameters', title: 'Inline parameter labels', kind: 'inlays', marked: header + 'add(a, |2); bigint_pow(value, 100);' },
   { id: 'definition', title: 'Go to Definition', kind: 'definition', marked: header + 'a|dd(1, 2);' },
   { id: 'symbols', title: 'Document symbols', kind: 'symbols', marked: header + 'record Point { x: integer }\n|' },
 ] as const satisfies readonly PreviewExample[];
@@ -113,6 +114,14 @@ export function evaluateIntelliSensePreview(id: PreviewId, settings: Readonly<In
       detail: 'Active parameter: ' + (signature.parameters[signature.activeParameter] ?? '(none)') });
     result.explanation = signature?.source === 'catalog' ? 'Catalog parameter hints; confirm installed compiler support with Verify.' :
       'Local typed parameter hints (or enabled catalog hints) when an unambiguous supported call is found.';
+    return result;
+  }
+  if (example.kind === 'inlays') {
+    const hints = local()?.parameterInlays(settings.inlayHintMode, settings.inlayBuiltins) ?? [];
+    result.results = hints.map(hint => ({ label: hint.label + ':', kind: 'inline parameter label',
+      detail: 'Before source column ' + (hint.offset - source.lastIndexOf('\n', hint.offset - 1)) }));
+    result.explanation = settings.inlayHintMode === 'off' ? 'Inline parameter labels are off.' :
+      'Read-only parameter decorations; no source modification or compiler inference.';
     return result;
   }
   if (example.kind === 'definition') {

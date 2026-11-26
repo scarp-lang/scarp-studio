@@ -296,3 +296,14 @@ actually testing the Studio desktop build.**
 | S30 | Invoke completion after a qualifier followed by several blank or comment lines; repeat after a quoted string or comparison. | Conservative catalog policy skips qualified suggestions within the eight-line, 16 Ki-unit lookback; ordinary expressions remain available. | NOT RUN |
 
 | S31 | Invoke parameter hints in bigint_pow, ask_or, decimal_round, list_set and print; disable only built-in hints; test a shadowing local declaration. | Catalog-backed arguments appear for known unqualified calls, local declaration hints take precedence, ambiguous/shadowed calls do not receive misleading catalog hints. | NOT RUN |
+
+| S32 | Enable literal-only or all inline parameter labels, toggle built-in labels, and edit nested complete calls. | Inline labels update without modifying source text; redundant, incomplete, ambiguous and unsupported calls are skipped. Popup hints remain independent. | NOT RUN |
+| S33 | Import v1/v2 profiles and save a new profile with inline hints. | Earlier choices survive; inline hints default off for old profiles; v3 exports preserve the new options. | NOT RUN |
+
+| S34 | Open Scarp language reference in Settings; search by name and documentation, filter category and availability, inspect signature and raw snippet. | Reference shows entries beyond the popup cap; completion filters affect availability badges only. No source is changed; reference remains usable when completion is off. | NOT RUN |
+
+| S35 | Search IntelliSense preferences by aliases, show modified-only, change a value, reset an individual modified control and clear filters. | Only matching controls appear; hidden values are preserved, individual reset changes only that key, and profile/reference/preview remain available. | NOT RUN |
+
+| S36 | Inspect IntelliSense availability with no file, a normal file, a file exceeding the configured budget, and malformed lexical source. Edit the source after inspection or change the budget. | Preference and size eligibility is visible without scanning; explicit inspection returns only aggregate counts and reason categories; stale reports are not reused; no source, paths or compiler state is persisted. | NOT RUN |
+
+| S37 | Export a collection with several named profiles, import into another Studio session, and review keep/replace/rename conflicts. Change saved profiles before confirming and attempt a merge above capacity. | Backup contains only named IntelliSense snapshots; merge preserves active preferences, rejects stale review and oversized/capacity violations, and writes the reviewed collection as one update. | NOT RUN |

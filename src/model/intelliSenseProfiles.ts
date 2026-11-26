@@ -1,5 +1,5 @@
 import { serializeIntelliSensePreferences, type IntelliSensePreferences, type IntelliSenseStorage } from './intelliSensePreferences';
-import { exactKeys, hasUniqueJsonKeys, profileError, recordOf, strictIntelliSensePreferences, type ProfileResult } from './intelliSenseProfileTransfer';
+import { exactKeys, hasUniqueJsonKeys, profileError, recordOf, strictIntelliSensePreferences, PROFILE_FORMAT_VERSION, diffIntelliSensePreferences, type ProfileResult } from './intelliSenseProfileTransfer';
 
 export const PROFILE_STORAGE_KEY = 'studio.intelliSenseProfiles.v1';
 export const MAX_SAVED_PROFILES = 16;
@@ -42,7 +42,7 @@ export function parseSavedProfiles(raw: string | null): ProfileResult<readonly S
   try { value = JSON.parse(raw); } catch { return profileError('Saved profiles contain invalid JSON.'); }
   if (!hasUniqueJsonKeys(raw)) return profileError('Saved profiles contain duplicate keys or unsupported nesting.');
   const root = recordOf(value);
-  if (!root || !exactKeys(root, ['version', 'profiles']) || (root.version !== 1 && root.version !== 2) || !Array.isArray(root.profiles)) {
+  if (!root || !exactKeys(root, ['version', 'profiles']) || (root.version !== 1 && root.version !== 2 && root.version !== PROFILE_FORMAT_VERSION) || !Array.isArray(root.profiles)) {
     return profileError('Saved profiles format is unsupported.');
   }
   if (root.profiles.length > MAX_SAVED_PROFILES) return profileError('Too many saved profiles.');
@@ -61,7 +61,7 @@ export function parseSavedProfiles(raw: string | null): ProfileResult<readonly S
   return { ok: true, value: Object.freeze(profiles) };
 }
 export function serializeSavedProfiles(profiles: readonly SavedIntelliSenseProfile[]): string {
-  return JSON.stringify({ version: 2, profiles: profiles.map(profile => ({
+  return JSON.stringify({ version: PROFILE_FORMAT_VERSION, profiles: profiles.map(profile => ({
     name: profile.name, preferences: JSON.parse(serializeIntelliSensePreferences(profile.preferences)),
   })) });
 }
@@ -92,6 +92,107 @@ export function mutateSavedProfiles(profiles: readonly SavedIntelliSenseProfile[
   if (!validated.ok) return validated;
   return { ok: true, value: Object.freeze(profiles.map((profile, i) =>
     i === index ? frozenProfile(profile.name, validated.value) : profile)) };
+}
+
+export const PROFILE_BACKUP_FORMAT = 'scarp-studio.intellisense-profiles';
+export const MAX_PROFILE_BACKUP_UNITS = MAX_PROFILE_STORAGE_UNITS;
+export const BACKUP_CONFLICT_POLICIES = ['keep', 'replace', 'rename'] as const;
+export type BackupConflictPolicy = (typeof BACKUP_CONFLICT_POLICIES)[number];
+
+export function exportSavedProfileBackup(profiles: readonly SavedIntelliSenseProfile[]): string {
+  const collection = JSON.parse(serializeSavedProfiles(profiles)) as { version: number; profiles: unknown[] };
+  return JSON.stringify({ format: PROFILE_BACKUP_FORMAT, ...collection }, null, 2);
+}
+export function parseSavedProfileBackup(raw: string): ProfileResult<readonly SavedIntelliSenseProfile[]> {
+  if (raw.length > MAX_PROFILE_BACKUP_UNITS) return profileError('Profile backup is too large.');
+  if (!raw.trim()) return profileError('Paste a saved-profile backup first.');
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return profileError('Profile backup is not valid JSON.'); }
+  if (!hasUniqueJsonKeys(raw)) return profileError('Profile backup contains duplicate keys or unsupported nesting.');
+  const root = recordOf(value);
+  if (!root || !exactKeys(root, ['format', 'version', 'profiles']) || root.format !== PROFILE_BACKUP_FORMAT) {
+    return profileError('This is not a supported IntelliSense saved-profile backup.');
+  }
+  return parseSavedProfiles(JSON.stringify({ version: root.version, profiles: root.profiles }));
+}
+export interface BackupAction {
+  readonly name: string;
+  readonly targetName: string;
+  readonly kind: 'add' | 'same' | 'keep' | 'replace' | 'rename';
+  readonly changedPreferences: number;
+}
+export interface BackupReview {
+  readonly baseline: string;
+  readonly incoming: readonly SavedIntelliSenseProfile[];
+  readonly policy: BackupConflictPolicy;
+  readonly actions: readonly BackupAction[];
+  readonly result: readonly SavedIntelliSenseProfile[];
+}
+
+/** Names use the same validator as manually created profiles. Reserve every
+ * imported name up front so a generated suffix cannot steal a later entry. */
+function alternateBackupName(name: string, used: ReadonlySet<string>): string | null {
+  for (let i = 1; i <= MAX_SAVED_PROFILES * 2; i++) {
+    const suffix = i === 1 ? ' - imported' : ' - imported ' + i;
+    let base = '';
+    for (const char of name) {
+      if (base.length + char.length + suffix.length > MAX_PROFILE_NAME_UNITS) break;
+      base += char;
+    }
+    const candidate = normalizeProfileName(base.trimEnd() + suffix);
+    if (candidate && !used.has(profileIdentity(candidate))) return candidate;
+  }
+  return null;
+}
+
+/** Pure all-or-nothing merge planning. Existing profiles are never removed;
+ * a conflicting replacement affects only its saved preferences, not the
+ * currently active editor configuration or name. */
+export function reviewSavedProfileBackup(current: readonly SavedIntelliSenseProfile[], raw: string,
+  policy: BackupConflictPolicy): ProfileResult<BackupReview> {
+  if (!BACKUP_CONFLICT_POLICIES.includes(policy)) return profileError('Unsupported backup conflict policy.');
+  const parsed = parseSavedProfileBackup(raw);
+  if (!parsed.ok) return parsed;
+  const incoming = parsed.value;
+  const result = [...current];
+  const actions: BackupAction[] = [];
+  const used = new Set([...current, ...incoming].map(profile => profileIdentity(profile.name)));
+  for (const profile of incoming) {
+    const identity = profileIdentity(profile.name);
+    const index = result.findIndex(existing => profileIdentity(existing.name) === identity);
+    if (index < 0) {
+      result.push(profile);
+      actions.push({ name: profile.name, targetName: profile.name, kind: 'add', changedPreferences: 0 });
+      continue;
+    }
+    const existing = result[index];
+    const changes = diffIntelliSensePreferences(existing.preferences, profile.preferences).length;
+    if (!changes) {
+      actions.push({ name: profile.name, targetName: existing.name, kind: 'same', changedPreferences: 0 });
+    } else if (policy === 'keep') {
+      actions.push({ name: profile.name, targetName: existing.name, kind: 'keep', changedPreferences: changes });
+    } else if (policy === 'replace') {
+      result[index] = frozenProfile(existing.name, profile.preferences);
+      actions.push({ name: profile.name, targetName: existing.name, kind: 'replace', changedPreferences: changes });
+    } else {
+      const name = alternateBackupName(profile.name, used);
+      if (!name) return profileError('No available name for imported profile. Choose another conflict policy.');
+      used.add(profileIdentity(name));
+      result.push(frozenProfile(name, profile.preferences));
+      actions.push({ name: profile.name, targetName: name, kind: 'rename', changedPreferences: changes });
+    }
+  }
+  if (result.length > MAX_SAVED_PROFILES) {
+    return profileError('Backup merge would exceed the ' + MAX_SAVED_PROFILES + '-profile limit (' + result.length + ' total). No profiles were changed.');
+  }
+  return { ok: true, value: Object.freeze({
+    baseline: serializeSavedProfiles(current), incoming, policy,
+    actions: Object.freeze(actions.map(action => Object.freeze(action))),
+    result: Object.freeze(result),
+  }) };
+}
+export function backupReviewIsCurrent(review: BackupReview, current: readonly SavedIntelliSenseProfile[]): boolean {
+  return review.baseline === serializeSavedProfiles(current);
 }
 
 /** Independent profile storage: active preference reset never touches this
@@ -143,6 +244,19 @@ export function createSavedProfilesStore(storage: IntelliSenseStorage | null) {
     const next = mutateSavedProfiles(state.profiles, mutation);
     return next.ok ? save(next.value) : next;
   }
+  function applyBackup(review: BackupReview): ProfileResult<readonly SavedIntelliSenseProfile[]> {
+    if (state.persistence === 'blocked') return profileError('Saved profile storage is blocked. Reload before importing.');
+    if (!backupReviewIsCurrent(review, state.profiles)) return profileError('Saved profiles changed since review. Review the backup again.');
+    // Recompute from validated input; never accept a caller-supplied result
+    // array as an unchecked storage mutation.
+    const fresh = reviewSavedProfileBackup(state.profiles, exportSavedProfileBackup(review.incoming), review.policy);
+    if (!fresh.ok) return fresh;
+    if (serializeSavedProfiles(fresh.value.result) !== serializeSavedProfiles(review.result)) {
+      return profileError('Backup review no longer matches the proposed merge.');
+    }
+    if (serializeSavedProfiles(fresh.value.result) === review.baseline) return { ok: true, value: state.profiles };
+    return save(fresh.value.result);
+  }
   function reload(): ProfileResult<readonly SavedIntelliSenseProfile[]> {
     if (!storage) return profileError('Local storage is unavailable.');
     try {
@@ -169,7 +283,7 @@ export function createSavedProfilesStore(storage: IntelliSenseStorage | null) {
       return { ok: true, value: empty };
     } catch { return profileError('Could not discard the unreadable profile record.'); }
   }
-  return { getSnapshot, subscribe, mutate, reload, discardBlocked };
+  return { getSnapshot, subscribe, mutate, applyBackup, reload, discardBlocked };
 }
 function storageOrNull(): IntelliSenseStorage | null {
   try { return typeof localStorage === 'undefined' ? null : localStorage; }

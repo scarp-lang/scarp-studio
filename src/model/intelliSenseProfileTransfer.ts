@@ -4,8 +4,9 @@ import {
 } from './intelliSensePreferences';
 
 export const PROFILE_FORMAT = 'scarp-studio.intellisense';
-export const PROFILE_FORMAT_VERSION = 2;
-const V1_KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES).filter(key => key !== 'matchingMode' && key !== 'conservativeCatalog' && key !== 'builtinSignatureHelp');
+export const PROFILE_FORMAT_VERSION = 3;
+const V2_KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES).filter(key => key !== 'inlayHintMode' && key !== 'inlayBuiltins');
+const V1_KEYS = V2_KEYS.filter(key => key !== 'matchingMode' && key !== 'conservativeCatalog' && key !== 'builtinSignatureHelp');
 export const MAX_PROFILE_TRANSFER_UNITS = 8192;
 const KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES) as (keyof IntelliSensePreferences)[];
 export type ProfileResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -24,7 +25,7 @@ export function exactKeys(record: Record<string, unknown>, keys: readonly string
  * The existing canonical parser remains the single source of valid values. */
 export function strictIntelliSensePreferences(value: unknown, version = PROFILE_FORMAT_VERSION): ProfileResult<IntelliSensePreferences> {
   const record = recordOf(value);
-  const keys = version === 1 ? V1_KEYS : version === PROFILE_FORMAT_VERSION ? KEYS : null;
+  const keys = version === 1 ? V1_KEYS : version === 2 ? V2_KEYS : version === PROFILE_FORMAT_VERSION ? KEYS : null;
   if (!record || !keys || !exactKeys(record, keys)) return profileError('Configuration must contain exactly the supported IntelliSense preferences.');
   const normalized = parseIntelliSensePreferences(JSON.stringify(record));
   for (const key of keys as (keyof IntelliSensePreferences)[]) {
@@ -112,7 +113,7 @@ export function importIntelliSenseProfile(raw: string): ProfileResult<IntelliSen
   if (!record || !exactKeys(record, ['format', 'version', 'preferences']) || record.format !== PROFILE_FORMAT) {
     return profileError('This is not a supported Scarp Studio IntelliSense configuration.');
   }
-  if (record.version !== 1 && record.version !== PROFILE_FORMAT_VERSION) return profileError('Unsupported IntelliSense configuration version.');
+  if (record.version !== 1 && record.version !== 2 && record.version !== PROFILE_FORMAT_VERSION) return profileError('Unsupported IntelliSense configuration version.');
   return strictIntelliSensePreferences(record.preferences, record.version);
 }
 
@@ -139,6 +140,8 @@ const labels: Record<keyof IntelliSensePreferences, string> = {
   hoverDelay: 'Hover delay',
   signatureHelp: 'Function parameter hints',
   builtinSignatureHelp: 'Built-in parameter hints',
+  inlayHintMode: 'Inline parameter labels',
+  inlayBuiltins: 'Inline built-in labels',
   goToDefinition: 'Go to Definition',
   documentSymbols: 'Monaco document symbols',
   localAnalysisKiB: 'Local analysis budget',

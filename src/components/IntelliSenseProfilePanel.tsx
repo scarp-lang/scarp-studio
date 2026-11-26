@@ -1,4 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
+import { IntelliSenseBackupPanel } from './IntelliSenseBackupPanel';
 import { type IntelliSensePreferences } from '../model/intelliSensePreferences';
 import {
   MAX_PROFILE_TRANSFER_UNITS, exportIntelliSenseProfile, importIntelliSenseProfile,
@@ -172,6 +173,7 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
           </div>
         </div>}
       </div>
+      <IntelliSenseBackupPanel store={store} />
       {pending && <div className="profile-review" role="group" aria-label="Confirm IntelliSense profile action">
         <strong>{pending.kind === 'apply' ? 'Apply ' + pending.origin :
           pending.kind === 'replace' ? 'Replace ' + pending.expected.name :

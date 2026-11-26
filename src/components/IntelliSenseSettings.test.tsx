@@ -18,13 +18,13 @@ describe('IntelliSense Settings UI', () => {
   it('renders labeled controls and independent sections', () => {
     const html = render();
     for (const label of ['Completion behavior', 'Suggestion sources', 'Documentation and navigation',
-      'Local analysis performance', 'Reset IntelliSense only', 'Balanced preset', 'Saved IntelliSense profiles', 'Export configuration', 'Import configuration', 'IntelliSense preview']) expect(html).toContain(label);
+      'Local analysis performance', 'Reset IntelliSense only', 'Balanced preset', 'Saved IntelliSense profiles', 'Export configuration', 'Import configuration', 'IntelliSense preview', 'Scarp language reference', 'IntelliSense availability']) expect(html).toContain(label);
     for (const id of ['mode', 'matching', 'delay', 'limit', 'enter', 'tab', 'hover-delay', 'budget']) {
       expect(html).toContain('for="intellisense-' + id + '"');
       tag(html, 'intellisense-' + id, 'select');
     }
     for (const flag of ['templates', 'builtins', 'keywordsAndTypes', 'localFunctions', 'documentWords',
-      'preferLocal', 'conservativeCatalog', 'hover', 'localFunctionHover', 'signatureHelp', 'builtinSignatureHelp', 'goToDefinition', 'documentSymbols']) {
+      'preferLocal', 'conservativeCatalog', 'hover', 'localFunctionHover', 'signatureHelp', 'builtinSignatureHelp', 'inlayBuiltins', 'goToDefinition', 'documentSymbols']) {
       expect(tag(html, 'intellisense-' + flag)).toContain('aria-describedby="intellisense-' + flag + '-help"');
       expect(html).toContain('id="intellisense-' + flag + '-help"');
     }
@@ -60,4 +60,23 @@ it('preserves the built-in hint choice while master parameter hints are off', ()
   const html = render({ preferences: { ...defaults, signatureHelp: false, builtinSignatureHelp: true } });
   expect(tag(html, 'intellisense-builtinSignatureHelp')).toContain('checked');
   expect(tag(html, 'intellisense-builtinSignatureHelp')).toContain('disabled');
+});
+
+
+it('offers independent opt-in inline hints and disables the built-in choice while off', () => {
+  expect(tag(render(), 'intellisense-inlay-mode', 'select')).toContain('id=');
+  expect(tag(render(), 'intellisense-inlayBuiltins')).toContain('disabled');
+  expect(tag(render({ preferences: { ...defaults, inlayHintMode: 'literals' } }), 'intellisense-inlayBuiltins')).not.toContain('disabled');
+});
+
+
+it('renders focused preference search and individual reset only for modified controls', () => {
+  const initial = render();
+  expect(initial).toContain('Search IntelliSense preferences');
+  expect(initial).toContain('Show modified preferences only');
+  expect(initial).not.toContain('aria-label="Reset Hover documentation"');
+  const changed = render({ preferences: { ...defaults, hover: false, inlayHintMode: 'all' } });
+  expect(changed).toContain('aria-label="Reset Hover documentation"');
+  expect(changed).toContain('aria-label="Reset Inline parameter labels"');
+  expect(changed).not.toContain('aria-label="Reset Completion mode"');
 });
