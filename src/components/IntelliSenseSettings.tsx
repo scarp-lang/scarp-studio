@@ -1,5 +1,6 @@
 import { IntelliSenseProfilePanel } from './IntelliSenseProfilePanel';
 import { IntelliSensePreviewPanel } from './IntelliSensePreviewPanel';
+import { IntelliSenseReferencePanel } from './IntelliSenseReferencePanel';
 import {
   ANALYSIS_BUDGETS, COMPLETION_MODES, ENTER_BEHAVIORS, HOVER_DELAYS, MATCHING_MODES, INLAY_HINT_MODES,
   INTELLISENSE_PRESETS, SUGGESTION_DELAYS, SUGGESTION_LIMITS, TAB_BEHAVIORS,
@@ -161,11 +162,12 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
               if (value !== undefined) onChange({ localAnalysisKiB: value });
             }}>{ANALYSIS_BUDGETS.map(value => <option key={value} value={value}>{value} Ki UTF-16 units</option>)}</select>
           </div>
-          <p>Applies to local function completion, hover, signatures, definitions and Monaco document symbols. Larger files skip these analyses. Compiler Run and Verify are unaffected.</p>
+          <p>Applies to local function completion, hover, signatures, inline labels, definitions and Monaco document symbols. Larger files skip these analyses. Compiler Run and Verify are unaffected.</p>
           <p>Existing lexical token, nesting and identifier limits still apply. This is not a setting for compiler memory or program limits.</p>
         </div>
       </div>
       <IntelliSensePreviewPanel preferences={p} />
+      <IntelliSenseReferencePanel preferences={p} />
       <IntelliSenseProfilePanel preferences={p} onApply={onChange} />
       <button type="button" className="settings-reset" onClick={onReset}>Reset IntelliSense only</button>
     </div>

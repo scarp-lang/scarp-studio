@@ -1395,3 +1395,21 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .intellisense-preview-panel .preview-result p { grid-column: 1 / -1; margin: 0; }
 .intellisense-preview-panel .preview-kind { color: var(--muted); font-size: 11px; }
 .intellisense-preview-panel .preview-metadata { display: flex; flex-wrap: wrap; gap: 5px 12px; font-size: 11px; color: var(--muted); }
+
+
+.intellisense-reference-panel { display: grid; gap: 8px; min-width: 0; }
+.intellisense-reference-panel .reference-filters { display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); }
+.intellisense-reference-panel input[type="search"] { width: 100%; min-width: 0; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 6px 8px; font: inherit; }
+.intellisense-reference-panel .reference-list { display: grid; gap: 5px; max-height: 240px; overflow: auto; }
+.intellisense-reference-panel .reference-entry { display: flex; gap: 8px; align-items: center;
+  justify-content: space-between; width: 100%; min-width: 0; text-align: left; padding: 7px; }
+.intellisense-reference-panel .reference-entry code { overflow-wrap: anywhere; }
+.intellisense-reference-panel .reference-entry[aria-pressed="true"] { border-color: var(--accent); font-weight: 650; }
+.intellisense-reference-panel .reference-entry span { font-size: 11px; color: var(--muted); }
+.intellisense-reference-panel .reference-detail { display: grid; gap: 7px; padding: 8px;
+  border: 1px solid var(--border); border-radius: 5px; overflow-wrap: anywhere; }
+.intellisense-reference-panel .reference-detail pre { white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 8px; margin: 0; }
+.intellisense-reference-panel .reference-pages { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
