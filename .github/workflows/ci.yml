@@ -755,6 +755,16 @@ jobs:
           # explicit exceptions instead of treating that exit as runner failure.
           & ./scripts/verify-windows-qa.ps1 -CompilerPath $binaries[0].FullName -ExpectedVersion '0.0.6-alpha.17'
 
+      # Independent qualification of newer published interpreters. The
+      # historical alpha.20 candidate provenance remains unchanged until
+      # a new Studio version and acceptance compiler are explicitly chosen.
+      - name: Verify SHA-pinned Scarp 0.0.7 series CLI and native Studio integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & ./scripts/verify-scarp-007-windows.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Scarp 0.0.7 compatibility qualification failed" }
+
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle
       - name: Build Windows NSIS installer candidate
