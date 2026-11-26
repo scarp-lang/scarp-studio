@@ -1457,3 +1457,10 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .studio-transfer .transfer-changes li { margin-block: 5px; overflow-wrap: anywhere; }
 .studio-transfer .transfer-value { color: var(--muted); font-variant-numeric: tabular-nums; }
 .studio-transfer .transfer-warning { border-left: 3px solid var(--accent); padding-left: 8px; }
+
+
+.studio-saved-profiles { display: grid; gap: 8px; min-width: 0; border-bottom: 1px solid var(--border); padding-bottom: 9px; }
+.studio-saved-profiles input[type="text"], .studio-saved-profiles select { min-width: 0; max-width: 100%; }
+.studio-saved-profiles .saved-profile-count { color: var(--muted); }
+.studio-saved-profiles .saved-profile-summary { display: grid; gap: 4px; grid-template-columns: minmax(0, 1fr) auto; margin: 0; }
+.studio-saved-profiles .saved-profile-summary dd { margin: 0; text-align: right; }

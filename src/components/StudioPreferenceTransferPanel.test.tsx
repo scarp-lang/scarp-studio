@@ -10,6 +10,7 @@ describe('Studio-wide transfer panel', () => {
     }));
     expect(html).toContain('Export Studio preferences');
     expect(html).toContain('Import Studio preferences');
+    expect(html).toContain('Named Studio configurations');
     expect(html).toContain('automatic-write enablement');
     expect(html).not.toContain('Confirm Studio import');
     expect(html).not.toContain('scarp-studio.preferences');

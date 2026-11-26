@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { StudioSavedProfilePanel } from './StudioSavedProfilePanel';
 import {
   MAX_STUDIO_TRANSFER_UNITS, PORTABLE_GROUPS, PORTABLE_GROUP_LABELS, exportStudioPreferences,
   importStudioPreferences, reviewStudioPreferences, studioReviewIsCurrent, reviewStudioUndo,
@@ -47,6 +48,10 @@ export function StudioPreferenceTransferPanel({ current, onApply }: Props) {
   }
   return <section className="studio-transfer" aria-label="Studio preference transfer">
     <p>Export and restore display, editor, IntelliSense, workspace dimensions and Auto Save timing. This excludes automatic-write enablement, startup discovery, compiler trust, source files, workspace paths, recovery copies and named profiles.</p>
+    <StudioSavedProfilePanel current={current} onReview={snapshot => {
+      setImportOpen(false); clearReview();
+      setPending({ kind: 'import', review: reviewStudioPreferences(current, snapshot, PORTABLE_GROUPS) });
+    }} />
     <div className="transfer-actions">
       <button type="button" className="settings-reset" aria-expanded={exportOpen} aria-controls="studio-transfer-export-content"
         onClick={() => setExportOpen(value => !value)}>Export Studio preferences</button>
