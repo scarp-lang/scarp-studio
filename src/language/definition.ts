@@ -2,6 +2,8 @@ import {
   isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_SCARP_OUTLINE_SYMBOLS,
   type ScarpFunctionSymbol,
 } from './assist';
+import { scanScarpSource, tokenAtOffset, scarpInsightIdentifier, type SourceLexResult, type InsightToken } from './sourceLex';
+import { blocksLocalFunctionName } from './localCallContext';
 
 /** Editor-only, bounded lookup for unqualified function calls. It is not
  * compiler symbol resolution: imports, field access, and duplicate names
@@ -30,6 +32,43 @@ export function scarpCallNameAt(line: string, column: number): string | null {
   return null;
 }
 
+/** Resolve a call from a complete bounded lexical snapshot, not an isolated
+ * line. Newlines and line comments are trivia, but strings are not. This
+ * prevents multiline module access and declaration headers being confused
+ * with unqualified calls. A partial token inventory is never authoritative.
+ * The offset is a zero-based UTF-16 position inside the identifier.
+ */
+export function scarpCallNameAtOffset(source: string, offset: number): string | null {
+  return scarpCallNameFromLexical(source, offset, () => scanScarpSource(source));
+}
+
+/** The lazy scanner must describe the exact supplied source snapshot. */
+export function scarpCallNameFromLexical(source: string, offset: number,
+  scan: () => SourceLexResult): string | null {
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset >= source.length ||
+      source.length > MAX_DEFINITION_SOURCE_UNITS) return null;
+  const lexical = scan();
+  if (lexical.sourceLength !== source.length || !lexical.complete || lexical.issues.length) return null;
+  const token = tokenAtOffset(lexical.tokens, offset);
+  if (!token || token.kind !== 'identifier' || token.previewTruncated ||
+      !scarpInsightIdentifier(token.text) || token.column > MAX_ASSIST_SCAN_UNITS) return null;
+  const index = lexical.tokens.indexOf(token);
+  let previous = index - 1;
+  while (previous >= 0 && lexical.tokens[previous].kind === 'comment') previous--;
+  let next = index + 1;
+  while (next < lexical.tokens.length && lexical.tokens[next].kind === 'comment') next++;
+  const before = lexical.tokens[previous];
+  const after = lexical.tokens[next];
+  if (!after || after.kind !== 'delimiter' || after.text !== '(') return null;
+  if (before && (before.kind === 'identifier' || before.kind === 'operator') &&
+      blocksLocalFunctionName(before.text)) return null;
+  // Unsupported adjacent non-ASCII identifier characters must not make a
+  // suffix appear to be an independent ASCII Scarp name.
+  if (token.start > 0 && /[^\x00-\x7f]/.test(source[token.start - 1]) ||
+      token.end < source.length && /[^\x00-\x7f]/.test(source[token.end])) return null;
+  return token.text;
+}
+
 /** Lexical top-level inventory for definition lookup. Unlike the sidebar's
  * deliberately line-oriented outline, this consumes the entire bounded buffer,
  * including multiple declarations on one line and multiline headers. It never
@@ -39,81 +78,58 @@ export interface LocalFunctionHeader extends ScarpFunctionSymbol {
   openOffset: number;
 }
 
-export function indexLocalFunctionHeaders(source: string): LocalFunctionHeader[] | null {
+export const MAX_LOCAL_DECLARATION_NESTING = 128;
+
+/** Reuse the exact bounded lexical snapshot when called by LocalSourceAnalysis.
+ * A declaration must occur outside braces, parentheses and brackets. An
+ * unfinished trailing expression is permitted during editing; a mismatched
+ * closer or incomplete lexical inventory is not. */
+export function indexLocalFunctionHeaders(source: string,
+  scan: () => SourceLexResult = () => scanScarpSource(source),
+): LocalFunctionHeader[] | null {
   if (source.length > MAX_DEFINITION_SOURCE_UNITS) return null;
+  const lexical = scan();
+  if (!lexical.complete || lexical.issues.length || lexical.sourceLength !== source.length) return null;
   const symbols: LocalFunctionHeader[] = [];
-  let offset = 0;
-  let line = 1;
-  let column = 1;
-  let depth = 0;
-  let expectingName = false;
-  let pending: ScarpFunctionSymbol | null = null;
-
-  function advance(): void {
-    const char = source[offset++];
-    if (char === '\r' || char === '\n') {
-      if (char === '\r' && source[offset] === '\n') offset++;
-      line++;
-      column = 1;
-    } else {
-      column++;
-    }
-  }
-
-  while (offset < source.length) {
-    const char = source[offset];
-    if (/\s/.test(char)) { advance(); continue; }
-    if (char === '/' && source[offset + 1] === '/') {
-      while (offset < source.length && source[offset] !== '\r' && source[offset] !== '\n') advance();
-      continue;
-    }
-    if (char === '"') {
-      // Scarp strings are single-line. Never index declaration-like text
-      // inside a string or after an unterminated lexical construct.
-      expectingName = false;
-      pending = null;
-      advance();
-      let closed = false;
-      while (offset < source.length) {
-        const current = source[offset];
-        if (current === '\r' || current === '\n') return null;
-        advance();
-        if (current === '"') { closed = true; break; }
-        if (current === '\\') {
-          if (offset >= source.length || source[offset] === '\r' || source[offset] === '\n') return null;
-          advance();
-        }
-      }
-      if (!closed) return null;
-      continue;
-    }
-
-    if (/[A-Za-z_0-9]/.test(char)) {
-      const start = offset;
-      const startColumn = column;
-      while (offset < source.length && /[A-Za-z_0-9]/.test(source[offset])) advance();
-      const name = source.slice(start, offset);
-      if (depth === 0 && expectingName && /^[A-Za-z_]/.test(name)) {
-        pending = { name, line, startColumn, endColumn: column };
-        expectingName = false;
+  const stack: string[] = [];
+  let previous: InsightToken | undefined;
+  let state: 'idle' | 'name' | 'open' = 'idle';
+  let pending: InsightToken | undefined;
+  for (const token of lexical.tokens) {
+    if (token.kind === 'comment') continue;
+    // The current local analysis recognizes ASCII code tokens only. Never
+    // reinterpret unsupported code units as an independent declaration.
+    if (token.kind !== 'string' && /[^\x20-\x7e]/.test(token.text)) return null;
+    if (stack.length === 0) {
+      if (state === 'name' && token.kind === 'identifier' &&
+          !token.previewTruncated && scarpInsightIdentifier(token.text)) {
+        pending = token;
+        state = 'open';
+      } else if (state === 'open' && pending && token.kind === 'delimiter' && token.text === '(') {
+        symbols.push({ name: pending.text, line: pending.line, startColumn: pending.column,
+          endColumn: pending.column + pending.end - pending.start, openOffset: token.start });
+        if (symbols.length >= MAX_SCARP_OUTLINE_SYMBOLS) return null;
+        state = 'idle';
+        pending = undefined;
       } else {
-        pending = null;
-        expectingName = depth === 0 && name === 'funcra';
+        // A qualified keyword is not a top-level declaration introducer.
+        const qualified = previous?.kind === 'operator' && /[.:>]$/.test(previous.text);
+        state = token.kind === 'identifier' && token.text === 'funcra' && !qualified ? 'name' : 'idle';
+        pending = undefined;
       }
-      continue;
+    } else {
+      state = 'idle';
+      pending = undefined;
     }
-    if (char === '(' && depth === 0 && pending) {
-      symbols.push({ ...pending, openOffset: offset });
-      if (symbols.length >= MAX_SCARP_OUTLINE_SYMBOLS) return null;
+    if (token.kind === 'delimiter') {
+      if (token.text === '(' || token.text === '[' || token.text === '{') {
+        stack.push(token.text === '(' ? ')' : token.text === '[' ? ']' : '}');
+        if (stack.length > MAX_LOCAL_DECLARATION_NESTING) return null;
+      } else if (token.text === ')' || token.text === ']' || token.text === '}') {
+        if (stack.pop() !== token.text) return null;
+      }
     }
-    pending = null;
-    expectingName = false;
-    if (char === '{') depth++;
-    else if (char === '}') {
-      if (depth === 0) return null;
-      depth--;
-    }
-    advance();
+    previous = token;
   }
   return symbols;
 }

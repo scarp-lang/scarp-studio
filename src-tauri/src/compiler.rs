@@ -1348,7 +1348,10 @@ mod tests {
         // Alpha.20 changes the preferred filename, not the native project's
         // scoped argument contract. Exercise the same native command builders
         // and bounded process runner used by Studio for both manifest formats.
-        if expected_version == "0.0.6-alpha.20" {
+        if matches!(
+            expected_version.as_str(),
+            "0.0.6-alpha.20" | "0.0.7-alpha.1" | "0.0.7-alpha.2"
+        ) {
             let workspace = std::env::temp_dir().join(format!(
                 "studio-project-compat-{}-{unique}",
                 std::process::id()

@@ -9,7 +9,7 @@ interface Props {
   documents: readonly StudioDocument[];
   activeId: string | null;
   projectRoots?: readonly { directory: string }[];
-  selectedProjectDirectory?: string;
+  selectedProjectDirectory?: string | null;
   onSelectProject?: (directory: string) => void;
   busy: boolean;
   onOpen: (path: string) => void;
@@ -17,7 +17,7 @@ interface Props {
 
 export function ProjectExplorer({
   files, directories = [], documents, activeId, busy, onOpen,
-  projectRoots = [], selectedProjectDirectory = '', onSelectProject,
+  projectRoots = [], selectedProjectDirectory = null, onSelectProject,
 }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<ExplorerFilter>('all');

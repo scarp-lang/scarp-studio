@@ -86,6 +86,8 @@ jobs:
         run: npm run test:release-candidate
       - name: Frontend production bundle
         run: npm run build
+      - name: Browser Settings interaction smoke
+        run: npm run test:settings-browser
       - name: Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Native Rust compilation
@@ -752,6 +754,16 @@ jobs:
           # leave LASTEXITCODE=1 from that expected negative test; rely on its
           # explicit exceptions instead of treating that exit as runner failure.
           & ./scripts/verify-windows-qa.ps1 -CompilerPath $binaries[0].FullName -ExpectedVersion '0.0.6-alpha.17'
+
+      # Independent qualification of newer published interpreters. The
+      # historical alpha.20 candidate provenance remains unchanged until
+      # a new Studio version and acceptance compiler are explicitly chosen.
+      - name: Verify SHA-pinned Scarp 0.0.7 series CLI and native Studio integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          & ./scripts/verify-scarp-007-windows.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Scarp 0.0.7 compatibility qualification failed" }
 
       - name: Build Windows executable
         run: npm run tauri build -- --no-bundle

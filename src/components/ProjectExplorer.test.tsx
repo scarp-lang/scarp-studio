@@ -43,6 +43,20 @@ describe('manifest-aware Explorer SSR layout and accessibility', () => {
     expect(markup).toContain('aria-label="Select Scarp project basic_tuple"');
   });
 
+  it('offers the root and every sibling when no target is selected', () => {
+    const markup = renderToStaticMarkup(createElement(ProjectExplorer, {
+      files: [tuple, loop],
+      projectRoots: [{ directory: '' }, { directory: 'basic_tuple' }, { directory: 'loops' }],
+      selectedProjectDirectory: null,
+      documents: [], activeId: null, busy: false,
+      onOpen: noop, onSelectProject: noop,
+    }));
+    expect(markup).not.toContain('Project ✓');
+    expect(markup).toContain('aria-label="Select Scarp project Workspace root"');
+    expect(markup).toContain('aria-label="Select Scarp project basic_tuple"');
+    expect(markup).toContain('aria-label="Select Scarp project loops"');
+  });
+
   it('disables project switching during a native operation', () => {
     const markup = renderToStaticMarkup(createElement(ProjectExplorer, {
       files: [loop],

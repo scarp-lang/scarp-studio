@@ -1,0 +1,179 @@
+import {
+  DEFAULT_INTELLISENSE_PREFERENCES, parseIntelliSensePreferences,
+  serializeIntelliSensePreferences, type IntelliSensePreferences,
+} from './intelliSensePreferences';
+
+export const PROFILE_FORMAT = 'scarp-studio.intellisense';
+export const PROFILE_FORMAT_VERSION = 3;
+const V2_KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES).filter(key => key !== 'inlayHintMode' && key !== 'inlayBuiltins');
+const V1_KEYS = V2_KEYS.filter(key => key !== 'matchingMode' && key !== 'conservativeCatalog' && key !== 'builtinSignatureHelp');
+export const MAX_PROFILE_TRANSFER_UNITS = 8192;
+const KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES) as (keyof IntelliSensePreferences)[];
+export type ProfileResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+export function profileError(error: string): { ok: false; error: string } { return { ok: false, error }; }
+export function recordOf(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown> : null;
+}
+export function exactKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(record).length === keys.length && keys.every(key => Object.hasOwn(record, key));
+}
+
+/** Unlike local preference migration, portable imports are strictly complete.
+ * A typo, unknown setting or unsupported value must not silently reset a choice.
+ * The existing canonical parser remains the single source of valid values. */
+export function strictIntelliSensePreferences(value: unknown, version = PROFILE_FORMAT_VERSION): ProfileResult<IntelliSensePreferences> {
+  const record = recordOf(value);
+  const keys = version === 1 ? V1_KEYS : version === 2 ? V2_KEYS : version === PROFILE_FORMAT_VERSION ? KEYS : null;
+  if (!record || !keys || !exactKeys(record, keys)) return profileError('Configuration must contain exactly the supported IntelliSense preferences.');
+  const normalized = parseIntelliSensePreferences(JSON.stringify(record));
+  for (const key of keys as (keyof IntelliSensePreferences)[]) {
+    if (record[key] !== normalized[key]) return profileError('Unsupported preference value: ' + key + '.');
+  }
+  return { ok: true, value: normalized };
+}
+export function exportIntelliSenseProfile(preferences: Readonly<IntelliSensePreferences>): string {
+  return JSON.stringify({
+    format: PROFILE_FORMAT,
+    version: PROFILE_FORMAT_VERSION,
+    preferences: JSON.parse(serializeIntelliSensePreferences(preferences)),
+  }, null, 2);
+}
+/** Reject duplicate properties rather than accepting JSON.parse's last-wins
+ * behavior. Run after JSON.parse validates syntax; bounded nesting also
+ * prevents recursion over hostile but syntactically valid input. */
+export function hasUniqueJsonKeys(raw: string): boolean {
+  let i = 0;
+  const whitespace = () => { while (i < raw.length && /[\t\r\n ]/.test(raw[i])) i++; };
+  function string(): string {
+    const start = i++;
+    while (i < raw.length) {
+      const ch = raw[i++];
+      if (ch === '\\') { i++; continue; }
+      if (ch === '"') return JSON.parse(raw.slice(start, i)) as string;
+    }
+    throw new Error('Invalid string');
+  }
+  function value(depth: number): boolean {
+    if (depth > 8) return false;
+    whitespace();
+    if (raw[i] === '{') {
+      i++;
+      whitespace();
+      const keys = new Set<string>();
+      if (raw[i] === '}') { i++; return true; }
+      while (i < raw.length) {
+        whitespace();
+        if (raw[i] !== '"') return false;
+        const key = string();
+        if (keys.has(key)) return false;
+        keys.add(key);
+        whitespace();
+        if (raw[i++] !== ':' || !value(depth + 1)) return false;
+        whitespace();
+        const delimiter = raw[i++];
+        if (delimiter === '}') return true;
+        if (delimiter !== ',') return false;
+      }
+      return false;
+    }
+    if (raw[i] === '[') {
+      i++;
+      whitespace();
+      if (raw[i] === ']') { i++; return true; }
+      while (i < raw.length) {
+        if (!value(depth + 1)) return false;
+        whitespace();
+        const delimiter = raw[i++];
+        if (delimiter === ']') return true;
+        if (delimiter !== ',') return false;
+      }
+      return false;
+    }
+    if (raw[i] === '"') { string(); return true; }
+    const start = i;
+    while (i < raw.length && !/[\t\r\n ,}\]]/.test(raw[i])) i++;
+    return i > start;
+  }
+  try {
+    if (!value(0)) return false;
+    whitespace();
+    return i === raw.length;
+  } catch { return false; }
+}
+
+export function importIntelliSenseProfile(raw: string): ProfileResult<IntelliSensePreferences> {
+  if (raw.length > MAX_PROFILE_TRANSFER_UNITS) return profileError('Configuration is too large.');
+  if (!raw.trim()) return profileError('Paste an exported IntelliSense configuration first.');
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return profileError('Configuration is not valid JSON.'); }
+  if (!hasUniqueJsonKeys(raw)) return profileError('Configuration has duplicate keys or unsupported nesting.');
+  const record = recordOf(value);
+  if (!record || !exactKeys(record, ['format', 'version', 'preferences']) || record.format !== PROFILE_FORMAT) {
+    return profileError('This is not a supported Scarp Studio IntelliSense configuration.');
+  }
+  if (record.version !== 1 && record.version !== 2 && record.version !== PROFILE_FORMAT_VERSION) return profileError('Unsupported IntelliSense configuration version.');
+  return strictIntelliSensePreferences(record.preferences, record.version);
+}
+
+export interface PreferenceChange {
+  key: keyof IntelliSensePreferences;
+  label: string;
+  before: string;
+  after: string;
+}
+const labels: Record<keyof IntelliSensePreferences, string> = {
+  completionMode: 'Completion mode',
+  matchingMode: 'Completion matching',
+  conservativeCatalog: 'Context-aware catalog suggestions',
+  templates: 'Statement templates',
+  builtins: 'Built-in functions',
+  keywordsAndTypes: 'Keywords and types',
+  localFunctions: 'Local function declarations',
+  documentWords: 'Current document words',
+  preferLocal: 'Prefer local functions',
+  suggestionDelay: 'Automatic delay',
+  suggestionLimit: 'Scarp result limit',
+  hover: 'Hover documentation',
+  localFunctionHover: 'Local function hover',
+  hoverDelay: 'Hover delay',
+  signatureHelp: 'Function parameter hints',
+  builtinSignatureHelp: 'Built-in parameter hints',
+  inlayHintMode: 'Inline parameter labels',
+  inlayBuiltins: 'Inline built-in labels',
+  goToDefinition: 'Go to Definition',
+  documentSymbols: 'Monaco document symbols',
+  localAnalysisKiB: 'Local analysis budget',
+  acceptOnEnter: 'Accept using Enter',
+  tabCompletion: 'Tab completion',
+};
+function display(key: keyof IntelliSensePreferences, value: IntelliSensePreferences[typeof key]): string {
+  if (typeof value === 'boolean') return value ? 'On' : 'Off';
+  if (key === 'suggestionDelay' || key === 'hoverDelay') return value + ' ms';
+  if (key === 'localAnalysisKiB') return value + ' Ki UTF-16 units';
+  return value === 'onlySnippets' ? 'Only snippets' : String(value);
+}
+export function diffIntelliSensePreferences(before: Readonly<IntelliSensePreferences>,
+  after: Readonly<IntelliSensePreferences>, includeUnchanged = false): PreferenceChange[] {
+  return KEYS.filter(key => includeUnchanged || before[key] !== after[key]).map(key => ({
+    key, label: labels[key], before: display(key, before[key]), after: display(key, after[key]),
+  }));
+}
+export interface ProfileReview {
+  readonly baseline: string;
+  readonly target: Readonly<IntelliSensePreferences>;
+  readonly changes: readonly PreferenceChange[];
+}
+export function reviewIntelliSenseProfile(current: Readonly<IntelliSensePreferences>,
+  target: Readonly<IntelliSensePreferences>): ProfileReview {
+  const canonical = parseIntelliSensePreferences(serializeIntelliSensePreferences(target));
+  return Object.freeze({
+    baseline: serializeIntelliSensePreferences(current),
+    target: Object.freeze(canonical),
+    changes: Object.freeze(diffIntelliSensePreferences(current, canonical).map(change => Object.freeze(change))),
+  });
+}
+export function isCurrentProfileReview(review: ProfileReview, current: Readonly<IntelliSensePreferences>): boolean {
+  return review.baseline === serializeIntelliSensePreferences(current);
+}

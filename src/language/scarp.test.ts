@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { registerScarpLanguage } from './scarp';
 import { MAX_ASSIST_SCAN_UNITS } from './assist';
+import { DEFAULT_INTELLISENSE_PREFERENCES, type IntelliSensePreferences } from '../model/intelliSensePreferences';
 
 type TokenRule = [RegExp, unknown];
 type TokenProvider = {
@@ -26,6 +27,7 @@ function captureProvider(): TokenProvider {
       registerDocumentSymbolProvider: vi.fn(),
       registerDefinitionProvider: vi.fn(),
       registerSignatureHelpProvider: vi.fn(),
+      registerInlayHintsProvider: vi.fn(),
       CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
     },
   };
@@ -203,6 +205,7 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
         registerDocumentSymbolProvider: vi.fn(),
       registerDefinitionProvider: vi.fn(),
       registerSignatureHelpProvider: vi.fn(),
+      registerInlayHintsProvider: vi.fn(),
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
       },
     };
@@ -219,6 +222,7 @@ describe('Scarp editor assistance registration', () => {
     const provideSymbols = vi.fn();
     const provideDefinition = vi.fn();
     const provideSignature = vi.fn();
+    const provideInlays = vi.fn();
     const mockMonaco = {
       Range: class {
         constructor(public startLineNumber: number, public startColumn: number,
@@ -234,13 +238,16 @@ describe('Scarp editor assistance registration', () => {
         registerDocumentSymbolProvider: provideSymbols,
         registerDefinitionProvider: provideDefinition,
         registerSignatureHelpProvider: provideSignature,
+        registerInlayHintsProvider: provideInlays,
+        InlayHintKind: { Parameter: 2 },
         CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
         SymbolKind: { Function: 11, Enum: 9, Struct: 22 },
       },
     };
-    registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0]);
-    for (const spy of [provideCompletion, provideHover, provideSymbols, provideDefinition, provideSignature]) {
+    let settings: IntelliSensePreferences = { ...DEFAULT_INTELLISENSE_PREFERENCES };
+    registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0], () => settings);
+    for (const spy of [provideCompletion, provideHover, provideSymbols, provideDefinition, provideSignature, provideInlays]) {
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][0]).toBe('scarp');
     }
@@ -306,10 +313,19 @@ describe('Scarp editor assistance registration', () => {
       }).suggestions.find((item) => item.label === 'funcra');
       expect(suggestion?.range).toMatchObject({ startColumn: 1, endColumn: 4 });
     }
+    const existingCall = {
+      ...model, getLineContent: () => 'print(42);',
+      getWordUntilPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+      getWordAtPosition: () => ({ word: 'print', startColumn: 1, endColumn: 6 }),
+    };
+    const existingCallSuggestion = handler.provideCompletionItems(existingCall, { lineNumber: 1, column: 4 }).suggestions.find(item => item.label === 'print');
+    expect(existingCallSuggestion).toMatchObject({ insertText: 'print', range: { startColumn: 1, endColumn: 6 } });
+    expect(existingCallSuggestion).not.toHaveProperty('insertTextRules');
     const localSource = 'funcra add(a: integer) -> integer {}\nadd(1);';
     const localModel = {
       getValueLength: () => localSource.length, getValue: () => localSource,
       getLineContent: () => 'add(1);',
+      getOffsetAt: (p: { column: number }) => localSource.lastIndexOf('add') + p.column - 1,
       getWordUntilPosition: () => ({ word: 'ad', startColumn: 1, endColumn: 3 }),
       getWordAtPosition: () => ({ word: 'add', startColumn: 1, endColumn: 4 }),
     };
@@ -319,6 +335,33 @@ describe('Scarp editor assistance registration', () => {
       range: { startColumn: 1, endColumn: 4 },
     });
     expect(localResult[0]).not.toHaveProperty('insertTextRules');
+    for (const [context, expected] of [
+      ['return\n', true], ['// math.\n', true], ['math.\n', false],
+      ['Choice::\n// note\n', false], ['funcra\n', false],
+    ] as const) {
+      const multi = 'funcra add(a: integer) -> integer {}\n' + context + 'add(1);';
+      const candidate = {
+        ...localModel, getValue: () => multi, getValueLength: () => multi.length,
+        getOffsetAt: (p: { column: number }) => multi.lastIndexOf('add') + p.column - 1,
+      };
+      const result = handler.provideCompletionItems(candidate,
+        { lineNumber: multi.split('\n').length, column: 3 }).suggestions;
+      expect(result.some(item => item.label === 'add'), context).toBe(expected);
+    }
+    const qualifiedLines = ['module. // qualifier', '// continuation', 'pri'];
+    const qualifiedModel = {
+      ...model, getLineContent: (n: number) => qualifiedLines[n - 1],
+      getLineMaxColumn: (n: number) => qualifiedLines[n - 1].length + 1,
+      getWordUntilPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+      getWordAtPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+    };
+    expect(handler.provideCompletionItems(qualifiedModel, { lineNumber: 3, column: 4 }).suggestions).toEqual([]);
+    const oversizedCompletion = {
+      ...localModel, getValueLength: () => 1024 * 1024,
+      getValue: () => { throw new Error('large buffer must not be copied'); },
+    };
+    expect(handler.provideCompletionItems(oversizedCompletion,
+      { lineNumber: 2, column: 3 }).suggestions.some(item => item.label === 'add')).toBe(false);
     const definitions = provideDefinition.mock.calls[0][1] as {
       provideDefinition: (model: unknown, position: unknown, token: unknown) => unknown;
     };
@@ -327,6 +370,7 @@ describe('Scarp editor assistance registration', () => {
     const definitionModel = {
       uri, getValue: () => source, getValueLength: () => source.length,
       getLineContent: () => 'print(add(1));', getLineMaxColumn: () => 15,
+      getOffsetAt: () => source.lastIndexOf('add'),
     };
     expect(definitions.provideDefinition(definitionModel,
       { lineNumber: 2, column: 7 }, { isCancellationRequested: false })).toEqual({
@@ -338,6 +382,23 @@ describe('Scarp editor assistance registration', () => {
       getValue: () => { throw new Error('large buffer must not be copied'); } };
     expect(definitions.provideDefinition(oversized,
       { lineNumber: 2, column: 7 }, { isCancellationRequested: false })).toBeNull();
+    for (const [call, expected] of [
+      ['add\n// args\n(1)', true],
+      ['math.\nadd(1)', false],
+      ['funcra\nadd(1)', false],
+    ] as const) {
+      const multi = 'funcra add(a: integer) -> integer {}\n' + call;
+      const multilineModel = {
+        ...definitionModel, getValue: () => multi, getValueLength: () => multi.length,
+        getOffsetAt: () => multi.lastIndexOf('add'),
+      };
+      const result = definitions.provideDefinition(multilineModel,
+        { lineNumber: 2, column: 1 }, { isCancellationRequested: false });
+      if (expected) expect(result).toEqual({
+        uri, range: { startLineNumber: 1, startColumn: 8, endLineNumber: 1, endColumn: 11 },
+      });
+      else expect(result).toBeNull();
+    }
     const signatures = provideSignature.mock.calls[0][1] as {
       provideSignatureHelp: (model: unknown, position: unknown, token: unknown) => unknown;
     };
@@ -354,19 +415,65 @@ describe('Scarp editor assistance registration', () => {
     });
     expect(signatures.provideSignatureHelp(signatureModel, { lineNumber: 2, column: 8 },
       { isCancellationRequested: true })).toBeNull();
+    for (const context of ['math.\nadd(', 'record\nadd(', 'éadd(', 'add(factory()(']) {
+      const text = 'funcra add(a: integer, b: integer) -> integer {}\n' + context;
+      const candidate = {
+        getValueLength: () => text.length, getValue: () => text,
+        getOffsetAt: () => text.length,
+      };
+      expect(signatures.provideSignatureHelp(candidate,
+        { lineNumber: text.split('\n').length, column: context.split('\n').at(-1)!.length + 1 },
+        { isCancellationRequested: false }), context).toBeNull();
+    }
+    expect(signatures.provideSignatureHelp({
+      getValueLength: () => 1024 * 1024,
+      getValue: () => { throw new Error('large buffer must not be copied'); },
+    }, { lineNumber: 2, column: 8 }, { isCancellationRequested: false })).toBeNull();
+    const builtinSource = 'bigint_pow(value, 2);';
+    const builtinModel = {
+      getValueLength: () => builtinSource.length, getValue: () => builtinSource,
+      getOffsetAt: () => builtinSource.indexOf('2'),
+    };
+    expect(signatures.provideSignatureHelp(builtinModel, { lineNumber: 1, column: 19 }, { isCancellationRequested: false })).toMatchObject({
+      value: { activeParameter: 1, signatures: [{ label: 'bigint_pow(value: bigint, exponent: integer)' }] },
+    });
+    settings = { ...settings, builtinSignatureHelp: false };
+    expect(signatures.provideSignatureHelp(builtinModel, { lineNumber: 1, column: 19 }, { isCancellationRequested: false })).toBeNull();
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES };
+    const inlays = provideInlays.mock.calls[0][1] as {
+      provideInlayHints: (model: unknown, range: unknown, token: unknown) => unknown;
+    };
+    const inlayRange = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 21 };
+    expect(inlays.provideInlayHints(forbiddenInlayModel(), inlayRange, { isCancellationRequested: false })).toBeNull();
+    function forbiddenInlayModel() { return { getValueLength: () => { throw Error('disabled inlay accessed model'); } }; }
+    settings = { ...settings, inlayHintMode: 'literals' };
+    const inlaySource = 'bigint_pow(value, 2);';
+    const inlayModel = {
+      getValueLength: () => inlaySource.length, getValue: () => inlaySource,
+      getOffsetAt: (p: { column: number }) => p.column - 1,
+      getPositionAt: (offset: number) => ({ lineNumber: 1, column: offset + 1 }),
+    };
+    expect(inlays.provideInlayHints(inlayModel, inlayRange, { isCancellationRequested: false })).toMatchObject({
+      hints: [{ label: 'exponent:', position: { lineNumber: 1, column: 19 }, kind: 2 }],
+    });
+    expect(inlays.provideInlayHints(inlayModel, { ...inlayRange, endColumn: 10 }, { isCancellationRequested: false })).toMatchObject({ hints: [] });
+    expect(inlays.provideInlayHints(forbiddenInlayModel(), inlayRange, { isCancellationRequested: true })).toBeNull();
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES };
     const outline = provideSymbols.mock.calls[0][1] as {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
     };
     expect(outline.provideDocumentSymbols({
+      getValueLength: () => 'funcra add(a: integer) -> integer { return a; }'.length,
       getValue: () => 'funcra add(a: integer) -> integer { return a; }',
       getLineMaxColumn: () => 44,
     }).map((item) => item.name)).toEqual(['add']);
-    const nominal = outline.provideDocumentSymbols({
-      getValue: () => [
+    const nominalSource = [
         'pub record Task { title: string }',
         'pub variant State { Ready }',
         'pure funcra check() -> boolean { return true; }',
-      ].join('\n'),
+      ].join('\n');
+    const nominal = outline.provideDocumentSymbols({
+      getValueLength: () => nominalSource.length, getValue: () => nominalSource,
       getLineMaxColumn: () => 48,
     }) as Array<{ name: string; detail: string; kind: number;
       selectionRange: { startLineNumber: number; startColumn: number } }>;
@@ -377,5 +484,54 @@ describe('Scarp editor assistance registration', () => {
     ]);
     expect(nominal[0].selectionRange.startLineNumber).toBe(1);
     expect(nominal[1].selectionRange.startColumn).toBe(13);
+    const localHoverSource = 'funcra add(a: integer) -> integer {}\nadd(1);';
+    const localHoverModel = {
+      getLineContent: () => 'add(1);',
+      getWordAtPosition: () => ({ word: 'add', startColumn: 1, endColumn: 4 }),
+      getValueLength: () => localHoverSource.length, getValue: () => localHoverSource,
+      getOffsetAt: () => localHoverSource.lastIndexOf('add') + 1,
+      getVersionId: () => 1,
+    };
+    expect(hoverHandler.provideHover(localHoverModel, { lineNumber: 2, column: 2 })).toMatchObject({
+      contents: [{ value: '\x60add(a: integer)\x60', isTrusted: false, supportHtml: false },
+        { value: expect.stringContaining('line 1') }],
+    });
+    settings = { ...settings, localFunctionHover: false };
+    expect(hoverHandler.provideHover({
+      ...localHoverModel, getValueLength: () => { throw new Error('disabled local hover read size'); },
+    }, { lineNumber: 2, column: 2 })).toBeNull();
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES };
+    // Live Settings changes must gate providers before any model access.
+    const forbidden = new Proxy({}, { get() { throw new Error('disabled provider read model'); } });
+    settings = { ...settings, completionMode: 'off', hover: false,
+      signatureHelp: false, goToDefinition: false, documentSymbols: false };
+    expect(handler.provideCompletionItems(forbidden, position).suggestions).toEqual([]);
+    expect(hoverHandler.provideHover(forbidden, position)).toBeNull();
+    expect(signatures.provideSignatureHelp(forbidden, position, { isCancellationRequested: false })).toBeNull();
+    expect(definitions.provideDefinition(forbidden, position, { isCancellationRequested: false })).toBeNull();
+    expect(outline.provideDocumentSymbols(forbidden)).toEqual([]);
+    // Manual mode leaves explicit suggestions available; categories are independent.
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES, completionMode: 'manual', templates: false };
+    expect(handler.provideCompletionItems(model, position).suggestions.some(s => s.label === 'funcra')).toBe(false);
+    settings = { ...settings, templates: true };
+    expect(handler.provideCompletionItems(model, position).suggestions.some(s => s.label === 'funcra')).toBe(true);
+    settings = { ...settings, localFunctions: false };
+    expect(handler.provideCompletionItems({
+      ...localModel, getValueLength: () => { throw new Error('disabled local scan read size'); },
+      getValue: () => { throw new Error('disabled local scan copied source'); },
+    }, { lineNumber: 2, column: 3 }).suggestions.some(s => s.label === 'add')).toBe(false);
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES, localAnalysisKiB: 64 };
+    const tooLarge = { ...localModel, getValueLength: () => 65537,
+      getValue: () => { throw new Error('local analysis budget exceeded'); } };
+    expect(handler.provideCompletionItems(tooLarge, { lineNumber: 2, column: 3 }).suggestions.some(s => s.label === 'add')).toBe(false);
+    expect(signatures.provideSignatureHelp(tooLarge, position, { isCancellationRequested: false })).toBeNull();
+    expect(outline.provideDocumentSymbols(tooLarge)).toEqual([]);
+    expect(definitions.provideDefinition({ ...definitionModel, ...tooLarge },
+      position, { isCancellationRequested: false })).toBeNull();
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES, suggestionLimit: 10 };
+    const empty = { ...model, getLineContent: () => '', getWordUntilPosition: () => ({ word: '', startColumn: 1, endColumn: 1 }), getWordAtPosition: () => null };
+    expect(handler.provideCompletionItems(empty, { lineNumber: 1, column: 1 }).suggestions).toHaveLength(10);
+    settings = { ...settings, templates: false, builtins: false, keywordsAndTypes: false, localFunctions: false };
+    expect(handler.provideCompletionItems(forbidden, position).suggestions).toEqual([]);
   });
 });

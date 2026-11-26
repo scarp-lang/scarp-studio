@@ -1,12 +1,12 @@
 # Next Scarp Studio pre-release — verification plan
 
-**Target:** `v0.0.2-alpha.1` (experimental Windows x64, source in draft).  
-**Already published:** `v0.0.1-alpha.2` (editor-only).  
-**Release status:** NOT APPROVED / NOT PUBLISHED. Source version strings and successful CI artifacts are not releases.
+**Published baseline:** `v0.0.2-alpha.1` (2026-11-24).  
+**November 26 trial source:** still uses `0.0.2-alpha.1`; do not publish it under that existing tag.  
+**Next version:** not selected or authorized. Successful CI artifacts are trial builds, not a new release.
 
 ## 1. Review the candidate stack
 
-The integrated Windows IDE began in [PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), extended through release hardening #64, Scarp alpha.17 support #74/#75, compiler discovery #76, guarded Auto Save #77, unique tab identities #78, Replace All review #79, Downloads-priority scan #80 and Settings reset #81. The complete reviewed source is now grouped in a **single [draft PR #82 targeting protected main](https://github.com/scarp-lang/scarp-studio/pull/82)**. **Use the exact PR #82 head and its own successful Windows Actions run for testing and any eventual approved merge.** The older nested drafts remain historical code review surfaces; do not merge overlapping chains independently or use an ancestor build to claim acceptance of this complete candidate.
+The integrated Windows IDE began in [PR #55](https://github.com/scarp-lang/scarp-studio/pull/55), extended through release hardening #64, Scarp alpha.17 support #74/#75, compiler discovery #76, guarded Auto Save #77, unique tab identities #78, Replace All review #79, Downloads-priority scan #80 and Settings reset #81. PR #82 was merged on November 24. The November 26 integration extends it with PR #90 and #94–106. **Use the exact latest integration head and its own successful Windows Actions run for testing and any eventual approved merge.** The older nested drafts remain historical code review surfaces; do not merge overlapping chains independently or use an ancestor build to claim acceptance of this complete candidate.
 
 Do not create a release tag until the owner has explicitly reviewed and authorized both the source merge and the separate release publication. The old `publish-editor-alpha2.yml` workflow is restricted to `0.0.1-alpha.2` and **must not** be reused for `0.0.2-alpha.1`.
 
@@ -114,3 +114,7 @@ Until then, share only GitHub Actions development artifacts as **unsigned test c
 ## Current UI trial milestone (historical build)
 
 The 24 November 2026 exact-head run [45330257671](https://github.com/scarp-lang/scarp-studio/actions/runs/45330257671) for `cc8e931a5a6c866f02347a168103a677bda3843b` passed all 42 steps. It contains the grouped toolbar, accessible palette and output layout, but not later welcome/readiness changes. Use the latest exact-head successful run for final manual acceptance; this historical milestone is not publication approval.
+
+## November 26 qualification follow-up
+
+Keep the alpha.20 historical candidate checks intact and independently qualify Scarp 0.0.7-alpha.1 and alpha.2 against the same checked-in interpreter QA, project and native service tests. Before a new Studio release, select a fresh tag/version, update all six source version fields and candidate descriptor, and bind manual acceptance to the exact new build. Do not overwrite the November 24 release assets with these trials.

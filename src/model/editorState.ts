@@ -1,7 +1,12 @@
 import {
-  createUntitled, isDirty, markSaved, openedDocument, updateContent,
+  createUntitled, isDirty, isScarpPath, sameFilePath, markSaved, openedDocument, updateContent,
   type StudioDocument,
 } from './documents';
+import { canBulkClose, MAX_MANAGED_TABS } from './openEditorManagement';
+import { validateRecoveryDrafts, type RecoveryDraft } from './draftRecovery';
+import { MAX_WORKSPACE_SESSION_TABS, MAX_WORKSPACE_RESTORE_BYTES, validWorkspaceRoot } from './workspaceSessions';
+import { assertScarpSourceText } from './sourceLimits';
+import { utf8ByteLength } from './utf8Text';
 
 export interface EditorState {
   documents: StudioDocument[];
@@ -35,13 +40,16 @@ export function canApplyReplacementSnapshots(
 
 export type EditorAction =
   | { type: 'new' }
+  | { type: 'restore-drafts'; drafts: readonly RecoveryDraft[] }
+  | { type: 'restore-workspace-tabs'; files: readonly { path: string; content: string }[]; activePath: string | null }
   | { type: 'open'; path: string; content: string }
   | { type: 'edit'; id: string; content: string }
   | { type: 'saved'; id: string; path: string; savedContent: string }
   | { type: 'reload'; id: string; snapshot: StudioDocument; content: string }
   | { type: 'replace-open-files'; changes: readonly BufferReplacement[]; allSnapshots: readonly StudioDocument[] }
   | { type: 'activate'; id: string }
-  | { type: 'close'; id: string; snapshot: StudioDocument };
+  | { type: 'close'; id: string; snapshot: StudioDocument }
+  | { type: 'close-clean-tabs'; snapshots: readonly StudioDocument[] };
 
 export const initialEditorState: EditorState = {
   documents: [createUntitled(1)],
@@ -60,7 +68,8 @@ export function isUnchangedSnapshot(
     current.name === snapshot.name &&
     current.content === snapshot.content &&
     current.savedContent === snapshot.savedContent &&
-    current.revision === snapshot.revision;
+    current.revision === snapshot.revision &&
+    current.recoveredDraft === snapshot.recoveredDraft;
 }
 
 /** Validate *every* open buffer, not just those with search hits.
@@ -118,6 +127,58 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
         nextUntitled: state.nextUntitled + 1,
       };
     }
+    case 'restore-drafts': {
+      const validated = validateRecoveryDrafts(action.drafts);
+      if (!validated.ok) return state;
+      const restored: StudioDocument[] = validated.value.map((draft, index) => {
+        const sequence = state.nextUntitled + index;
+        return {
+          id: 'untitled-' + sequence,
+          name: 'Recovered-' + sequence + '-' + draft.name,
+          path: null,
+          content: draft.content,
+          savedContent: '',
+          recoveredDraft: draft.name,
+          revision: state.sessionRevision + 1,
+        };
+      });
+      return {
+        ...state,
+        documents: [...state.documents, ...restored],
+        activeId: restored[0].id,
+        nextUntitled: state.nextUntitled + restored.length,
+      };
+    }
+    case 'restore-workspace-tabs': {
+      if (action.files.length > MAX_WORKSPACE_SESSION_TABS) return state;
+      const paths: string[] = [];
+      let bytes = 0;
+      for (const file of action.files) {
+        if (!validWorkspaceRoot(file.path) || !isScarpPath(file.path) ||
+            paths.some(path => sameFilePath(path, file.path))) return state;
+        paths.push(file.path);
+        try {
+          assertScarpSourceText(file.content);
+        } catch {
+          return state;
+        }
+        bytes += utf8ByteLength(file.content);
+        if (bytes > MAX_WORKSPACE_RESTORE_BYTES) return state;
+      }
+      let documents = state.documents;
+      let firstNew: string | null = null;
+      for (const file of action.files) {
+        const opened = openedDocument(documents, file.path, file.content, state.sessionRevision + 1);
+        if (opened.documents !== documents && firstNew === null) firstNew = opened.id;
+        documents = opened.documents;
+      }
+      const rememberedActive = action.activePath === null ? null :
+        documents.find(doc => doc.path !== null && sameFilePath(doc.path, action.activePath!))?.id;
+      if (action.activePath !== null && !rememberedActive) return state;
+      const activeId = rememberedActive ?? state.activeId ?? firstNew;
+      if (documents === state.documents && activeId === state.activeId) return state;
+      return { ...state, documents, activeId };
+    }
     case 'open': {
       const opened = openedDocument(
         state.documents, action.path, action.content, state.sessionRevision + 1,
@@ -168,6 +229,30 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
       if (state.activeId === action.id ||
           !state.documents.some((document) => document.id === action.id)) return state;
       return { ...state, activeId: action.id };
+    case 'close-clean-tabs': {
+      // A bulk action is deliberately not a discard path. Validate every
+      // exact snapshot before removing even one tab, including the case
+      // where an editor was saved, edited and reverted, or reopened.
+      if (!action.snapshots.length || action.snapshots.length > MAX_MANAGED_TABS) return state;
+      const ids = new Set<string>();
+      for (const snapshot of action.snapshots) {
+        if (ids.has(snapshot.id) || !canBulkClose(snapshot)) return state;
+        ids.add(snapshot.id);
+        const current = state.documents.find(document => document.id === snapshot.id);
+        if (!current || !canBulkClose(current) ||
+            !isUnchangedSnapshot(current, snapshot)) return state;
+      }
+      const remaining = state.documents.filter(document => !ids.has(document.id));
+      let activeId = state.activeId;
+      if (activeId !== null && ids.has(activeId)) {
+        const originalIndex = state.documents.findIndex(document => document.id === activeId);
+        // Choose the next surviving tab in original order, or the closest
+        // predecessor, without changing focus if the active tab survives.
+        activeId = state.documents.slice(originalIndex + 1).find(document => !ids.has(document.id))?.id ??
+          state.documents.slice(0, originalIndex).reverse().find(document => !ids.has(document.id))?.id ?? null;
+      }
+      return { ...state, documents: remaining, activeId };
+    }
     case 'close': {
       const current = state.documents.find((document) => document.id === action.id);
       if (!current || !isUnchangedSnapshot(current, action.snapshot)) return state;

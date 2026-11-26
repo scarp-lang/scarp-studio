@@ -1,0 +1,142 @@
+import assert from 'node:assert/strict';
+
+/** Exercises real controls in the isolated browser used by settings-browser-smoke.
+ * The preceding scenarios leave a blank untitled buffer and known preferences.
+ * No native filesystem or compiler operation is invoked.
+ */
+export async function advancedSettingsSmoke({ evaluate, wait, visible, click, button, change, category, stored, step, cdp }) {
+  const disabledButton = (scope, label) => wait((scope, label) =>
+    [...document.querySelectorAll(scope + ' button')].some(node =>
+      node.textContent.trim() === label && node.disabled && !node.closest('[hidden]')),
+  'disabled ' + label, scope, label);
+  const textValue = selector => evaluate(s => document.querySelector(s).value, selector);
+  let shortcutBackup;
+  let snippetBackup;
+  const snippetBody = 'bind {{1:name}} = 42;\nprint({{1}});{{0}}';
+
+  await step('shortcut backup rejects changes to fixed commands', async () => {
+    await category('Keyboard shortcuts');
+    await button('Manage shortcut backup');
+    await button('Export shortcuts');
+    shortcutBackup = JSON.parse(await textValue('#studio-shortcut-export'));
+    assert.equal(shortcutBackup.format, 'scarp-studio.shortcuts');
+    assert.equal(shortcutBackup.bindings.new, 'Ctrl+Alt+Shift+K');
+    const bad = structuredClone(shortcutBackup);
+    bad.bindings.settings = null;
+    await change('#studio-shortcut-import', JSON.stringify(bad));
+    await button('Review shortcut import');
+    await visible('.shortcut-transfer-panel [role="alert"]');
+    assert.equal(await evaluate(() => !!document.querySelector('[aria-label="Confirm shortcut transfer"]')), false);
+    await stored('studio.shortcuts.v1', ['bindings', 'new'], 'Ctrl+Alt+Shift+K');
+  });
+
+  await step('shortcut backup applies reviewed changes and restores previous bindings', async () => {
+    const incoming = structuredClone(shortcutBackup);
+    incoming.bindings.save = 'Ctrl+Alt+Shift+Y';
+    incoming.bindings.open = null;
+    await change('#studio-shortcut-import', JSON.stringify(incoming));
+    await button('Review shortcut import');
+    await visible('[aria-label="Confirm shortcut transfer"]');
+    await button('Confirm shortcut import');
+    await stored('studio.shortcuts.v1', ['bindings', 'save'], 'Ctrl+Alt+Shift+Y');
+    await stored('studio.shortcuts.v1', ['bindings', 'open'], null);
+    await button('Review undo shortcut import');
+    await button('Confirm shortcut undo');
+    await stored('studio.shortcuts.v1', ['bindings', 'save'], shortcutBackup.bindings.save);
+    await stored('studio.shortcuts.v1', ['bindings', 'open'], shortcutBackup.bindings.open);
+    await stored('studio.shortcuts.v1', ['bindings', 'new'], 'Ctrl+Alt+Shift+K');
+  });
+
+  await step('snippet editor validates reserved prefixes and previews numbered placeholders', async () => {
+    await category('IntelliSense and language assistance');
+    await button('Manage snippet library');
+    await change('#user-snippet-prefix', 'print');
+    await change('#user-snippet-name', 'Browser helper');
+    await change('#user-snippet-description', 'Disposable smoke fixture');
+    await change('#user-snippet-body', snippetBody);
+    await disabledButton('.user-snippet-panel', 'Review save snippet');
+    await change('#user-snippet-prefix', 'browser_helper');
+    await wait(() => document.querySelector('.snippet-preview pre')?.textContent === 'bind name = 42;\nprint(name);',
+      'expanded snippet preview');
+    await button('Review save snippet');
+    await visible('[aria-label="Confirm snippet library changes"]');
+    await button('Confirm snippet action');
+    await stored('studio.userSnippets.v1', ['snippets', '0', 'prefix'], 'browser_helper');
+    await button('Export snippet library');
+    snippetBackup = JSON.parse(await textValue('#user-snippet-export'));
+    assert.equal(snippetBackup.snippets.length, 1);
+    assert.equal(snippetBackup.snippets[0].body, snippetBody);
+  });
+
+  await step('snippet import preserves existing text when prefixes conflict', async () => {
+    const incoming = structuredClone(snippetBackup);
+    incoming.snippets[0].body = 'print(999);';
+    incoming.snippets.push({
+      prefix: 'browser_other',
+      name: 'Other browser helper',
+      description: 'Second disposable fixture',
+      body: 'print(123);',
+      enabled: true,
+    });
+    await button('Import snippets');
+    await change('#user-snippet-import', JSON.stringify(incoming));
+    await button('Review snippet import');
+    await wait(() => document.querySelector('[aria-label="Confirm snippet library changes"]')?.textContent.includes('1 additions · 1 conflicts'),
+      'snippet merge conflict review');
+    await button('Confirm snippet action');
+    await stored('studio.userSnippets.v1', ['snippets', '0', 'body'], snippetBody);
+    await stored('studio.userSnippets.v1', ['snippets', '1', 'prefix'], 'browser_other');
+    await button('Edit browser_other');
+    await click('.snippet-editor input[type="checkbox"]');
+    await button('Review save snippet');
+    await button('Confirm snippet action');
+    await stored('studio.userSnippets.v1', ['snippets', '1', 'enabled'], false);
+  });
+
+  await step('selective preference audit reset preserves unselected settings', async () => {
+    await category('Studio preference transfer');
+    await button('Inspect portable preferences');
+    await change('#preference-audit-search', 'line height');
+    await click('input[aria-label="Reset Line height"]');
+    await button('Review selected preference reset');
+    await visible('[aria-label="Confirm selected preference reset"]');
+    await button('Confirm selected reset');
+    await category('Code editor');
+    if (!await evaluate(() => !document.querySelector('#editor-experience-content').hidden)) {
+      await button('Configure advanced editor experience');
+    }
+    await wait(() => document.querySelector('#editor-experience-lineHeight')?.value === '0',
+      'line height restored');
+    await category('Appearance');
+    assert.equal(await textValue('#studio-theme'), 'light');
+    assert.equal(await textValue('#studio-contrast'), 'high');
+    await category('Files and Auto Save');
+    assert.equal(await evaluate(() => document.querySelector('#studio-auto-save').checked), false);
+    await category('Studio preference transfer');
+    await button('Show copyable preference report');
+    const report = await textValue('#preference-audit-report');
+    assert.match(report, /Scope: allowlisted portable preferences only/);
+    assert.doesNotMatch(report, /browser_helper|Disposable smoke fixture|print\(name\)/);
+  });
+
+  await step('explicit snippet insertion edits the active buffer and can be undone', async () => {
+    await click('.settings-toggle');
+    await visible('.monaco-editor .view-lines');
+    await click('button[title="Commands (Ctrl+Shift+P)"]');
+    await change('input[aria-label="Search editor commands"]', 'browser_helper');
+    await wait(() => document.querySelector('#studio-navigation-option-0 .nav-result-name')?.textContent ===
+      'Insert user snippet: Browser helper', 'snippet command result');
+    await click('#studio-navigation-option-0');
+    await wait(() => document.querySelector('.status-notice')?.textContent.includes('Inserted user snippet defaults: browser_helper'),
+      'snippet inserted status');
+    const editorText = () => evaluate(() => document.querySelector('.monaco-editor .view-lines')?.textContent.replace(/\u00a0/g, ' '));
+    await wait(() => document.querySelector('.monaco-editor .view-lines')?.textContent.replace(/\u00a0/g, ' ').includes('bind name = 42;'),
+      'expanded text in editor');
+    assert.match(await editorText(), /print\(name\);/);
+    const event = { key: 'z', code: 'KeyZ', modifiers: 2, windowsVirtualKeyCode: 90, nativeVirtualKeyCode: 90 };
+    await cdp.send('Input.dispatchKeyEvent', { ...event, type: 'keyDown' });
+    await cdp.send('Input.dispatchKeyEvent', { ...event, type: 'keyUp' });
+    await wait(() => !document.querySelector('.monaco-editor .view-lines')?.textContent.includes('bind'),
+      'editor undo');
+  });
+}

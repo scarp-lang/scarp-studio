@@ -29,7 +29,7 @@ export function detectScarp(): Promise<string[]> {
   return invoke<string[]>('scarp_detect');
 }
 
-/** Open the official compiler release download on explicit user action. */
+/** Open the platform-specific compiler download destination on explicit user action. */
 export function openCompilerDownloads(): Promise<void> {
   return invoke<void>('scarp_download_page');
 }

@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Exercise checked-in Scarp Studio Windows manual-QA source fixtures with an
-  independently trusted official Scarp alpha.17, alpha.18, alpha.19 or alpha.20 compiler.
+  independently trusted official Scarp alpha.17, alpha.18, alpha.19, alpha.20, or 0.0.7-alpha.1/alpha.2 compiler.
 .DESCRIPTION
   Source-only and non-interactive. The test of input_boolean uses a supplied
   local stdin fixture and never reads personal data or launches Studio.
@@ -13,7 +13,7 @@ param(
   [Parameter(Mandatory = $true)]
   [ValidateNotNullOrEmpty()]
   [string]$CompilerPath,
-  [ValidateSet('0.0.6-alpha.17', '0.0.6-alpha.18', '0.0.6-alpha.19', '0.0.6-alpha.20')]
+  [ValidateSet('0.0.6-alpha.17', '0.0.6-alpha.18', '0.0.6-alpha.19', '0.0.6-alpha.20', '0.0.7-alpha.1', '0.0.7-alpha.2')]
   [string]$ExpectedVersion = '0.0.6-alpha.20'
 )
 
@@ -73,7 +73,7 @@ foreach ($fixture in @(
   }
 }
 
-if ($ExpectedVersion -in @('0.0.6-alpha.18', '0.0.6-alpha.19', '0.0.6-alpha.20')) {
+if ($ExpectedVersion -in @('0.0.6-alpha.18', '0.0.6-alpha.19', '0.0.6-alpha.20', '0.0.7-alpha.1', '0.0.7-alpha.2')) {
   $source = 'qa/windows/05-array-update.srp'
   if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing QA fixture: $source" }
   [void](Assert-ScarpCommand -Name "Verify $source" -Arguments @(
@@ -87,8 +87,8 @@ if ($ExpectedVersion -in @('0.0.6-alpha.18', '0.0.6-alpha.19', '0.0.6-alpha.20')
   }
 }
 
-# New syntax is tested only by the exact official version that published it.
-if ($ExpectedVersion -eq '0.0.6-alpha.20') {
+# Exercise alpha.20 syntax on the exact introducing version and newer pinned versions.
+if ($ExpectedVersion -in @('0.0.6-alpha.20', '0.0.7-alpha.1', '0.0.7-alpha.2')) {
   foreach ($fixture in @(
     @{ Path = 'qa/windows/09-decimal-literals.srp'; Marker = 'SCARP_STUDIO_GUI_DECIMAL_LITERAL_OK' },
     @{ Path = 'qa/windows/10-tuple-updates.srp'; Marker = 'SCARP_STUDIO_GUI_TUPLE_UPDATE_OK' }
@@ -100,7 +100,7 @@ if ($ExpectedVersion -eq '0.0.6-alpha.20') {
     $ran = Assert-ScarpCommand -Name "Run $($fixture.Path)" -Arguments @(
       'exec', '--diagnostic-format=json', '--', $fixture.Path
     ) -ExpectedExitCode 0 -ExpectedMarker $fixture.Marker
-    if ($ran -ne $fixture.Marker) { throw "Unexpected alpha.20 fixture output: $ran" }
+    if ($ran -ne $fixture.Marker) { throw "Unexpected $ExpectedVersion fixture output: $ran" }
   }
 }
 
