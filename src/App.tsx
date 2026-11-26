@@ -772,6 +772,10 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    mountedEditor.current?.getModel()?.updateOptions({ tabSize: editorPreferences.tabSize, insertSpaces: editorPreferences.insertSpaces, trimAutoWhitespace: editorPreferences.trimAutoWhitespace });
+  }, [editorPreferences.tabSize, editorPreferences.insertSpaces, editorPreferences.trimAutoWhitespace, activeId]);
+
+  useEffect(() => {
     // Editor preferences remain local and never modify a source file.
     try {
       localStorage.setItem('studio.editorPreferences', JSON.stringify(editorPreferences));
@@ -2997,6 +3001,7 @@ export default function App() {
                   dispatch({ type: 'edit', id: active.id, content: nextContent });
                 }}
                 onMount={(editor, monaco) => {
+                  editor.getModel()?.updateOptions({ tabSize: editorPreferences.tabSize, insertSpaces: editorPreferences.insertSpaces, trimAutoWhitespace: editorPreferences.trimAutoWhitespace });
                   mountedMonaco.current = monaco;
                   editorHandle.current = editor;
                   mountedEditor.current = editor;

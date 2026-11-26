@@ -1,3 +1,4 @@
+import { EDITOR_EXPERIENCE_LABELS } from './editorExperience';
 import { DEFAULT_EDITOR_PREFERENCES, parseEditorPreferences, type EditorPreferences } from './editorPreferences';
 import { DEFAULT_AUTO_SAVE, parseAutoSavePreferences, type AutoSaveDelay } from './autoSaveSettings';
 import { DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, type WorkspaceLayout } from './workspaceLayout';
@@ -6,7 +7,8 @@ import { exactKeys, hasUniqueJsonKeys, profileError, recordOf, strictIntelliSens
   diffIntelliSensePreferences, PROFILE_FORMAT_VERSION, type ProfileResult } from './intelliSenseProfileTransfer';
 
 export const STUDIO_TRANSFER_FORMAT = 'scarp-studio.preferences';
-export const STUDIO_TRANSFER_VERSION = 1;
+export const STUDIO_TRANSFER_VERSION = 2;
+const LEGACY_EDITOR_KEYS = ['fontSize', 'tabSize', 'wordWrap', 'minimap', 'showWhitespace', 'font', 'lineNumbers', 'highlightActiveLine', 'indentationGuides', 'bracketColors', 'smoothScrolling'] as const;
 export const MAX_STUDIO_TRANSFER_UNITS = 16384;
 export const PORTABLE_GROUPS = ['appearance', 'editor', 'intelliSense', 'layout', 'files'] as const;
 export type PortableGroup = (typeof PORTABLE_GROUPS)[number];
@@ -57,9 +59,9 @@ export function exportStudioPreferences(value: StudioPortablePreferences): strin
 }
 
 function exactNormalized<T extends object>(value: unknown, defaults: T, parse: (raw: string) => T,
-  label: string): ProfileResult<T> {
+  label: string, legacyKeys?: readonly (keyof T & string)[]): ProfileResult<T> {
   const record = recordOf(value);
-  const keys = Object.keys(defaults) as (keyof T & string)[];
+  const keys = legacyKeys ?? Object.keys(defaults) as (keyof T & string)[];
   if (!record || !exactKeys(record, keys)) return profileError(label + ' must contain exactly the supported fields.');
   const normalized = parse(JSON.stringify(record));
   for (const key of keys) {
@@ -79,7 +81,7 @@ export function importStudioPreferences(raw: string): ProfileResult<StudioPortab
   if (!hasUniqueJsonKeys(raw)) return profileError('Studio configuration has duplicate keys or unsupported nesting.');
   const root = recordOf(data);
   if (!root || !exactKeys(root, ['format', 'version', 'intelliSenseVersion', 'preferences']) ||
-      root.format !== STUDIO_TRANSFER_FORMAT || root.version !== STUDIO_TRANSFER_VERSION ||
+      root.format !== STUDIO_TRANSFER_FORMAT || (root.version !== 1 && root.version !== STUDIO_TRANSFER_VERSION) ||
       typeof root.intelliSenseVersion !== 'number') return profileError('Unsupported Studio configuration format or version.');
   const prefs = recordOf(root.preferences);
   if (!prefs || !exactKeys(prefs, PORTABLE_GROUPS)) return profileError('Studio configuration must contain exactly the portable categories.');
@@ -87,7 +89,7 @@ export function importStudioPreferences(raw: string): ProfileResult<StudioPortab
   if (!appearance || !exactKeys(appearance, ['theme']) || (appearance.theme !== 'dark' && appearance.theme !== 'light')) {
     return profileError('Unsupported appearance preferences.');
   }
-  const editor = exactNormalized(prefs.editor, DEFAULT_EDITOR_PREFERENCES, parseEditorPreferences, 'editor');
+  const editor = exactNormalized(prefs.editor, DEFAULT_EDITOR_PREFERENCES, parseEditorPreferences, 'editor', root.version === 1 ? LEGACY_EDITOR_KEYS : undefined);
   if (!editor.ok) return editor;
   const layout = exactNormalized(prefs.layout, DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, 'layout');
   if (!layout.ok) return layout;
@@ -112,6 +114,7 @@ const editorLabels: Record<keyof EditorPreferences, string> = {
   showWhitespace: 'Show whitespace', font: 'Font family', lineNumbers: 'Line numbers',
   highlightActiveLine: 'Active line highlighting', indentationGuides: 'Indentation guides',
   bracketColors: 'Bracket colors', smoothScrolling: 'Smooth scrolling',
+  ...EDITOR_EXPERIENCE_LABELS,
 };
 function display(value: string | number | boolean, suffix = ''): string {
   return typeof value === 'boolean' ? value ? 'On' : 'Off' : String(value) + suffix;

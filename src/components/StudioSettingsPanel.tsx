@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { AdvancedEditorSettings } from './AdvancedEditorSettings';
 import { EDITOR_FONTS, FONT_SIZES, TAB_SIZES, type EditorFont, type EditorPreferences } from '../model/editorPreferences';
 import type { AutoSaveDelay, AutoSavePreferences } from '../model/autoSaveSettings';
 import { EXPLORER_MIN, EXPLORER_MAX, OUTPUT_MIN, OUTPUT_MAX, type LayoutDimension, type WorkspaceLayout } from '../model/workspaceLayout';
@@ -82,7 +83,7 @@ export function StudioSettingsPanel(props: Props) {
         </fieldset>
         <fieldset className="settings-group" hidden={hidden('editor')}>
           <legend>Code editor</legend>
-          <p>Display preferences only. Changing these settings never rewrites source text.</p>
+          <p>Display and editing preferences. Applying settings never rewrites existing source; editing behavior changes future input only.</p>
           <div className="settings-controls">
             <div className="settings-control-row">
               <label htmlFor="editor-font-family">Font family</label>
@@ -115,6 +116,7 @@ export function StudioSettingsPanel(props: Props) {
                 {flag.label}
               </label>)}
             </div>
+            <AdvancedEditorSettings preferences={editor} theme={props.theme} onChange={props.onEditorChange} />
             <button className="settings-reset" type="button" onClick={props.onResetEditor}>Reset editor only</button>
           </div>
         </fieldset>

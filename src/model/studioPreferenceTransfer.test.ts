@@ -20,8 +20,8 @@ describe('Studio-wide portable preferences', () => {
     const raw = exportStudioPreferences(defaults);
     const valid = JSON.parse(raw);
     for (const input of ['', '{', 'null', '[]', '{}', ' '.repeat(MAX_STUDIO_TRANSFER_UNITS + 1),
-      raw.replace('"version": 1', '"version": 1, "version": 1'),
-      JSON.stringify({ ...valid, version: 2 }), JSON.stringify({ ...valid, intelliSenseVersion: 99 }),
+      raw.replace('"version": 2', '"version": 2, "version": 2'),
+      JSON.stringify({ ...valid, version: 99 }), JSON.stringify({ ...valid, intelliSenseVersion: 99 }),
       JSON.stringify({ ...valid, compilerPath: 'x' }), JSON.stringify({ ...valid, preferences: [] })]) {
       expect(importStudioPreferences(input).ok, input.slice(0, 80)).toBe(false);
     }
@@ -88,4 +88,17 @@ describe('reviewed category restore and undo', () => {
     expect(review.target.editor.fontSize).toBe(20);
     expect(review.baseline.editor.fontSize).toBe(14);
   });
+});
+
+
+it('migrates original Studio transfer editor fields without changing old choices', () => {
+  const root = JSON.parse(exportStudioPreferences(defaults));
+  const { editor } = root.preferences;
+  root.version = 1;
+  root.preferences.editor = Object.fromEntries(['fontSize', 'tabSize', 'wordWrap', 'minimap', 'showWhitespace', 'font',
+    'lineNumbers', 'highlightActiveLine', 'indentationGuides', 'bracketColors', 'smoothScrolling'].map(key => [key, editor[key]]));
+  root.preferences.editor.fontSize = 18;
+  expect(importStudioPreferences(JSON.stringify(root))).toEqual({ ok: true, value: { ...defaults, editor: { ...defaults.editor, fontSize: 18 } } });
+  root.version = 2;
+  expect(importStudioPreferences(JSON.stringify(root)).ok).toBe(false);
 });

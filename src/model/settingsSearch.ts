@@ -2,7 +2,7 @@
 export const MAX_SETTINGS_QUERY_UNITS = 120;
 export const SETTINGS_GROUPS = [
   { id: 'appearance', label: 'Appearance', words: 'theme light dark color interface' },
-  { id: 'editor', label: 'Code editor', words: 'font family size consolas cascadia monospace tab width wrap lines line numbers minimap whitespace spaces highlight active current indentation guides bracket colors smooth scrolling' },
+  { id: 'editor', label: 'Code editor', words: 'font family size consolas cascadia monospace tab width wrap lines line numbers minimap whitespace spaces highlight active current indentation guides bracket colors smooth scrolling line height letter spacing ligatures cursor blink folding rulers minimap side insert spaces auto indent auto close quotes accessibility screen reader editing preview' },
   { id: 'intellisense', label: 'IntelliSense and language assistance', words: 'autocomplete completion suggestions automatic manual snippets templates keywords types builtins local functions hover documentation signature parameter hints intrinsic builtin arguments inline inlay labels definition navigation symbols outline delay limit budget availability diagnostics analyze inspect source limits word based suggestions enter tab presets profiles import export backup restore merge portable configuration transfer json reference catalog documentation lookup modified changed reset preference search preview examples test bench matching prefix subsequence abbreviation context qualified' },
   { id: 'files', label: 'Files and Auto Save', words: 'autosave auto save delay inactivity disk named source files disable reset' },
   { id: 'layout', label: 'Workspace layout', words: 'explorer width output height panel size focus reset' },

@@ -1,3 +1,4 @@
+import { DEFAULT_EDITOR_EXPERIENCE, parseEditorExperience, editorExperienceOptions, type EditorExperiencePreferences } from './editorExperience';
 /** Local-only display choices; these never change the contents of .srp files. */
 export const FONT_SIZES = [12, 14, 16, 18, 20, 22, 24] as const;
 export const TAB_SIZES = [2, 4, 8] as const;
@@ -9,7 +10,7 @@ export const EDITOR_FONTS = {
 export type EditorFont = keyof typeof EDITOR_FONTS;
 export const MAX_EDITOR_PREFERENCES_UNITS = 8192;
 
-export interface EditorPreferences {
+export interface EditorPreferences extends EditorExperiencePreferences {
   fontSize: (typeof FONT_SIZES)[number];
   tabSize: (typeof TAB_SIZES)[number];
   wordWrap: boolean;
@@ -35,6 +36,7 @@ export const DEFAULT_EDITOR_PREFERENCES: EditorPreferences = {
   indentationGuides: true,
   bracketColors: true,
   smoothScrolling: false,
+  ...DEFAULT_EDITOR_EXPERIENCE,
 };
 
 /** Persisted settings are untrusted and may be stale or malformed. */
@@ -67,6 +69,7 @@ export function parseEditorPreferences(stored: string | null): EditorPreferences
       indentationGuides: boolean('indentationGuides'),
       bracketColors: boolean('bracketColors'),
       smoothScrolling: boolean('smoothScrolling'),
+      ...parseEditorExperience(value),
     };
   } catch {
     return { ...DEFAULT_EDITOR_PREFERENCES };
@@ -79,8 +82,7 @@ export function editorDisplayOptions(preferences: EditorPreferences) {
     automaticLayout: true,
     fontSize: preferences.fontSize,
     fontFamily: EDITOR_FONTS[preferences.font],
-    minimap: { enabled: preferences.minimap },
-    scrollBeyondLastLine: false,
+    minimap: { enabled: preferences.minimap, side: preferences.minimapSide, renderCharacters: preferences.minimapCharacters },
     renderWhitespace: preferences.showWhitespace ? 'all' as const : 'none' as const,
     tabSize: preferences.tabSize,
     wordWrap: preferences.wordWrap ? 'on' as const : 'off' as const,
@@ -90,5 +92,6 @@ export function editorDisplayOptions(preferences: EditorPreferences) {
     guides: { indentation: preferences.indentationGuides },
     bracketPairColorization: { enabled: preferences.bracketColors },
     smoothScrolling: preferences.smoothScrolling,
+    ...editorExperienceOptions(preferences),
   };
 }

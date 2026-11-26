@@ -327,3 +327,7 @@ actually testing the Studio desktop build.**
 | S42 | Change New/Open/Save/Go to Line to supported unused alternatives, reopen settings, restart Studio. | New bindings work; previous ones are released; displayed toolbar and palette shortcut hints follow current bindings. | NOT RUN |
 | S43 | Try duplicate bindings, disable a configurable command, reset a binding and reset all. | Conflicts are rejected, disabled commands remain accessible by UI, defaults restore, Settings and Stop remain fixed. | NOT RUN |
 | S44 | Test Ctrl/Meta, exact modifier combinations, held keys, AltGraph and composition input, and Monaco editing shortcuts. | Unmatched input is not intercepted. Only tab cycling repeats; composition/AltGraph input remains untouched. OS-reserved shortcuts may not reach Studio. | NOT RUN |
+
+| S45 | Change typography, cursor, folding, minimap and ruler preferences. | Editor options persist; no existing source is rewritten. | NOT RUN |
+| S46 | Change indentation and automatic bracket/quote behavior; type in a new source and switch tabs. | Options affect future typing, not existing source bytes. | NOT RUN |
+| S47 | Apply accessibility preset and import original v1 configuration. | Old choices survive; new fields default safely; preset is explicitly reviewed. | NOT RUN |
