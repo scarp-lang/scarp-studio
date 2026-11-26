@@ -51,7 +51,7 @@ export function collectScarpSuggestions(settings: Readonly<IntelliSensePreferenc
   const occupied = new Set([...localItems, ...catalogItems].map(item => item.label.toLowerCase()));
   const custom: PlannedScarpSuggestion[] = settings.templates && context === 'unqualified' && prefix.length > 0 &&
     !following.trimStart().startsWith('(') ? userSnippets.filter(item => item.enabled && !occupied.has(item.prefix.toLowerCase()) &&
-      Number.isFinite(rank(item.prefix.toLowerCase(), prefix.toLowerCase()))).map(item => ({
+      Number.isFinite(rank(item.prefix.toLowerCase(), prefix.toLowerCase()))).map<PlannedScarpSuggestion>(item => ({
         label: item.prefix, kind: 'snippet', source: 'user', insertText: item.compiled.insertText,
         asSnippet: item.compiled.asSnippet, detail: 'User snippet · ' + item.name,
         documentation: item.description, sortText: '2_' + String(rank(item.prefix.toLowerCase(), prefix.toLowerCase())).padStart(6, '0') + '_' + item.prefix,
