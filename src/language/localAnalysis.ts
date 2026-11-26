@@ -3,7 +3,7 @@ import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameFr
 import { canCompleteLocalFunctionAtOffset, completeLocalFunctions, type LocalFunctionCompletion } from './localCompletion';
 import { activeSignatureCall, localSignatureFromCall, localSignatureAt, readLocalParameters, type LocalSignature } from './signature';
 import { scanScarpSource, type SourceLexResult } from './sourceLex';
-import { collectParameterInlays, type ParameterInlay } from './parameterInlays';
+import { collectParameterInlays, collectParameterShadowIndex, type ParameterInlay } from './parameterInlays';
 import type { InlayHintMode } from '../model/intelliSensePreferences';
 import { builtinSignatureAt, fixedBuiltinParameterLabels, hasPotentialCatalogShadow, type AssistedSignature } from './builtinSignatures';
 
@@ -87,12 +87,16 @@ export class LocalSourceAnalysis {
       if (group) group.push(header);
       else byName.set(header.name, [header]);
     }
+    const lexical = this.scan();
+    const shadows = collectParameterShadowIndex(lexical);
     const names = new Map<string, readonly string[] | null>();
-    const result = collectParameterInlays(this.source, this.scan(), mode, name => {
+    const result = collectParameterInlays(this.source, lexical, mode, name => {
       if (names.has(name)) return names.get(name)!;
       const group = byName.get(name);
-      const labels = group ? group.length === 1 ? this.parameters(group[0].openOffset) : null
-        : includeBuiltin && !hasPotentialCatalogShadow(this.scan(), name) ? fixedBuiltinParameterLabels(name) : null;
+      const declarationCount = shadows.functions.get(name) ?? 0;
+      const labels = shadows.bindings.has(name) ? null :
+        group ? group.length === 1 && declarationCount === 1 ? this.parameters(group[0].openOffset) : null
+        : includeBuiltin && declarationCount === 0 ? fixedBuiltinParameterLabels(name) : null;
       names.set(name, labels);
       return labels;
     });

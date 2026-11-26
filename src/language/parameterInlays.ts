@@ -111,3 +111,31 @@ function isLiteralArgument(argument: Argument, source: string): boolean {
   }
   return false;
 }
+
+
+/** One linear pass for shadow candidates, rather than rescanning the lexical
+ * inventory for every unknown function name. Any competing declaration,
+ * including nested functions and typed parameters, suppresses the label.
+ * This intentionally trades some hints for conservative correctness. */
+export function collectParameterShadowIndex(lex: SourceLexResult): {
+  functions: ReadonlyMap<string, number>;
+  bindings: ReadonlySet<string>;
+} {
+  const functions = new Map<string, number>();
+  const bindings = new Set<string>();
+  let previous: InsightToken | undefined;
+  let beforePrevious: InsightToken | undefined;
+  const introducers = new Set(['bind', 'var', 'record', 'variant', 'as']);
+  for (const token of lex.tokens) {
+    if (token.kind === 'comment') continue;
+    if (token.kind === 'identifier' && !token.previewTruncated && previous?.kind === 'identifier') {
+      if (previous.text === 'funcra') functions.set(token.text, (functions.get(token.text) ?? 0) + 1);
+      else if (introducers.has(previous.text)) bindings.add(token.text);
+    }
+    if (token.kind === 'operator' && token.text === ':' && previous?.kind === 'identifier' &&
+        beforePrevious?.text !== '.') bindings.add(previous.text);
+    beforePrevious = previous;
+    previous = token;
+  }
+  return { functions, bindings };
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { collectParameterInlays, MAX_PARAMETER_INLAYS } from './parameterInlays';
+import { collectParameterInlays, collectParameterShadowIndex, MAX_PARAMETER_INLAYS } from './parameterInlays';
 import { LocalSourceAnalysis } from './localAnalysis';
 import { scanScarpSource } from './sourceLex';
 
@@ -60,5 +60,29 @@ describe('inline parameter labels', () => {
     const forbidden = () => { throw Error('disabled resolver'); };
     expect(collectParameterInlays(source, scanScarpSource(source), 'off', forbidden)).toEqual([]);
     expect(collectParameterInlays(source, scanScarpSource('"unterminated'), 'all', forbidden)).toEqual([]);
+  });
+});
+
+
+describe('linear shadow inventory', () => {
+  it('suppresses same-file calls with competing bindings, parameters or nested declarations', () => {
+    for (const tail of [
+      'bind add = 1; add(1, 2);',
+      'funcra wrapper(add: integer) {} add(1, 2);',
+      'funcra wrapper() { funcra add(a: integer, b: integer) -> integer {} } add(1, 2);',
+    ]) expect(labels(header + tail), tail).toEqual([]);
+  });
+  it('indexes declaration tokens once and ignores comment and string lookalikes', () => {
+    const lex = scanScarpSource('funcra add(x: integer) {} // bind ignored\nvar add = 1; print("funcra hidden"); funcra outer() { funcra add() {} }');
+    const index = collectParameterShadowIndex(lex);
+    expect(index.functions.get('add')).toBe(2);
+    expect(index.functions.has('hidden')).toBe(false);
+    expect(index.bindings.has('ignored')).toBe(false);
+    expect(index.bindings.has('x')).toBe(true);
+    expect(index.bindings.has('add')).toBe(true);
+  });
+  it('handles many distinct unknown calls without resolving them as builtins', () => {
+    const source = Array.from({ length: 1000 }, (_, i) => 'unknown_' + i + '(1);').join('\n') + '\nbigint_pow(value, 2);';
+    expect(labels(source)).toEqual([{ label: 'exponent', next: '2' }]);
   });
 });
