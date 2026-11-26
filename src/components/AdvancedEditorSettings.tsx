@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSettingsReveal } from './settingsReveal';
 import { EDITOR_FONTS, type EditorPreferences } from '../model/editorPreferences';
 import { DEFAULT_EDITOR_EXPERIENCE, EDITOR_EXPERIENCE_CHOICES, EDITOR_EXPERIENCE_LABELS, EXPERIENCE_INFO,
   EXPERIENCE_GROUPS, accessibilityExperiencePatch, editorExperiencePatch, experienceValueLabel, matchEditorExperience,
@@ -10,6 +11,7 @@ export function AdvancedEditorSettings({ preferences: p, theme, onChange }: Prop
   const [query, setQuery] = useState('');
   const [modifiedOnly, setModifiedOnly] = useState(false);
   const [review, setReview] = useState<'accessibility' | 'reset' | null>(null);
+  useSettingsReveal('editor', () => { setOpen(true); setQuery(''); setModifiedOnly(false); setReview(null); });
   const matches = matchEditorExperience(p, query, modifiedOnly);
   const changed = matchEditorExperience(p, '', true);
   function patch(key: EditorExperienceKey, value: unknown) {
