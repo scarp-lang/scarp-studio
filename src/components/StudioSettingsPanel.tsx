@@ -73,7 +73,7 @@ export function StudioSettingsPanel(props: Props) {
     if (!reveal || !panel.current) return;
     // Nested preference sections reveal their own controls before focusing.
     if (reveal.id.startsWith('editor-experience-') || reveal.id.startsWith('intellisense-') || reveal.id.startsWith('studio-shortcut-')) return;
-    focusSettingsTarget(panel.current, reveal.id);
+    focusSettingsTarget(panel.current, reveal.id, 'settings-category-' + reveal.group);
   }, [reveal]);
   return (
     <section ref={panel} id="editor-settings" className="editor-settings studio-settings-center" aria-label="Scarp Studio settings">
