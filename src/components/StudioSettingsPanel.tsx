@@ -12,6 +12,7 @@ interface Props {
   recovery: ReactNode;
   compiler: ReactNode;
   intelliSense: ReactNode;
+  portability?: ReactNode;
   recoveryNeedsReview: boolean;
   onTheme: (theme: 'dark' | 'light') => void;
   onEditorChange: (patch: Partial<EditorPreferences>) => void;
@@ -160,6 +161,10 @@ export function StudioSettingsPanel(props: Props) {
         <fieldset className="settings-group settings-compiler" hidden={hidden('compiler')}>
           <legend>Compiler configuration</legend>
           {props.compiler}
+        </fieldset>
+        <fieldset className="settings-group settings-portability" hidden={hidden('portability')}>
+          <legend>Studio preference transfer</legend>
+          {props.portability ?? <p>Preference transfer is unavailable.</p>}
         </fieldset>
         <div className="settings-recovery settings-group" hidden={hidden('recovery')}>{props.recovery}</div>
       </div>

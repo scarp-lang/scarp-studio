@@ -1443,3 +1443,17 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .intellisense-backup-panel .backup-actions { display: grid; gap: 6px; max-height: 220px; overflow: auto; padding: 0; list-style: none; }
 .intellisense-backup-panel .backup-actions li { border: 1px solid var(--border); border-radius: 5px; padding: 6px; overflow-wrap: anywhere; }
 .intellisense-backup-panel .backup-actions li strong { display: block; }
+
+
+.settings-portability { grid-column: 1 / -1; min-width: 0; }
+.studio-transfer { display: grid; gap: 10px; min-width: 0; }
+.studio-transfer .transfer-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.studio-transfer .transfer-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr)); gap: 7px; }
+.studio-transfer .transfer-groups label { display: flex; align-items: center; gap: 6px; }
+.studio-transfer textarea { width: 100%; min-width: 0; resize: vertical; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 5px; padding: 8px; font-family: Consolas, monospace; }
+.studio-transfer .transfer-review { border: 1px solid var(--border); padding: 9px; border-radius: 5px; display: grid; gap: 8px; }
+.studio-transfer .transfer-changes { max-height: 240px; overflow: auto; padding-left: 18px; margin: 0; }
+.studio-transfer .transfer-changes li { margin-block: 5px; overflow-wrap: anywhere; }
+.studio-transfer .transfer-value { color: var(--muted); font-variant-numeric: tabular-nums; }
+.studio-transfer .transfer-warning { border-left: 3px solid var(--accent); padding-left: 8px; }

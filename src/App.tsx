@@ -57,6 +57,8 @@ import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
 import { StudioSettingsPanel } from './components/StudioSettingsPanel';
 import { IntelliSenseSettings } from './components/IntelliSenseSettings';
+import { StudioPreferenceTransferPanel } from './components/StudioPreferenceTransferPanel';
+import { captureStudioPreferences, sameStudioPreferences } from './model/studioPreferenceTransfer';
 import { inspectIntelliSenseDocument } from './language/intelliSenseDiagnostics';
 import { intelliSenseStore, intelliSenseEditorOptions } from './model/intelliSensePreferences';
 import { CompilerSetupPanel } from './components/CompilerSetupPanel';
@@ -2582,6 +2584,19 @@ export default function App() {
             }}
             onChange={intelliSenseStore.update}
             onReset={intelliSenseStore.reset} />}
+          portability={<StudioPreferenceTransferPanel
+            current={captureStudioPreferences(theme, editorPreferences, intelligence.preferences, workspaceLayout, autoSavePreferences.delay)}
+            onApply={(expected, next) => {
+              const live = captureStudioPreferences(theme, editorPreferences, intelliSenseStore.getSnapshot().preferences, workspaceLayout, autoSavePreferences.delay);
+              if (!sameStudioPreferences(live, expected)) return false;
+              setTheme(next.appearance.theme);
+              setEditorPreferences({ ...next.editor });
+              intelliSenseStore.update(next.intelliSense);
+              setWorkspaceLayout({ ...next.layout });
+              setAutoSavePreferences(current => ({ ...current, delay: next.files.autoSaveDelay }));
+              setNotice('Applied reviewed Studio preferences. Auto Save enablement, compiler approval and workspace data are unchanged.');
+              return true;
+            }} />}
           compiler={<>
             <label className="editor-setting-checkbox" htmlFor="compiler-startup-scan">
               <input id="compiler-startup-scan" type="checkbox"

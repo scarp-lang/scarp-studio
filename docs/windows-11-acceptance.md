@@ -307,3 +307,12 @@ actually testing the Studio desktop build.**
 | S36 | Inspect IntelliSense availability with no file, a normal file, a file exceeding the configured budget, and malformed lexical source. Edit the source after inspection or change the budget. | Preference and size eligibility is visible without scanning; explicit inspection returns only aggregate counts and reason categories; stale reports are not reused; no source, paths or compiler state is persisted. | NOT RUN |
 
 | S37 | Export a collection with several named profiles, import into another Studio session, and review keep/replace/rename conflicts. Change saved profiles before confirming and attempt a merge above capacity. | Backup contains only named IntelliSense snapshots; merge preserves active preferences, rejects stale review and oversized/capacity violations, and writes the reviewed collection as one update. | NOT RUN |
+
+
+### Studio-wide preference portability (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S38 | Export all portable settings, edit theme/editor/layout/IntelliSense and delay, import and select only appearance and editor. | Review lists exact changed fields; confirmation applies only selected categories. No source, path, compiler approval, recovery data or Auto Save enablement is exported or applied. | NOT RUN |
+| S39 | Import malformed JSON, duplicate keys, unsupported schemas, unexpected permission fields, out-of-range panel dimensions and oversized paste. | Rejected before any preference changes. Existing settings and named IntelliSense profiles remain unchanged. | NOT RUN |
+| S40 | Review an import, change a preference, then confirm. Re-review, apply, and review undo; change a preference before undo. | Stale import/undo is refused. A valid undo restores the previous portable snapshot only. No file writes are triggered by enabling Auto Save. | NOT RUN |
