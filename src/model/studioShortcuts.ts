@@ -1,3 +1,4 @@
+import { profileError, type ProfileResult } from './intelliSenseProfileTransfer';
 import type { IntelliSenseStorage } from './intelliSensePreferences';
 import { hasUniqueJsonKeys, exactKeys, recordOf } from './intelliSenseProfileTransfer';
 
@@ -63,24 +64,74 @@ export function changeShortcut(bindings: ShortcutBindings, id: ShortcutCommand, 
 export function serializeShortcuts(bindings: ShortcutBindings): string {
   return JSON.stringify({ version: 1, bindings: Object.fromEntries(SHORTCUT_COMMANDS.map(item => [item.id, bindings[item.id]])) });
 }
+/** Unlike startup fallback, a transfer must report invalid data explicitly. */
+export function validateShortcutBindings(value: unknown): ProfileResult<ShortcutBindings> {
+  const bindings = recordOf(value);
+  if (!bindings || !exactKeys(bindings, SHORTCUT_COMMANDS.map(item => item.id))) return profileError('Expected every Studio command exactly once.');
+  const used = new Map<string, ShortcutCommand>();
+  const next: Partial<Record<ShortcutCommand, ShortcutBinding>> = {};
+  for (const item of SHORTCUT_COMMANDS) {
+    const binding = bindings[item.id];
+    if (binding !== null && typeof binding !== 'string') return profileError('Invalid binding for ' + item.label + '.');
+    if (!availableShortcutBindings(item.id).includes(binding)) return profileError('Unsupported or fixed binding for ' + item.label + '.');
+    if (binding !== null) {
+      const previous = used.get(binding);
+      if (previous) return profileError(binding + ' conflicts with ' + commandMap.get(previous)!.label + ' and ' + item.label + '.');
+      used.set(binding, item.id);
+    }
+    next[item.id] = binding;
+  }
+  return { ok: true, value: Object.freeze(next as Record<ShortcutCommand, ShortcutBinding>) };
+}
 export function parseShortcuts(raw: string | null): ShortcutBindings {
   if (raw === null || raw.length > MAX_SHORTCUT_STORAGE_UNITS) return DEFAULT_SHORTCUTS;
   try {
     const root = recordOf(JSON.parse(raw));
     if (!root || !hasUniqueJsonKeys(raw) || !exactKeys(root, ['version', 'bindings']) || root.version !== 1) return DEFAULT_SHORTCUTS;
-    const bindings = recordOf(root.bindings);
-    if (!bindings || !exactKeys(bindings, SHORTCUT_COMMANDS.map(item => item.id))) return DEFAULT_SHORTCUTS;
-    const used = new Set<string>();
-    const next: Partial<Record<ShortcutCommand, ShortcutBinding>> = {};
-    for (const item of SHORTCUT_COMMANDS) {
-      const binding = bindings[item.id];
-      if (binding !== null && typeof binding !== 'string') return DEFAULT_SHORTCUTS;
-      if (!availableShortcutBindings(item.id).includes(binding) || binding !== null && used.has(binding)) return DEFAULT_SHORTCUTS;
-      if (binding !== null) used.add(binding);
-      next[item.id] = binding;
-    }
-    return Object.freeze(next as Record<ShortcutCommand, ShortcutBinding>);
+    const result = validateShortcutBindings(root.bindings);
+    return result.ok ? result.value : DEFAULT_SHORTCUTS;
   } catch { return DEFAULT_SHORTCUTS; }
+}
+export const SHORTCUT_TRANSFER_FORMAT = 'scarp-studio.shortcuts';
+export const SHORTCUT_GROUPS = ['Files', 'Navigation', 'Compiler', 'Workspace'] as const;
+export type ShortcutGroup = typeof SHORTCUT_GROUPS[number];
+export interface ShortcutDiff {
+  readonly id: ShortcutCommand; readonly label: string; readonly group: ShortcutGroup;
+  readonly before: ShortcutBinding; readonly after: ShortcutBinding;
+}
+export interface ShortcutTransferReview {
+  readonly revision: number; readonly baseline: string; readonly target: ShortcutBindings;
+  readonly changes: readonly ShortcutDiff[]; readonly groups: readonly ShortcutGroup[];
+}
+export function exportShortcutBindings(bindings: ShortcutBindings): string {
+  return JSON.stringify({ format: SHORTCUT_TRANSFER_FORMAT, version: 1,
+    bindings: Object.fromEntries(SHORTCUT_COMMANDS.map(item => [item.id, bindings[item.id]])) }, null, 2);
+}
+export function parseShortcutTransfer(raw: string): ProfileResult<ShortcutBindings> {
+  if (!raw.trim() || raw.length > MAX_SHORTCUT_STORAGE_UNITS) return profileError('Shortcut backup is empty or too large.');
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return profileError('Shortcut backup is not valid JSON.'); }
+  if (!hasUniqueJsonKeys(raw)) return profileError('Duplicate JSON keys are not supported.');
+  const root = recordOf(value);
+  if (!root || !exactKeys(root, ['format', 'version', 'bindings']) ||
+      root.format !== SHORTCUT_TRANSFER_FORMAT || root.version !== 1) return profileError('Unsupported shortcut backup.');
+  return validateShortcutBindings(root.bindings);
+}
+export function reviewShortcutTransfer(current: ShortcutBindings, incoming: ShortcutBindings,
+  groups: readonly ShortcutGroup[], revision: number): ProfileResult<ShortcutTransferReview> {
+  if (!groups.length || groups.some(group => !SHORTCUT_GROUPS.includes(group))) return profileError('Select at least one supported command group.');
+  if (!Number.isSafeInteger(revision) || revision < 0) return profileError('Invalid shortcut revision.');
+  const valid = validateShortcutBindings(incoming);
+  if (!valid.ok) return valid;
+  const selected = SHORTCUT_GROUPS.filter(group => groups.includes(group));
+  const target = validateShortcutBindings(Object.fromEntries(SHORTCUT_COMMANDS.map(item => [
+    item.id, selected.includes(item.group) ? valid.value[item.id] : current[item.id],
+  ])));
+  if (!target.ok) return target;
+  const changes = SHORTCUT_COMMANDS.filter(item => target.value[item.id] !== current[item.id]).map(item =>
+    Object.freeze({ id: item.id, label: item.label, group: item.group, before: current[item.id], after: target.value[item.id] }));
+  return { ok: true, value: Object.freeze({ revision, baseline: serializeShortcuts(current),
+    target: target.value, changes: Object.freeze(changes), groups: Object.freeze(selected) }) };
 }
 export interface ShortcutEvent {
   key: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean;
@@ -114,13 +165,13 @@ export function searchStudioShortcuts(query: string, modifiedOnly: boolean, bind
     return terms.every(term => text.includes(term));
   });
 }
-export interface ShortcutSnapshot { readonly bindings: ShortcutBindings; readonly persistence: 'available' | 'session-only' }
+export interface ShortcutSnapshot { readonly bindings: ShortcutBindings; readonly persistence: 'available' | 'session-only'; readonly revision: number }
 export function createStudioShortcutStore(storage: IntelliSenseStorage | null) {
   let bindings = DEFAULT_SHORTCUTS;
   let persistence: ShortcutSnapshot['persistence'] = storage ? 'available' : 'session-only';
   try { if (storage) bindings = parseShortcuts(storage.getItem(SHORTCUT_STORAGE_KEY)); }
   catch { persistence = 'session-only'; }
-  let snapshot: ShortcutSnapshot = Object.freeze({ bindings, persistence });
+  let snapshot: ShortcutSnapshot = Object.freeze({ bindings, persistence, revision: 0 });
   const listeners = new Set<() => void>();
   const getSnapshot = () => snapshot;
   function subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
@@ -128,7 +179,7 @@ export function createStudioShortcutStore(storage: IntelliSenseStorage | null) {
     let status: ShortcutSnapshot['persistence'] = 'session-only';
     try { if (storage) { storage.setItem(SHORTCUT_STORAGE_KEY, serializeShortcuts(next)); status = 'available'; } }
     catch { /* session-only fallback */ }
-    snapshot = Object.freeze({ bindings: next, persistence: status });
+    snapshot = Object.freeze({ bindings: next, persistence: status, revision: snapshot.revision + 1 });
     for (const listener of [...listeners]) listener();
   }
   function setBinding(id: ShortcutCommand, binding: ShortcutBinding): ShortcutChangeResult {
@@ -136,8 +187,19 @@ export function createStudioShortcutStore(storage: IntelliSenseStorage | null) {
     if (result.ok) save(result.bindings);
     return result;
   }
+  function applyTransfer(review: ShortcutTransferReview): ProfileResult<true> {
+    if (review.revision !== snapshot.revision || review.baseline !== serializeShortcuts(snapshot.bindings)) {
+      return profileError('Shortcuts changed since the review. Review again.');
+    }
+    const checked = reviewShortcutTransfer(snapshot.bindings, review.target, review.groups, snapshot.revision);
+    if (!checked.ok) return checked;
+    if (serializeShortcuts(checked.value.target) !== serializeShortcuts(review.target)) return profileError('Review changes an unselected command group.');
+    if (!checked.value.changes.length) return profileError('No shortcut changes to apply.');
+    save(checked.value.target);
+    return { ok: true, value: true };
+  }
   function reset() { save(DEFAULT_SHORTCUTS); }
-  return { getSnapshot, subscribe, setBinding, reset };
+  return { getSnapshot, subscribe, setBinding, reset, applyTransfer };
 }
 function storageOrNull(): IntelliSenseStorage | null {
   try { return typeof localStorage === 'undefined' ? null : localStorage; } catch { return null; }
