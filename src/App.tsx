@@ -2556,7 +2556,8 @@ export default function App() {
             onChange={intelliSenseStore.update}
             onReset={intelliSenseStore.reset} />}
           shortcuts={<StudioShortcutSettings bindings={shortcuts.bindings} persistence={shortcuts.persistence}
-            onChange={studioShortcutStore.setBinding} onReset={studioShortcutStore.reset} />}
+            onChange={studioShortcutStore.setBinding} onReset={studioShortcutStore.reset}
+            revision={shortcuts.revision} onApplyTransfer={studioShortcutStore.applyTransfer} />}
           portability={<StudioPreferenceTransferPanel
             workspaceRoot={folderPath}
             current={portablePreferences}

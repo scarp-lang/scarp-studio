@@ -1541,3 +1541,9 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .snippet-list { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
 .snippet-list-row { border: 1px solid var(--border); border-radius: 5px; padding: 8px; overflow-wrap: anywhere; }
 .snippet-preview pre, .user-snippet-panel .transfer-review pre { max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.shortcut-transfer-panel { border-top: 1px solid var(--border); padding-top: 12px; }
+.shortcut-transfer-panel textarea { width: 100%; box-sizing: border-box; font-family: Consolas, monospace; resize: vertical; }
+.shortcut-transfer-groups { display: flex; flex-wrap: wrap; gap: 10px; }
+.shortcut-transfer-changes { max-height: 240px; overflow: auto; }
+.shortcut-transfer-changes li { margin: 6px 0; overflow-wrap: anywhere; }

@@ -344,3 +344,5 @@ actually testing the Studio desktop build.**
 
 | S54 | Create a user snippet with numbered and repeated placeholders, save after review, type its prefix in a Scarp file, and accept completion. | Text inserts only after accepting the suggestion; tab stops navigate; user snippets respect template and completion gates, and are not suggested in comments or strings. | NOT RUN |
 | S55 | Export user snippets and import a collection with duplicate prefixes, malformed placeholders or excessive size. | Existing prefixes are preserved, invalid collections are rejected, and adding new snippets requires review. | NOT RUN |
+
+| S56 | Export a shortcut backup, change two commands, import the backup for selected groups, review differences, confirm and undo. | Binding changes apply together, conflicts across selected and unselected groups are rejected, fixed Settings and Stop cannot change, and stale or malformed reviews do not apply. | NOT RUN |

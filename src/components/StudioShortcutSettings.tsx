@@ -1,9 +1,11 @@
+import { ShortcutTransferPanel } from './ShortcutTransferPanel';
+import type { ProfileResult } from '../model/intelliSenseProfileTransfer';
 import { useState } from 'react';
 import { useSettingsReveal } from './settingsReveal';
 import {
   DEFAULT_SHORTCUTS, MAX_SHORTCUT_QUERY_UNITS, SHORTCUT_COMMANDS, availableShortcutBindings,
   isFixedShortcut, searchStudioShortcuts, shortcutConflict, shortcutLabel,
-  type ShortcutBinding, type ShortcutBindings, type ShortcutChangeResult, type ShortcutCommand, type ShortcutSnapshot,
+  type ShortcutTransferReview, type ShortcutBinding, type ShortcutBindings, type ShortcutChangeResult, type ShortcutCommand, type ShortcutSnapshot,
 } from '../model/studioShortcuts';
 
 interface Props {
@@ -11,8 +13,10 @@ interface Props {
   persistence: ShortcutSnapshot['persistence'];
   onChange: (id: ShortcutCommand, binding: ShortcutBinding) => ShortcutChangeResult;
   onReset: () => void;
+  revision?: number;
+  onApplyTransfer?: (review: ShortcutTransferReview) => ProfileResult<true>;
 }
-export function StudioShortcutSettings({ bindings, persistence, onChange, onReset }: Props) {
+export function StudioShortcutSettings({ bindings, persistence, onChange, onReset, revision = 0, onApplyTransfer }: Props) {
   const [query, setQuery] = useState('');
   const [modifiedOnly, setModifiedOnly] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -69,5 +73,6 @@ export function StudioShortcutSettings({ bindings, persistence, onChange, onRese
       <button type="button" className="settings-reset" onClick={() => setConfirmReset(false)}>Cancel shortcut reset</button>
     </div>}
     {notice && <p role="status">{notice}</p>}
+    {onApplyTransfer && <ShortcutTransferPanel bindings={bindings} revision={revision} onApply={onApplyTransfer} />}
   </section>;
 }
