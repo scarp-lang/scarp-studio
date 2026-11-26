@@ -17,6 +17,7 @@ describe('settings search', () => {
     expect(matchingSettingsGroups('startup discovery')).toEqual(['compiler']);
     expect(matchingSettingsGroups('parameter hints')).toEqual(['intellisense']);
     expect(matchingSettingsGroups('autocomplete')).toEqual(['intellisense']);
+    expect(matchingSettingsGroups('export profiles')).toEqual(['intellisense']);
   });
   it('has no fuzzy guesses and always retains pending recovery review', () => {
     expect(matchingSettingsGroups('unmatched')).toEqual([]);

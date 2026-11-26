@@ -258,3 +258,14 @@ actually testing the Studio desktop build.**
 |---|---|---|---|
 | S15 | Hover an unqualified local function call with typed parameters, then disable local function hover; hover a built-in token. | Local signature shown only while local function hover is enabled; built-in documentation remains independently available. | NOT RUN |
 | S16 | Use completion, hover, definition and parameter hints on a saved file; edit its declaration to a same-length name, undo, switch to a different file and close the tab. | Only exact current model revisions are reused; no stale declaration appears after edits, undo, tab switching or disposal. | NOT RUN |
+
+
+### IntelliSense portable and saved profiles (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S17 | Save a named profile, edit current preferences, save another, select the first and review/apply; restart Studio. | Named snapshots persist independently of active preferences. Applying requires review; no profile changes until explicit save or replace. | NOT RUN |
+| S18 | Attempt duplicate names, invalid names, maximum count, replace/delete with cancel and confirm. | Invalid input is rejected without mutating other profiles. Replace/delete requires review tied to the exact profile contents. | NOT RUN |
+| S19 | Export active configuration as JSON, change preferences, paste the JSON into Import and review. Edit preferences again before confirming. | Export contains only schema/version and allowlisted IntelliSense preferences. The preview becomes stale after a change; apply requires fresh review. | NOT RUN |
+| S20 | Paste invalid JSON, unsupported versions, unexpected keys, wrong types, incomplete records or oversized text. | Import fails closed; active preferences remain unchanged. No files, executable paths or trust state are read or imported. | NOT RUN |
+| S21 | Block profile storage or inject malformed saved profiles, open Settings and try profile management. | Session-only warning or explicit blocked-state recovery is displayed. Corrupt stored profiles are not silently overwritten; normal IntelliSense controls remain available. | NOT RUN |
