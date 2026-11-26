@@ -7,6 +7,7 @@ export const SETTINGS_GROUPS = [
   { id: 'files', label: 'Files and Auto Save', words: 'autosave auto save delay inactivity disk named source files disable reset' },
   { id: 'layout', label: 'Workspace layout', words: 'explorer width output height panel size focus reset' },
   { id: 'compiler', label: 'Compiler configuration', words: 'scarp executable binary path location version detect discovery scan startup download trust approval manual' },
+  { id: 'shortcuts', label: 'Keyboard shortcuts', words: 'keybindings hotkeys shortcut keys command palette remap conflict reset keyboard' },
   { id: 'portability', label: 'Studio preference transfer', words: 'backup restore portable import export configuration profiles snapshots named json transfer undo review appearance editor layout' },
   { id: 'recovery', label: 'Local draft recovery', words: 'unsaved copies checkpoint restore discard previous session privacy storage' },
 ] as const;

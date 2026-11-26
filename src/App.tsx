@@ -57,6 +57,8 @@ import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
 import { StudioSettingsPanel } from './components/StudioSettingsPanel';
 import { IntelliSenseSettings } from './components/IntelliSenseSettings';
+import { StudioShortcutSettings } from './components/StudioShortcutSettings';
+import { studioShortcutStore, matchStudioShortcut, shortcutLabel, studioCommandDetail, type ShortcutCommand } from './model/studioShortcuts';
 import { StudioPreferenceTransferPanel } from './components/StudioPreferenceTransferPanel';
 import { captureStudioPreferences, sameStudioPreferences } from './model/studioPreferenceTransfer';
 import { inspectIntelliSenseDocument } from './language/intelliSenseDiagnostics';
@@ -278,6 +280,8 @@ export default function App() {
   }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
+  const shortcuts = useSyncExternalStore(studioShortcutStore.subscribe, studioShortcutStore.getSnapshot, studioShortcutStore.getSnapshot);
+  const shortcut = (id: ShortcutCommand) => shortcutLabel(shortcuts.bindings[id]);
   const intelligence = useSyncExternalStore(intelliSenseStore.subscribe,
     intelliSenseStore.getSnapshot, intelliSenseStore.getSnapshot);
   const [autoSavePreferences, setAutoSavePreferences] = useState(loadAutoSavePreferences);
@@ -615,7 +619,7 @@ export default function App() {
 
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
     ? buildQuickOpenEntries(documents, folderEntries)
-    : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : studioCommands;
+    : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : studioCommands.map(entry => ({ ...entry, detail: studioCommandDetail(entry.id, entry.detail, shortcuts.bindings) }));
   const paletteResults = paletteMode === 'line'
     ? []
     : filterNavigationEntries(paletteEntries, paletteQuery);
@@ -2403,6 +2407,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
+      if (event.isComposing || event.defaultPrevented || event.getModifierState('AltGraph')) return;
       if (paletteMode !== null && event.key === 'Escape') {
         event.preventDefault();
         hidePalette();
@@ -2420,86 +2425,40 @@ export default function App() {
         setSearchOpen(false);
         return;
       }
-      if (paletteMode === null && event.key === 'F8' &&
-          !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
-          navigableDiagnostic && !busy && !compilerBusy && !compilerSelecting) {
-        event.preventDefault();
-        revealDiagnostic();
-        return;
-      }
-      if (paletteMode === null && event.key === 'F5' && !event.altKey) {
-        event.preventDefault();
-        if (event.shiftKey) void stopCompiler();
-        else void runCompiler(event.ctrlKey ? 'verify' : 'exec');
-        return;
-      }
-      const modifier = event.ctrlKey || event.metaKey;
-      if (modifier && event.altKey && !event.shiftKey && event.key.toLowerCase() === 'z' && paletteMode === null) {
-        event.preventDefault();
-        toggleFocusMode();
-        return;
-      }
-      if (modifier && event.altKey && !event.shiftKey && event.key.toLowerCase() === 's') {
-        event.preventDefault();
-        if (paletteMode === null) void saveAllFiles();
-        return;
-      }
-      if (!modifier || event.altKey) return;
-      const key = event.key.toLowerCase();
-      if (key === ',') {
-        event.preventDefault();
-        setEditorSettingsOpen((open) => !open);
-        return;
-      }
-      if (key === 'p') {
-        event.preventDefault();
-        showPalette(event.shiftKey ? 'commands' : 'files');
-        return;
-      }
-      if (key === 'g' && !event.shiftKey) {
-        event.preventDefault();
-        showPalette('line');
-        return;
-      }
-      if (key === 'o' && event.shiftKey) {
-        event.preventDefault();
-        showPalette('symbols');
-        return;
-      }
-      if (paletteMode !== null) return;
-      if (key === 't' && event.shiftKey) {
-        event.preventDefault();
-        if (!event.repeat) void reopenLastClosedSource();
-      } else if (key === 'm' && event.shiftKey) {
-        event.preventDefault();
-        showProblems();
-      } else if (key === 'j' && !event.shiftKey) {
-        event.preventDefault();
-        toggleOutputPanel();
-        outputToggle.current?.focus();
-      } else if (key === 'tab' && event.ctrlKey) {
-        event.preventDefault();
-        cycleTab(event.shiftKey ? -1 : 1);
-      } else if (key === 'b' && !event.shiftKey) {
-        event.preventDefault();
-        toggleExplorer();
-      } else if (key === 's') {
-        event.preventDefault();
-        void saveFile(event.shiftKey);
-      } else if (key === 'n') {
-        event.preventDefault();
-        newFile();
-      } else if (key === 'o' && !event.shiftKey) {
-        event.preventDefault();
-        void openFile();
-      } else if (key === 'f' && event.shiftKey) {
-        event.preventDefault();
-        setSearchOpen(true);
-        searchInput.current?.focus();
-      } else if (key === 'w') {
-        event.preventDefault();
-        const currentId = liveEditor.current.activeId;
-        if (currentId) void closeFile(currentId);
+      const command = matchStudioShortcut(event, studioShortcutStore.getSnapshot().bindings);
+      if (!command) return;
+      if (paletteMode !== null && !['settings', 'quick-open', 'commands', 'go-to-line', 'go-to-symbol'].includes(command)) return;
+      if (command === 'next-diagnostic' && (!navigableDiagnostic || busy || compilerBusy || compilerSelecting)) return;
+      event.preventDefault();
+      if (event.repeat && command !== 'next-tab' && command !== 'previous-tab') return;
+      switch (command) {
+        case 'next-diagnostic': revealDiagnostic(); break;
+        case 'run-scarp': void runCompiler('exec'); break;
+        case 'verify-scarp': void runCompiler('verify'); break;
+        case 'stop-scarp': void stopCompiler(); break;
+        case 'toggle-focus': toggleFocusMode(); break;
+        case 'save-all': void saveAllFiles(); break;
+        case 'settings': setEditorSettingsOpen(open => !open); break;
+        case 'quick-open': showPalette('files'); break;
+        case 'commands': showPalette('commands'); break;
+        case 'go-to-line': showPalette('line'); break;
+        case 'go-to-symbol': showPalette('symbols'); break;
+        case 'reopen-closed': void reopenLastClosedSource(); break;
+        case 'show-problems': showProblems(); break;
+        case 'toggle-output': toggleOutputPanel(); outputToggle.current?.focus(); break;
+        case 'next-tab': cycleTab(1); break;
+        case 'previous-tab': cycleTab(-1); break;
+        case 'explorer': toggleExplorer(); break;
+        case 'save': void saveFile(); break;
+        case 'save-as': void saveFile(true); break;
+        case 'new': newFile(); break;
+        case 'open': void openFile(); break;
+        case 'find-open-files': setSearchOpen(true); searchInput.current?.focus(); break;
+        case 'close': {
+          const currentId = liveEditor.current.activeId;
+          if (currentId) void closeFile(currentId);
+          break;
+        }
       }
     };
     window.addEventListener('keydown', handleKey, true);
@@ -2515,36 +2474,36 @@ export default function App() {
           <span className="alpha-tag">ALPHA</span>
         </div>
         <button type="button" className="toolbar-quick-open" onClick={() => showPalette('files')}
-          title="Quick Open tabs and project sources (Ctrl+P)">
-          <span aria-hidden="true">⌕</span><span>Quick Open</span><kbd>Ctrl+P</kbd>
+          title={"Quick Open tabs and project sources (" + shortcut('quick-open') + ')'}>
+          <span aria-hidden="true">⌕</span><span>Quick Open</span><kbd>{shortcut('quick-open')}</kbd>
         </button>
         <nav className="toolbar-actions" aria-label="Editor actions">
           <div className="toolbar-group" role="group" aria-label="File actions">
-          <button onClick={newFile} title="New (Ctrl+N)">New</button>
-          <button onClick={() => void openFile()} title="Open (Ctrl+O)">Open</button>
-          <button onClick={() => void reopenLastClosedSource()} title="Reopen last closed saved source (Ctrl+Shift+T)"
+          <button onClick={newFile} title={"New (" + shortcut('new') + ')'}>New</button>
+          <button onClick={() => void openFile()} title={"Open (" + shortcut('open') + ')'}>Open</button>
+          <button onClick={() => void reopenLastClosedSource()} title={"Reopen last closed saved source (" + shortcut('reopen-closed') + ')'}
             disabled={!isTauri() || !recentlyClosed.entries.length || busy || compilerBusy || compilerSelecting}>Reopen</button>
           <button onClick={() => void openFolder()} title="Choose a folder">Folder</button>
           </div>
           <div className="toolbar-group" role="group" aria-label="Navigation">
-          <button onClick={() => showPalette('commands')} title="Commands (Ctrl+Shift+P)">Commands</button>
+          <button onClick={() => showPalette('commands')} title={"Commands (" + shortcut('commands') + ')'}>Commands</button>
           <button onClick={showStarterTemplates} title="New Scarp starter source templates">Examples</button>
           <button onClick={toggleExplorer}
             aria-expanded={explorerVisible} aria-controls="scarp-explorer"
-            title="Toggle Explorer (Ctrl+B)">Explorer</button>
+            title={"Toggle Explorer (" + shortcut('explorer') + ')'}>Explorer</button>
           <button
             type="button"
             onClick={() => { invalidateProjectSearch(); setSearchOpen((open) => !open); }}
             aria-expanded={searchOpen}
             aria-controls="open-file-search"
-            title="Search all currently open Scarp buffers (Ctrl+Shift+F)"
+            title={"Search all currently open Scarp buffers (" + shortcut('find-open-files') + ')'}
           >Find in Open Files</button>
           </div>
           <div className="toolbar-group" role="group" aria-label="Save and review">
-          <button onClick={() => void saveFile()} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save (Ctrl+S)">Save</button>
+          <button onClick={() => void saveFile()} disabled={!active || busy || compilerBusy || compilerSelecting} title={"Save (" + shortcut('save') + ')'}>Save</button>
           <button onClick={() => void saveAllFiles()} disabled={busy || compilerBusy || compilerSelecting || !documents.some(isDirty)}
-            title="Save All modified Scarp files (Ctrl+Alt+S)">Save All</button>
-          <button onClick={() => void saveFile(true)} disabled={!active || busy || compilerBusy || compilerSelecting} title="Save As (Ctrl+Shift+S)">Save As</button>
+            title={"Save All modified Scarp files (" + shortcut('save-all') + ')'}>Save All</button>
+          <button onClick={() => void saveFile(true)} disabled={!active || busy || compilerBusy || compilerSelecting} title={"Save As (" + shortcut('save-as') + ')'}>Save As</button>
           <button onClick={() => void compareActiveSourceWithDisk()}
             disabled={!isTauri() || !active?.path || busy || compilerBusy || compilerSelecting || compilerScanning}
             title="Read-only snapshot comparison with the current saved file; never overwrites source">Compare with Disk</button>
@@ -2553,7 +2512,7 @@ export default function App() {
           </div>
         </nav>
         <button type="button" className="focus-mode-toggle" aria-pressed={focusMode}
-          onClick={toggleFocusMode} title="Toggle Focus Mode (Ctrl+Alt+Z)">{focusMode ? 'Exit focus' : 'Focus'}</button>
+          onClick={toggleFocusMode} title={"Toggle Focus Mode (" + shortcut('toggle-focus') + ')'}>{focusMode ? 'Exit focus' : 'Focus'}</button>
         <button
           className="settings-toggle"
           type="button"
@@ -2584,6 +2543,8 @@ export default function App() {
             }}
             onChange={intelliSenseStore.update}
             onReset={intelliSenseStore.reset} />}
+          shortcuts={<StudioShortcutSettings bindings={shortcuts.bindings} persistence={shortcuts.persistence}
+            onChange={studioShortcutStore.setBinding} onReset={studioShortcutStore.reset} />}
           portability={<StudioPreferenceTransferPanel
             current={captureStudioPreferences(theme, editorPreferences, intelligence.preferences, workspaceLayout, autoSavePreferences.delay)}
             onApply={(expected, next) => {
@@ -2634,8 +2595,9 @@ export default function App() {
             setTheme('dark');
             setCompilerPreferences({ ...DEFAULT_COMPILER_PREFERENCES });
             intelliSenseStore.reset();
+            studioShortcutStore.reset();
             resetWorkspaceLayout();
-            setNotice('Restored theme, editor, IntelliSense, layout, Auto Save and startup discovery defaults. Compiler approval, recovery and remembered workspace metadata are unchanged.');
+            setNotice('Restored theme, editor, IntelliSense, shortcuts, layout, Auto Save and startup discovery defaults. Compiler approval, recovery and remembered workspace metadata are unchanged.');
           }}
           onClose={() => setEditorSettingsOpen(false)}
           recoveryNeedsReview={recoveryView.previous !== null || recoveryView.blocked}
@@ -2721,7 +2683,7 @@ export default function App() {
           <section className="sidebar-section" aria-label="Scarp declaration outline">
             <div className="sidebar-heading">DECLARATION OUTLINE</div>
             <button type="button" className="file-row" disabled={!active}
-              onClick={() => showPalette('symbols')} title="Go to Declaration (Ctrl+Shift+O)">
+              onClick={() => showPalette('symbols')} title={"Go to Declaration (" + shortcut('go-to-symbol') + ')'}>
               <span className="file-name">Find declaration…</span>
             </button>
             {declarationOutline.map((symbol) => (
@@ -3091,8 +3053,8 @@ export default function App() {
                   <h1>Welcome to Scarp Studio</h1>
                   <p>A local-first workspace for Scarp source code.</p>
                   <div className="welcome-actions" role="group" aria-label="Start editing">
-                    <button type="button" onClick={newFile}><strong>New Scarp file</strong><kbd>Ctrl+N</kbd></button>
-                    <button type="button" onClick={() => void openFile()}><strong>Open source</strong><kbd>Ctrl+O</kbd></button>
+                    <button type="button" onClick={newFile}><strong>New Scarp file</strong><kbd>{shortcut('new')}</kbd></button>
+                    <button type="button" onClick={() => void openFile()}><strong>Open source</strong><kbd>{shortcut('open')}</kbd></button>
                     <button type="button" onClick={() => void openFolder()}><strong>Open project folder</strong><span>Explorer</span></button>
                     <button type="button" onClick={showStarterTemplates}><strong>Browse starter examples</strong><span>Scarp templates</span></button>
                   </div>
@@ -3125,7 +3087,7 @@ export default function App() {
                   disabled={runBlock !== null}
                   className="compiler-run-primary"
                   aria-describedby={runHint ? 'compiler-action-guidance' : undefined}
-                  title={runHint ?? 'Execute the saved Scarp source using the official compiler (F5)'}>▶ Run</button>
+                  title={runHint ?? ('Execute the saved Scarp source using the official compiler (' + shortcut('run-scarp') + ')')}>▶ Run</button>
                 <button onClick={() => void runCompiler('verify')}
                   disabled={verifyBlock !== null}
                   aria-describedby={verifyHint ? 'compiler-action-guidance' : undefined}
@@ -3145,7 +3107,7 @@ export default function App() {
                   title="Toggle expanded output panel">{outputPanelMode === 'expanded' ? 'Restore size' : 'Expand'}</button>
                 <button type="button" ref={outputToggle} aria-expanded={outputPanelMode !== 'collapsed'}
                   aria-controls="compiler-panel-body" onClick={toggleOutputPanel}
-                  title="Toggle output panel (Ctrl+J)">{outputPanelMode === 'collapsed' ? 'Show output' : 'Hide output'}</button>
+                  title={"Toggle output panel (" + shortcut('toggle-output') + ')'}>{outputPanelMode === 'collapsed' ? 'Show output' : 'Hide output'}</button>
               </div>
             </div>
             <div id="compiler-action-guidance" className="compiler-action-guidance">
@@ -3261,7 +3223,7 @@ export default function App() {
             </div>
             <div className="results-view-switch" role="group" aria-label="Compiler result view">
               <button type="button" aria-pressed={resultsView === 'output'} onClick={() => setResultsView('output')}>Output</button>
-              <button type="button" ref={problemsTab} aria-pressed={resultsView === 'problems'} onClick={showProblems} title="Show Problems (Ctrl+Shift+M)">Problems ({problems.length})</button>
+              <button type="button" ref={problemsTab} aria-pressed={resultsView === 'problems'} onClick={showProblems} title={"Show Problems (" + shortcut('show-problems') + ')'}>Problems ({problems.length})</button>
             </div>
             <div className="compiler-results" tabIndex={0} aria-label="Compiler results and diagnostics">
             {resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
@@ -3312,8 +3274,8 @@ export default function App() {
                 <span>{diagnostic.message}</span>
                 {navigableDiagnostic && (
                   <button type="button" disabled={busy || compilerBusy || compilerSelecting} onClick={revealDiagnostic}
-                    title="Navigate to this compiler error in the unchanged saved Scarp source (F8)">
-                    Go to line {diagnostic.line}, column {diagnostic.column} (F8)
+                    title={"Navigate to this compiler error in the unchanged saved Scarp source (" + shortcut('next-diagnostic') + ')'}>
+                    Go to line {diagnostic.line}, column {diagnostic.column} ({shortcut('next-diagnostic')})
                   </button>
                 )}
                 {diagnostic.help && <span className="compiler-diagnostic-help">{diagnostic.help}</span>}
@@ -3410,14 +3372,14 @@ export default function App() {
         </div>
       )}
       <footer className="status-bar">
-        {focusMode && <button type="button" className="status-nav" onClick={toggleFocusMode} title="Exit Focus Mode (Ctrl+Alt+Z)">Focus mode · Exit</button>}
+        {focusMode && <button type="button" className="status-nav" onClick={toggleFocusMode} title={"Exit Focus Mode (" + shortcut('toggle-focus') + ')'}>Focus mode · Exit</button>}
         <span className="status-notice" role="status" title={busy ? 'Working…' : notice}>{busy ? 'Working…' : notice}</span>
         <div className="status-items" aria-label="Editor status">
-        <button type="button" className="status-nav status-problems" onClick={showProblems} title="Show current structured problems (Ctrl+Shift+M)">
+        <button type="button" className="status-nav status-problems" onClick={showProblems} title={"Show current structured problems (" + shortcut('show-problems') + ')'}>
           Problems: {problems.length}
         </button>
         <button className="status-nav" onClick={() => showPalette('line')} disabled={!active}
-          title="Go to Line (Ctrl+G)">
+          title={"Go to Line (" + shortcut('go-to-line') + ')'}>
           {active ? 'Ln ' + cursor.line + ', Col ' + cursor.column : ''}
         </button>
         <span title={compilerPath || automaticCompiler || 'No compiler detected'}>
@@ -3425,7 +3387,7 @@ export default function App() {
             automaticCompiler ? 'Compiler detected · approval required' : 'Compiler not detected'}
         </span>
         <button type="button" className="status-nav"
-          onClick={() => setEditorSettingsOpen(true)} title="Configure Auto Save (Ctrl+,)">
+          onClick={() => setEditorSettingsOpen(true)} title={"Configure Auto Save (" + shortcut('settings') + ')'}>
           Auto Save: {autoSavePreferences.enabled ? 'On' : 'Off'}
           {autoSaveReview.current.reviewCount(documents) > 0 &&
             ' · Review ' + autoSaveReview.current.reviewCount(documents)}

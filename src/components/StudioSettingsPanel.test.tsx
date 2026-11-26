@@ -23,9 +23,9 @@ describe('Settings center rendered controls', () => {
     for (const label of ['Search settings', 'Appearance', 'Code editor',
       'Files and Auto Save', 'Workspace layout', 'Recovery controls', 'Compiler configuration', 'Compiler controls', 'IntelliSense controls',
       'Reset editor only', 'Reset Auto Save only', 'Reset layout only',
-      'Studio preference transfer', 'Restore preference defaults', 'Close settings']) expect(html).toContain(label);
+      'Studio preference transfer', 'Keyboard shortcuts', 'Restore preference defaults', 'Close settings']) expect(html).toContain(label);
     expect(html).toContain('Recovery copies and remembered workspace data are unchanged.');
-    expect(html).toContain('8 settings group(s)');
+    expect(html).toContain('9 settings group(s)');
   });
   it('renders explicit labels and current editor flags', () => {
     const html = render({ editor: { ...DEFAULT_EDITOR_PREFERENCES, lineNumbers: false, smoothScrolling: true } });

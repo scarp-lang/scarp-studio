@@ -318,3 +318,12 @@ actually testing the Studio desktop build.**
 | S40 | Review an import, change a preference, then confirm. Re-review, apply, and review undo; change a preference before undo. | Stale import/undo is refused. A valid undo restores the previous portable snapshot only. No file writes are triggered by enabling Auto Save. | NOT RUN |
 
 | S41 | Save named Studio configurations, switch preferences, review a saved configuration, rename/replace/delete with confirmation, reopen Studio. | Named snapshots remain distinct from IntelliSense-only profiles; application uses the reviewed preference diff; malformed or externally modified storage cannot be silently overwritten. | NOT RUN |
+
+
+### Keyboard shortcut customization (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S42 | Change New/Open/Save/Go to Line to supported unused alternatives, reopen settings, restart Studio. | New bindings work; previous ones are released; displayed toolbar and palette shortcut hints follow current bindings. | NOT RUN |
+| S43 | Try duplicate bindings, disable a configurable command, reset a binding and reset all. | Conflicts are rejected, disabled commands remain accessible by UI, defaults restore, Settings and Stop remain fixed. | NOT RUN |
+| S44 | Test Ctrl/Meta, exact modifier combinations, held keys, AltGraph and composition input, and Monaco editing shortcuts. | Unmatched input is not intercepted. Only tab cycling repeats; composition/AltGraph input remains untouched. OS-reserved shortcuts may not reach Studio. | NOT RUN |

@@ -13,6 +13,7 @@ interface Props {
   compiler: ReactNode;
   intelliSense: ReactNode;
   portability?: ReactNode;
+  shortcuts?: ReactNode;
   recoveryNeedsReview: boolean;
   onTheme: (theme: 'dark' | 'light') => void;
   onEditorChange: (patch: Partial<EditorPreferences>) => void;
@@ -162,6 +163,10 @@ export function StudioSettingsPanel(props: Props) {
           <legend>Compiler configuration</legend>
           {props.compiler}
         </fieldset>
+        <fieldset className="settings-group settings-shortcuts" hidden={hidden('shortcuts')}>
+          <legend>Keyboard shortcuts</legend>
+          {props.shortcuts ?? <p>Shortcut configuration is unavailable.</p>}
+        </fieldset>
         <fieldset className="settings-group settings-portability" hidden={hidden('portability')}>
           <legend>Studio preference transfer</legend>
           {props.portability ?? <p>Preference transfer is unavailable.</p>}
@@ -170,7 +175,7 @@ export function StudioSettingsPanel(props: Props) {
       </div>
       <footer className="settings-footer">
         <button className="settings-reset" type="button" onClick={props.onResetAll}>Restore preference defaults</button>
-        <span>Resets theme, editor, IntelliSense, workspace layout, Auto Save and startup discovery. Compiler approval is unchanged. Recovery copies and remembered workspace data are unchanged.</span>
+        <span>Resets theme, editor, IntelliSense, keyboard shortcuts, workspace layout, Auto Save and startup discovery. Compiler approval is unchanged. Recovery copies and remembered workspace data are unchanged.</span>
       </footer>
     </section>
   );

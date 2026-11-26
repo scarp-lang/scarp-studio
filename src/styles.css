@@ -1464,3 +1464,14 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .studio-saved-profiles .saved-profile-count { color: var(--muted); }
 .studio-saved-profiles .saved-profile-summary { display: grid; gap: 4px; grid-template-columns: minmax(0, 1fr) auto; margin: 0; }
 .studio-saved-profiles .saved-profile-summary dd { margin: 0; text-align: right; }
+
+
+.settings-shortcuts { grid-column: 1 / -1; min-width: 0; }
+.shortcut-settings { display: grid; gap: 8px; min-width: 0; }
+.shortcut-settings input[type="search"] { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); border-radius: 5px; font: inherit; }
+.shortcut-settings .shortcut-row { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(120px, 1fr) auto; gap: 6px; align-items: center; }
+.shortcut-settings .shortcut-row select { min-width: 0; max-width: 100%; }
+.shortcut-settings .shortcut-list { max-height: 330px; overflow: auto; display: grid; gap: 7px; }
+.shortcut-settings .shortcut-row small { grid-column: 1 / -1; color: var(--muted); }
+@media (max-width: 650px) { .shortcut-settings .shortcut-row { grid-template-columns: minmax(0, 1fr); } }
