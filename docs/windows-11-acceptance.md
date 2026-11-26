@@ -271,3 +271,11 @@ actually testing the Studio desktop build.**
 | S21 | Block profile storage or inject malformed saved profiles, open Settings and try profile management. | Session-only warning or explicit blocked-state recovery is displayed. Corrupt stored profiles are not silently overwritten; normal IntelliSense controls remain available. | NOT RUN |
 
 | S22 | Rename a saved profile, attempt an existing name (including a case-only collision with another profile), and export/import JSON containing duplicate fields or an oversized paste. | Rename preserves preferences and requires explicit confirmation. Duplicate/ambiguous JSON and oversized paste are rejected without applying any changes. | NOT RUN |
+
+
+### Settings-only IntelliSense preview (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S23 | Open Settings IntelliSense preview; select templates, built-ins, types and local completion examples; switch suggestion sources, mode, priority and limit. | Results are derived from the same catalog/pipeline as the provider, including off mode. No source buffer or workspace files change. | NOT RUN |
+| S24 | Select local hover, signature, definition and document symbols examples and independently toggle each control. | Preview updates from the same bounded local analysis functions; disabled features produce no results. Preview is explicitly marked as a built-in sample, not a compiler result. | NOT RUN |

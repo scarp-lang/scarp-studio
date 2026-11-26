@@ -1,4 +1,5 @@
 import { IntelliSenseProfilePanel } from './IntelliSenseProfilePanel';
+import { IntelliSensePreviewPanel } from './IntelliSensePreviewPanel';
 import {
   ANALYSIS_BUDGETS, COMPLETION_MODES, ENTER_BEHAVIORS, HOVER_DELAYS,
   INTELLISENSE_PRESETS, SUGGESTION_DELAYS, SUGGESTION_LIMITS, TAB_BEHAVIORS,
@@ -138,6 +139,7 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
           <p>Existing lexical token, nesting and identifier limits still apply. This is not a setting for compiler memory or program limits.</p>
         </div>
       </div>
+      <IntelliSensePreviewPanel preferences={p} />
       <IntelliSenseProfilePanel preferences={p} onApply={onChange} />
       <button type="button" className="settings-reset" onClick={onReset}>Reset IntelliSense only</button>
     </div>

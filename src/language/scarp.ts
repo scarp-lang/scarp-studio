@@ -1,10 +1,11 @@
 import type * as Monaco from 'monaco-editor';
-import { readIntelliSensePreferences, allowsCatalogKind, type IntelliSensePreferences } from '../model/intelliSensePreferences';
+import { readIntelliSensePreferences, type IntelliSensePreferences } from '../model/intelliSensePreferences';
 import { LocalAnalysisCache } from './localAnalysis';
-import { canCompleteLocalFunction, type LocalFunctionCompletion } from './localCompletion';
+import { canCompleteLocalFunction } from './localCompletion';
+import { collectScarpSuggestions, scarpCompletionEnabled } from './suggestionPipeline';
 import { MAX_DEFINITION_SOURCE_UNITS } from './definition';
 import {
-  isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scarpCompletions, scarpTokenHelp,
+  isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scarpTokenHelp,
   type ScarpCompletion,
 } from './assist';
 
@@ -108,10 +109,8 @@ export function registerScarpLanguage(monaco: typeof Monaco,
   monaco.languages.registerCompletionItemProvider('scarp', {
     provideCompletionItems(model, position, _context, token) {
       const settings = preferences();
-      if (settings.completionMode === 'off' || token?.isCancellationRequested ||
+      if (!scarpCompletionEnabled(settings) || token?.isCancellationRequested ||
           !canAssistAtColumn(position.column)) return { suggestions: [] };
-      if (!settings.localFunctions && !settings.builtins && !settings.templates &&
-          !settings.keywordsAndTypes) return { suggestions: [] };
       const line = model.getLineContent(position.lineNumber);
       if (!isScarpCodePosition(line, position.column - 1)) return { suggestions: [] };
       const word = model.getWordUntilPosition(position);
@@ -130,39 +129,24 @@ export function registerScarpLanguage(monaco: typeof Monaco,
         startColumn: word.startColumn,
         endColumn,
       };
-      const builtins = scarpCompletions(word.word, item => allowsCatalogKind(settings, item.kind));
-      let local: LocalFunctionCompletion[] = [];
-      const sourceLength = settings.localFunctions ? model.getValueLength() : 0;
-      if (settings.localFunctions && canCompleteLocalFunction(line, word.startColumn - 1, word.word) &&
-          sourceLength > 0 && sourceLength <= Math.min(MAX_DEFINITION_SOURCE_UNITS, settings.localAnalysisKiB * 1024)) {
+      const planned = collectScarpSuggestions(settings, word.word, exclude => {
+        const sourceLength = model.getValueLength();
+        if (!canCompleteLocalFunction(line, word.startColumn - 1, word.word) ||
+            sourceLength <= 0 || sourceLength > Math.min(MAX_DEFINITION_SOURCE_UNITS, settings.localAnalysisKiB * 1024)) return [];
         const analysis = localAnalysis.get(model, settings.localAnalysisKiB * 1024);
-        if (analysis) {
-          const start = model.getOffsetAt({ lineNumber: position.lineNumber, column: word.startColumn });
-          const end = model.getOffsetAt({ lineNumber: position.lineNumber, column: endColumn });
-          local = analysis.complete(start, end, word.word, new Set(builtins.map(item => item.label)));
-        }
-      }
-      const localItems: Monaco.languages.CompletionItem[] = local.map(item => ({
-          label: item.name,
-          kind: monaco.languages.CompletionItemKind.Function,
-          insertText: item.name,
-          range,
-          detail: item.detail,
-          documentation: 'Local Scarp function declaration (editor-only).',
-          sortText: (settings.preferLocal ? '0_' : '1_') + item.name,
-        }));
-      const catalogItems: Monaco.languages.CompletionItem[] = builtins.map((item) => ({
-          label: item.label,
-          kind: completionKinds[item.kind],
-          insertText: item.insertText,
-          insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
-          range,
-          detail: item.detail,
-          documentation: item.documentation,
-          sortText: (settings.preferLocal ? '1_' : '0_') + item.label,
-        }));
-      const suggestions = settings.preferLocal ? [...localItems, ...catalogItems] : [...catalogItems, ...localItems];
-      return { suggestions: token?.isCancellationRequested ? [] : suggestions.slice(0, settings.suggestionLimit) };
+        if (!analysis) return [];
+        const start = model.getOffsetAt({ lineNumber: position.lineNumber, column: word.startColumn });
+        const end = model.getOffsetAt({ lineNumber: position.lineNumber, column: endColumn });
+        return analysis.complete(start, end, word.word, exclude);
+      });
+      const suggestions: Monaco.languages.CompletionItem[] = planned.map(item => ({
+        label: item.label,
+        kind: completionKinds[item.kind],
+        insertText: item.insertText,
+        ...(item.source === 'catalog' ? { insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet } : {}),
+        range, detail: item.detail, documentation: item.documentation, sortText: item.sortText,
+      }));
+      return { suggestions: token?.isCancellationRequested ? [] : suggestions };
     },
   });
 
