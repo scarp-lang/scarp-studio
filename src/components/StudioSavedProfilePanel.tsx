@@ -43,7 +43,7 @@ export function StudioSavedProfilePanel({ current, onReview, store = studioProfi
     if (pending.action.kind === 'rename') {
       setSelection(profileIdentity(pending.action.name)); setRename('');
     } else if (pending.action.kind === 'remove' || pending.action.kind === 'discard') setSelection('');
-    feedback(state.persistence === 'session-only' ? 'Saved configuration updated for this session.' : 'Saved configuration updated.');
+    feedback(store.getSnapshot().persistence === 'session-only' ? 'Saved configuration updated for this session.' : 'Saved configuration updated.');
   }
   return <section className="studio-saved-profiles" aria-label="Named Studio configurations">
     <h3>Named Studio configurations</h3>

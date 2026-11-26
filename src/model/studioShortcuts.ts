@@ -100,10 +100,10 @@ export function matchStudioShortcut(event: ShortcutEvent, bindings: ShortcutBind
   const chord = normalizeShortcutEvent(event);
   return chord ? SHORTCUT_COMMANDS.find(item => bindings[item.id] === chord)?.id ?? null : null;
 }
-export function studioCommandDetail(id: string, detail: string, bindings: ShortcutBindings): string {
+export function studioCommandDetail(id: string, detail: string | undefined, bindings: ShortcutBindings): string | undefined {
   if (!commandMap.has(id as ShortcutCommand)) return detail;
   const binding = bindings[id as ShortcutCommand];
-  const suffix = detail.includes(' · ') ? detail.slice(detail.indexOf(' · ')) : '';
+  const suffix = detail?.includes(' · ') ? detail.slice(detail.indexOf(' · ')) : '';
   return shortcutLabel(binding) + suffix;
 }
 export function searchStudioShortcuts(query: string, modifiedOnly: boolean, bindings: ShortcutBindings) {

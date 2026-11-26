@@ -2427,7 +2427,7 @@ export default function App() {
       }
       const command = matchStudioShortcut(event, studioShortcutStore.getSnapshot().bindings);
       if (!command) return;
-      if (paletteMode !== null && !['settings', 'quick-open', 'commands', 'go-to-line', 'go-to-symbol'].includes(command)) return;
+      if (paletteMode !== null && !['settings', 'quick-open', 'commands', 'go-to-line', 'go-to-symbol', 'stop-scarp'].includes(command)) return;
       if (command === 'next-diagnostic' && (!navigableDiagnostic || busy || compilerBusy || compilerSelecting)) return;
       event.preventDefault();
       if (event.repeat && command !== 'next-tab' && command !== 'previous-tab') return;

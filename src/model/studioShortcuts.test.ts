@@ -43,6 +43,8 @@ describe('Studio command shortcut policy', () => {
   it('renders updated command details without losing nonshortcut information', () => {
     expect(studioCommandDetail('run-scarp', 'F5 · saved .srp only', { ...defaults, 'run-scarp': null })).toBe('Unassigned · saved .srp only');
     expect(studioCommandDetail('folder', 'Explorer', defaults)).toBe('Explorer');
+    expect(studioCommandDetail('folder', undefined, defaults)).toBeUndefined();
+    expect(studioCommandDetail('save', undefined, defaults)).toBe('Ctrl+S');
     expect(searchStudioShortcuts('CTRL+S', false, defaults).some(item => item.id === 'save')).toBe(true);
     expect(searchStudioShortcuts('', true, { ...defaults, save: null }).map(item => item.id)).toEqual(['save']);
   });
