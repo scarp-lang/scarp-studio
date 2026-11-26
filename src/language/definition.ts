@@ -3,6 +3,7 @@ import {
   type ScarpFunctionSymbol,
 } from './assist';
 import { scanScarpSource, tokenAtOffset, scarpInsightIdentifier } from './sourceLex';
+import { blocksLocalFunctionName } from './localCallContext';
 
 /** Editor-only, bounded lookup for unqualified function calls. It is not
  * compiler symbol resolution: imports, field access, and duplicate names
@@ -53,9 +54,8 @@ export function scarpCallNameAtOffset(source: string, offset: number): string | 
   const before = lexical.tokens[previous];
   const after = lexical.tokens[next];
   if (!after || after.kind !== 'delimiter' || after.text !== '(') return null;
-  if (before && (before.kind === 'identifier' &&
-      ['funcra', 'new', 'record', 'variant', 'bind', 'var', 'import', 'as'].includes(before.text) ||
-      before.kind === 'operator' && /[.:>]$/.test(before.text))) return null;
+  if (before && (before.kind === 'identifier' || before.kind === 'operator') &&
+      blocksLocalFunctionName(before.text)) return null;
   // Unsupported adjacent non-ASCII identifier characters must not make a
   // suffix appear to be an independent ASCII Scarp name.
   if (token.start > 0 && /[^\x00-\x7f]/.test(source[token.start - 1]) ||

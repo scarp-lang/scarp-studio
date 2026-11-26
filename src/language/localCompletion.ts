@@ -2,6 +2,7 @@ import { MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS, isScarpCodePosition
 import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS } from './definition';
 import { readLocalParameters } from './signature';
 import { scanScarpSource, tokenAtOffset } from './sourceLex';
+import { blocksLocalFunctionName } from './localCallContext';
 
 export interface LocalFunctionCompletion {
   name: string;
@@ -52,9 +53,8 @@ export function canCompleteLocalFunctionAtOffset(
   while (previous >= 0 && lexical.tokens[previous].kind === 'comment') previous--;
   const before = lexical.tokens[previous];
   if (!before) return true;
-  if (before.kind === 'identifier' &&
-      ['funcra', 'new', 'record', 'variant', 'bind', 'var', 'import', 'as'].includes(before.text)) return false;
-  return before.kind !== 'operator' || !/[.:>]$/.test(before.text);
+  return (before.kind !== 'identifier' && before.kind !== 'operator') ||
+    !blocksLocalFunctionName(before.text);
 }
 
 export function completeLocalFunctions(

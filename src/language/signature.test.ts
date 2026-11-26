@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { activeLocalCall, localSignatureAt, readLocalParameters, MAX_SIGNATURE_HEADER_UNITS } from './signature';
+import { MAX_INSIGHT_TOKENS } from './sourceLex';
 
 const header = 'pure funcra add(a: integer, b: integer) -> integer { return a + b; }\n';
 function at(text: string) {
@@ -46,5 +47,39 @@ describe('local function signature assistance', () => {
     expect(readLocalParameters('(' + ' '.repeat(MAX_SIGNATURE_HEADER_UNITS) + ')', 0)).toBeNull();
     expect(activeLocalCall('add(', -1)).toBeNull();
     expect(activeLocalCall('add(', 5)).toBeNull();
+  });
+});
+
+describe('conservative signature context', () => {
+  it('rejects declaration and qualified contexts across line breaks and comments', () => {
+    for (const previous of ['funcra', 'new', 'record', 'variant', 'bind',
+      'var', 'import', 'as', 'math.', 'Choice::', 'obj->']) {
+      expect(at(header + previous + '\r\n// note\nadd(|);'), previous).toBeNull();
+    }
+    expect(at(header + 'add\n// arguments\n(1, |);')?.activeParameter).toBe(1);
+  });
+
+  it('does not borrow an outer signature for indirect or unsupported invocations', () => {
+    for (const inner of ['factory()(', '(factory)(', 'items[0](', '"name"(', '123(']) {
+      expect(at(header + 'add(' + inner + '|), 2);'), inner).toBeNull();
+    }
+    expect(at(header + 'add(factory()(1), |);')?.activeParameter).toBe(1);
+    expect(at(header + 'add((1, 2), |);')?.activeParameter).toBe(1);
+    expect(at(header + 'add([1, 2], |);')?.activeParameter).toBe(1);
+  });
+
+  it('rejects unsupported identifier fragments and invalid code controls', () => {
+    for (const name of ['éadd', 'addé', 'add\u0000', 'add\u007f', 'a'.repeat(129)]) {
+      expect(activeLocalCall(name + '(', name.length + 1), name).toBeNull();
+      expect(at(header + 'add(' + name + '(|), 2);'), name).toBeNull();
+    }
+    expect(at(header + 'add("हिन्दी, é", |);')?.activeParameter).toBe(1);
+    expect(at(header + '// हिन्दी é\nadd(1, |);')?.activeParameter).toBe(1);
+  });
+
+  it('limits significant prefix tokens even within the source length budget', () => {
+    const dense = 'x;'.repeat(MAX_INSIGHT_TOKENS / 2);
+    expect(activeLocalCall(dense + 'add(', dense.length + 4)).toBeNull();
+    expect(activeLocalCall('x;add(', 6)).toEqual({ name: 'add', argument: 0 });
   });
 });

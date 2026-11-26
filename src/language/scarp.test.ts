@@ -392,6 +392,20 @@ describe('Scarp editor assistance registration', () => {
     });
     expect(signatures.provideSignatureHelp(signatureModel, { lineNumber: 2, column: 8 },
       { isCancellationRequested: true })).toBeNull();
+    for (const context of ['math.\nadd(', 'record\nadd(', 'éadd(', 'add(factory()(']) {
+      const text = 'funcra add(a: integer, b: integer) -> integer {}\n' + context;
+      const candidate = {
+        getValueLength: () => text.length, getValue: () => text,
+        getOffsetAt: () => text.length,
+      };
+      expect(signatures.provideSignatureHelp(candidate,
+        { lineNumber: text.split('\n').length, column: context.split('\n').at(-1)!.length + 1 },
+        { isCancellationRequested: false }), context).toBeNull();
+    }
+    expect(signatures.provideSignatureHelp({
+      getValueLength: () => 1024 * 1024,
+      getValue: () => { throw new Error('large buffer must not be copied'); },
+    }, { lineNumber: 2, column: 8 }, { isCancellationRequested: false })).toBeNull();
     const outline = provideSymbols.mock.calls[0][1] as {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
     };

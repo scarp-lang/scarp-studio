@@ -1,5 +1,7 @@
 import { MAX_ASSIST_SCAN_UNITS } from './assist';
 import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS } from './definition';
+import { blocksIndirectCall, blocksLocalFunctionName } from './localCallContext';
+import { MAX_INSIGHT_TOKENS, scarpInsightIdentifier } from './sourceLex';
 
 export const MAX_SIGNATURE_HEADER_UNITS = 2048;
 export const MAX_SIGNATURE_PARAMETERS = 64;
@@ -30,10 +32,16 @@ export function activeLocalCall(source: string, offset: number): { name: string;
   let last = '';
   let beforeLast = '';
   let i = 0;
+  let tokenCount = 0;
   const remember = (value: string) => { beforeLast = last; last = value; };
   while (i < offset) {
     const char = source[i];
+    // The editor's local symbol index recognizes ASCII identifiers. Do not
+    // reinterpret unsupported Unicode code or control units as punctuation.
+    // Unicode inside strings and comments is consumed by their own branches.
+    if (/[^\x00-\x7f]/.test(char) || /[\x00-\x08\x0b\x0e-\x1f\x7f]/.test(char)) return null;
     if (/\s/.test(char)) { i++; continue; }
+    if (++tokenCount > MAX_INSIGHT_TOKENS) return null;
     if (char === '/' && source[i + 1] === '/') {
       while (i < offset && source[i] !== '\r' && source[i] !== '\n') i++;
       if (i === offset) return null;
@@ -63,8 +71,9 @@ export function activeLocalCall(source: string, offset: number): { name: string;
     }
     if (char === '(' || char === '[' || char === '{') {
       const named = char === '(' && /^[A-Za-z_][A-Za-z_0-9]*$/.test(last);
-      const blocked = named && (beforeLast === '.' || beforeLast === ':' || beforeLast === '>' ||
-        beforeLast === 'funcra' || beforeLast === 'new');
+      const blocked = char === '(' && (named
+        ? !scarpInsightIdentifier(last) || blocksLocalFunctionName(beforeLast)
+        : blocksIndirectCall(last));
       frames.push({
         close: char === '(' ? ')' : char === '[' ? ']' : '}',
         call: named && !blocked ? last : null, blocked, commas: 0,
