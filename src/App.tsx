@@ -1,3 +1,5 @@
+import { userSnippetStore } from './model/userSnippets';
+import { buildSnippetPaletteEntries, planSnippetInsertion, isSnippetPaletteEntry } from './model/snippetInsertion';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Editor from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
@@ -280,6 +282,7 @@ export default function App() {
   const theme = resolvedAppearance.theme;
   function toggleTheme() { setAppearance(current => ({ ...current, theme: theme === 'dark' ? 'light' : 'dark' })); }
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
+  const userSnippets = useSyncExternalStore(userSnippetStore.subscribe, userSnippetStore.getSnapshot, userSnippetStore.getSnapshot);
   const shortcuts = useSyncExternalStore(studioShortcutStore.subscribe, studioShortcutStore.getSnapshot, studioShortcutStore.getSnapshot);
   const shortcut = (id: ShortcutCommand) => shortcutLabel(shortcuts.bindings[id]);
   const intelligence = useSyncExternalStore(intelliSenseStore.subscribe,
@@ -623,7 +626,8 @@ export default function App() {
 
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
     ? buildQuickOpenEntries(documents, folderEntries)
-    : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : studioCommands.map(entry => ({ ...entry, detail: studioCommandDetail(entry.id, entry.detail, shortcuts.bindings) }));
+    : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : [...studioCommands.map(entry => ({ ...entry, detail: studioCommandDetail(entry.id, entry.detail, shortcuts.bindings) })),
+      ...buildSnippetPaletteEntries(userSnippets, active)];
   const paletteResults = paletteMode === 'line'
     ? []
     : filterNavigationEntries(paletteEntries, paletteQuery);
@@ -726,6 +730,30 @@ export default function App() {
       return;
     }
     if (mode !== 'commands') return;
+    if (isSnippetPaletteEntry(entry)) {
+      const current = currentActiveDocument(liveEditor.current);
+      const editor = editorHandle.current;
+      const model = editor?.getModel();
+      const selection = editor?.getSelection();
+      if (!current || !editor || !model || !selection || mountedEditorDocumentId.current !== current.id ||
+          model.getValue() !== current.content || busy || compilerBusy || compilerSelecting ||
+          editor.getSelections()?.length !== 1 || (mountedMonaco.current &&
+          editor.getOption(mountedMonaco.current.editor.EditorOption.readOnly))) {
+        setError('Choose a current editable Scarp source and a single selection before inserting a snippet.'); return;
+      }
+      const plan = planSnippetInsertion(current, entry, userSnippetStore.getSnapshot(), {
+        start: model.getOffsetAt(selection.getStartPosition()),
+        end: model.getOffsetAt(selection.getEndPosition()),
+      }, model.getEOL());
+      if (!plan.ok) { setError(plan.error); return; }
+      editor.pushUndoStop();
+      const applied = editor.executeEdits('studio-user-snippet', [{ range: selection, text: plan.value.text, forceMoveMarkers: true }]);
+      if (!applied) { setError('The editor could not insert the snippet.'); return; }
+      editor.pushUndoStop();
+      editor.setPosition(model.getPositionAt(plan.value.caret));
+      editor.focus(); setError(null); setNotice('Inserted user snippet defaults: ' + entry.prefix);
+      return;
+    }
     if (entry.id.startsWith('template:')) {
       createFromTemplate(entry.id.slice('template:'.length));
       return;

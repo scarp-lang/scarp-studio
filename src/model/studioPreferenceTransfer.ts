@@ -122,10 +122,10 @@ const editorLabels: Record<keyof EditorPreferences, string> = {
 function display(value: string | number | boolean, suffix = ''): string {
   return typeof value === 'boolean' ? value ? 'On' : 'Off' : String(value) + suffix;
 }
-export function diffStudioPreferences(before: StudioPortablePreferences, after: StudioPortablePreferences): StudioPreferenceChange[] {
+export function diffStudioPreferences(before: StudioPortablePreferences, after: StudioPortablePreferences, includeUnchanged = false): StudioPreferenceChange[] {
   const changes: StudioPreferenceChange[] = [];
   function push(group: PortableGroup, key: string, label: string, a: string | number | boolean, b: string | number | boolean, suffix = '') {
-    if (a !== b) changes.push({ group, key, label, before: display(a, suffix), after: display(b, suffix) });
+    if (includeUnchanged || a !== b) changes.push({ group, key, label, before: display(a, suffix), after: display(b, suffix) });
   }
   push('appearance', 'theme', 'Color theme', before.appearance.theme, after.appearance.theme);
   push('appearance', 'contrast', 'Contrast preference', before.appearance.contrast, after.appearance.contrast);
@@ -133,7 +133,7 @@ export function diffStudioPreferences(before: StudioPortablePreferences, after: 
   for (const key of Object.keys(editorLabels) as (keyof EditorPreferences)[]) {
     push('editor', key, editorLabels[key], before.editor[key], after.editor[key], key === 'fontSize' ? ' px' : key === 'tabSize' ? ' spaces' : '');
   }
-  for (const change of diffIntelliSensePreferences(before.intelliSense, after.intelliSense)) changes.push({ group: 'intelliSense', ...change });
+  for (const change of diffIntelliSensePreferences(before.intelliSense, after.intelliSense, includeUnchanged)) changes.push({ group: 'intelliSense', ...change });
   push('layout', 'explorerWidth', 'Explorer width', before.layout.explorerWidth, after.layout.explorerWidth, ' px');
   push('layout', 'outputHeight', 'Output height', before.layout.outputHeight, after.layout.outputHeight, ' px');
   push('files', 'autoSaveDelay', 'Auto Save delay', before.files.autoSaveDelay, after.files.autoSaveDelay, ' ms');

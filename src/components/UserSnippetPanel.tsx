@@ -65,7 +65,7 @@ export function UserSnippetPanel({ available, store = userSnippetStore }: Props)
   }
   return <section className="intellisense-section user-snippet-panel" id="studio-user-snippets" tabIndex={-1} aria-label="User Scarp snippets">
     <h3>User Scarp snippets</h3>
-    <p>Save reusable text templates for explicit insertion through completion. Snippets are local and separate from preference profiles; they never run or modify files on their own.</p>
+    <p>Save reusable text templates for explicit insertion through completion. Snippets are local and separate from preference profiles; they never run or modify files on their own. The command palette can also insert their expanded default text at a single selection; use completion for interactive tab stops.</p>
     <p role="status">{snapshot.items.length} / {MAX_USER_SNIPPETS} snippets · {snapshot.items.filter(item => item.enabled).length} enabled</p>
     {!available && <p>Snippet suggestions are currently disabled by IntelliSense settings. The library remains editable.</p>}
     {snapshot.persistence === 'session-only' && <p>Changes apply in this session; persistent storage is unavailable.</p>}
