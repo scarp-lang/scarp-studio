@@ -86,6 +86,8 @@ jobs:
         run: npm run test:release-candidate
       - name: Frontend production bundle
         run: npm run build
+      - name: Browser Settings interaction smoke
+        run: npm run test:settings-browser
       - name: Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
       - name: Native Rust compilation
