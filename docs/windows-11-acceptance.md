@@ -221,3 +221,12 @@ actually testing the Studio desktop build.**
 | D05 | Verify the exact-run candidate exe and NSIS installer using `scripts/verify-windows-artifacts.ps1`; introduce an extra normal/hidden old installer, then retry from a clean three-file folder | Both hashes match their trusted run manifest only when there are exactly three trusted files; missing, corrupted, extra or hidden mixed-run files, hidden directories and linked files fail closed; no candidate binaries executed | NOT RUN |
 
 **Release decision:** Keep consolidated PR #82 and its stacked source PRs in draft while any required item is NOT RUN or FAIL. Record failures as reproducible cases (exact commit, OS build, steps, expected/actual behavior, logs/screenshots) before requesting another candidate. Do not tag, publish or claim stable readiness based only on CI success.
+
+## Settings center — additional acceptance (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S01 | Open Settings using the toolbar and Ctrl+, in both themes; resize to a short, narrow Windows window; search for font, indentation, autosave, layout, then nonsense and clear | Groups filter by matching words, no-results text appears, controls remain keyboard accessible, panel scrolls independently and editor remains usable | NOT RUN |
+| S02 | Change font family, line numbers, active-line highlight, indentation guides, bracket colors and smooth scrolling; switch tabs and restart Studio | Selected options apply and persist without changing source bytes or dirty state; unavailable fonts use the defined fallback | NOT RUN |
+| S03 | Enable Auto Save, customize editor, theme and layout; reset editor only, then Auto Save only, then all preferences while an automatic save preflight is pending | Individual resets affect only their named category; all resets explicitly restore theme/editor/layout and disable Auto Save synchronously, without erasing recovery or remembered workspace data | NOT RUN |
+| S04 | Open with a previous-session recovery checkpoint or blocked recovery state; search for an unrelated setting | Recovery review remains visible and cannot be removed through settings reset or filtered out; removal still requires explicit recovery confirmation | NOT RUN |

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, parseEditorPreferences, TAB_SIZES,
+  editorDisplayOptions, EDITOR_FONTS, MAX_EDITOR_PREFERENCES_UNITS,
 } from './editorPreferences';
 
 describe('local-only Scarp editor preferences', () => {
@@ -13,8 +14,7 @@ describe('local-only Scarp editor preferences', () => {
     expect(parseEditorPreferences(JSON.stringify({
       fontSize: 18, tabSize: 2, wordWrap: false,
       minimap: true, showWhitespace: true,
-    }))).toEqual({
-      fontSize: 18, tabSize: 2, wordWrap: false,
+    }))).toEqual({ ...DEFAULT_EDITOR_PREFERENCES, fontSize: 18, tabSize: 2, wordWrap: false,
       minimap: true, showWhitespace: true,
     });
   });
@@ -32,14 +32,14 @@ describe('local-only Scarp editor preferences', () => {
 
   it('preserves valid fields when another field is invalid or missing', () => {
     expect(parseEditorPreferences(JSON.stringify({ fontSize: 16, tabSize: '4' })))
-      .toEqual({ fontSize: 16, tabSize: 4, wordWrap: true,
+      .toEqual({ ...DEFAULT_EDITOR_PREFERENCES, fontSize: 16, tabSize: 4, wordWrap: true,
         minimap: false, showWhitespace: false });
     expect(parseEditorPreferences(JSON.stringify({ wordWrap: false })))
-      .toEqual({ fontSize: 14, tabSize: 4, wordWrap: false,
+      .toEqual({ ...DEFAULT_EDITOR_PREFERENCES, fontSize: 14, tabSize: 4, wordWrap: false,
         minimap: false, showWhitespace: false });
     expect(parseEditorPreferences(JSON.stringify({
       minimap: true, showWhitespace: 'not-a-boolean',
-    }))).toEqual({ fontSize: 14, tabSize: 4, wordWrap: true,
+    }))).toEqual({ ...DEFAULT_EDITOR_PREFERENCES, fontSize: 14, tabSize: 4, wordWrap: true,
       minimap: true, showWhitespace: false });
   });
 
@@ -48,8 +48,7 @@ describe('local-only Scarp editor preferences', () => {
     const legacy = parseEditorPreferences(JSON.stringify({
       fontSize: 20, tabSize: 8, wordWrap: false,
     }));
-    expect(legacy).toEqual({
-      fontSize: 20, tabSize: 8, wordWrap: false,
+    expect(legacy).toEqual({ ...DEFAULT_EDITOR_PREFERENCES, fontSize: 20, tabSize: 8, wordWrap: false,
       minimap: false, showWhitespace: false,
     });
     const toggled = parseEditorPreferences(JSON.stringify({
@@ -83,5 +82,48 @@ describe('local-only Scarp editor preferences', () => {
     }));
     expect(parsed).toEqual(DEFAULT_EDITOR_PREFERENCES);
     expect('compilerPath' in parsed).toBe(false);
+  });
+});
+
+describe('extended editor display preferences', () => {
+  it('migrates older records and preserves explicit false choices', () => {
+    const preferences = parseEditorPreferences(JSON.stringify({
+      fontSize: 18, font: 'cascadiacode', lineNumbers: false,
+      highlightActiveLine: false, indentationGuides: false,
+      bracketColors: false, smoothScrolling: true,
+    }));
+    expect(preferences).toEqual({ ...DEFAULT_EDITOR_PREFERENCES,
+      fontSize: 18, font: 'cascadiacode', lineNumbers: false,
+      highlightActiveLine: false, indentationGuides: false,
+      bracketColors: false, smoothScrolling: true,
+    });
+    expect(editorDisplayOptions(preferences)).toMatchObject({
+      fontSize: 18, fontFamily: EDITOR_FONTS.cascadiacode, lineNumbers: 'off',
+      renderLineHighlight: 'none', guides: { indentation: false },
+      bracketPairColorization: { enabled: false }, smoothScrolling: true,
+      detectIndentation: false, tabSize: 4,
+    });
+  });
+  it('rejects arbitrary font strings, inherited names, malformed flags and oversized records', () => {
+    for (const font of ['__proto__', 'constructor', 'toString', 'custom font', null, 1]) {
+      expect(parseEditorPreferences(JSON.stringify({ font })).font).toBe('consolas');
+    }
+    expect(parseEditorPreferences(JSON.stringify({ lineNumbers: 'false',
+      highlightActiveLine: 0, indentationGuides: [], bracketColors: null,
+      smoothScrolling: 'true' }))).toEqual(DEFAULT_EDITOR_PREFERENCES);
+    expect(parseEditorPreferences(' '.repeat(MAX_EDITOR_PREFERENCES_UNITS) +
+      '{"fontSize":24}')).toEqual(DEFAULT_EDITOR_PREFERENCES);
+  });
+  it('maps default options and every supported font without changing preferences', () => {
+    const settings = { ...DEFAULT_EDITOR_PREFERENCES };
+    expect(editorDisplayOptions(settings)).toMatchObject({
+      lineNumbers: 'on', renderLineHighlight: 'line', guides: { indentation: true },
+      bracketPairColorization: { enabled: true }, smoothScrolling: false,
+      fontFamily: EDITOR_FONTS.consolas, detectIndentation: false,
+    });
+    for (const font of ['consolas', 'cascadiacode', 'monospace'] as const) {
+      expect(editorDisplayOptions({ ...settings, font }).fontFamily).toBe(EDITOR_FONTS[font]);
+    }
+    expect(settings).toEqual(DEFAULT_EDITOR_PREFERENCES);
   });
 });
