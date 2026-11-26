@@ -55,7 +55,7 @@ describe('same-line catalog context', () => {
 describe('bounded multiline completion context', () => {
   function context(lines: string[]) {
     const line = lines.at(-1)!;
-    return boundedCompletionContext(line, line.indexOf('pri'), lines.length, (n, remaining) => {
+    return boundedCompletionContext(line, line.lastIndexOf('pri'), lines.length, (n, remaining) => {
       const previous = lines[n - 1];
       return previous.length <= remaining ? previous : null;
     });
