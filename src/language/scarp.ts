@@ -1,5 +1,5 @@
 import type * as Monaco from 'monaco-editor';
-import { readIntelliSensePreferences, type IntelliSensePreferences } from '../model/intelliSensePreferences';
+import { intelliSenseStore, readIntelliSensePreferences, type IntelliSensePreferences } from '../model/intelliSensePreferences';
 import { LocalAnalysisCache } from './localAnalysis';
 import { canCompleteLocalFunction } from './localCompletion';
 import { collectScarpSuggestions, scarpCompletionEnabled } from './suggestionPipeline';
@@ -225,6 +225,38 @@ export function registerScarpLanguage(monaco: typeof Monaco,
         },
         dispose() {},
       };
+    },
+  });
+
+  monaco.languages.registerInlayHintsProvider('scarp', {
+    onDidChangeInlayHints: listener => {
+      let previous = preferences();
+      return { dispose: intelliSenseStore.subscribe(() => {
+        const current = preferences();
+        if (current.inlayHintMode !== previous.inlayHintMode ||
+            current.inlayBuiltins !== previous.inlayBuiltins ||
+            current.localAnalysisKiB !== previous.localAnalysisKiB) listener();
+        previous = current;
+      }) };
+    },
+    provideInlayHints(model, range, token) {
+      const settings = preferences();
+      if (settings.inlayHintMode === 'off' || token.isCancellationRequested ||
+          model.getValueLength() > Math.min(MAX_DEFINITION_SOURCE_UNITS, settings.localAnalysisKiB * 1024)) return null;
+      const analysis = localAnalysis.get(model, settings.localAnalysisKiB * 1024);
+      if (!analysis || token.isCancellationRequested) return null;
+      const start = model.getOffsetAt({ lineNumber: range.startLineNumber, column: range.startColumn });
+      const end = model.getOffsetAt({ lineNumber: range.endLineNumber, column: range.endColumn });
+      const hints = analysis.parameterInlays(settings.inlayHintMode, settings.inlayBuiltins)
+        .filter(hint => hint.offset >= start && hint.offset < end)
+        .map(hint => ({
+          position: model.getPositionAt(hint.offset),
+          label: hint.label + ':',
+          kind: monaco.languages.InlayHintKind.Parameter,
+          paddingRight: true,
+          tooltip: 'Scarp editor parameter label; not compiler type inference.',
+        }));
+      return token.isCancellationRequested ? null : { hints, dispose() {} };
     },
   });
 

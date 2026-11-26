@@ -296,3 +296,6 @@ actually testing the Studio desktop build.**
 | S30 | Invoke completion after a qualifier followed by several blank or comment lines; repeat after a quoted string or comparison. | Conservative catalog policy skips qualified suggestions within the eight-line, 16 Ki-unit lookback; ordinary expressions remain available. | NOT RUN |
 
 | S31 | Invoke parameter hints in bigint_pow, ask_or, decimal_round, list_set and print; disable only built-in hints; test a shadowing local declaration. | Catalog-backed arguments appear for known unqualified calls, local declaration hints take precedence, ambiguous/shadowed calls do not receive misleading catalog hints. | NOT RUN |
+
+| S32 | Enable literal-only or all inline parameter labels, toggle built-in labels, and edit nested complete calls. | Inline labels update without modifying source text; redundant, incomplete, ambiguous and unsupported calls are skipped. Popup hints remain independent. | NOT RUN |
+| S33 | Import v1/v2 profiles and save a new profile with inline hints. | Earlier choices survive; inline hints default off for old profiles; v3 exports preserve the new options. | NOT RUN |

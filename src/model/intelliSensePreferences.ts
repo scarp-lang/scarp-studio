@@ -2,6 +2,8 @@
  * capabilities or trust state belongs in this record. */
 export const INTELLISENSE_STORAGE_KEY = 'studio.intelliSense.v1';
 export const MAX_INTELLISENSE_STORAGE_UNITS = 4096;
+export const INLAY_HINT_MODES = ['off', 'literals', 'all'] as const;
+export type InlayHintMode = (typeof INLAY_HINT_MODES)[number];
 export const MATCHING_MODES = ['prefix', 'subsequence'] as const;
 export type MatchingMode = (typeof MATCHING_MODES)[number];
 export const COMPLETION_MODES = ['automatic', 'manual', 'off'] as const;
@@ -30,6 +32,8 @@ export interface IntelliSensePreferences {
   hoverDelay: (typeof HOVER_DELAYS)[number];
   signatureHelp: boolean;
   builtinSignatureHelp: boolean;
+  inlayHintMode: InlayHintMode;
+  inlayBuiltins: boolean;
   goToDefinition: boolean;
   documentSymbols: boolean;
   localAnalysisKiB: (typeof ANALYSIS_BUDGETS)[number];
@@ -54,6 +58,8 @@ export const DEFAULT_INTELLISENSE_PREFERENCES: Readonly<IntelliSensePreferences>
   hoverDelay: 300,
   signatureHelp: true,
   builtinSignatureHelp: true,
+  inlayHintMode: 'off',
+  inlayBuiltins: true,
   goToDefinition: true,
   documentSymbols: true,
   localAnalysisKiB: 512,
@@ -88,6 +94,8 @@ function normalize(value: unknown, fallback: Readonly<IntelliSensePreferences>):
     hoverDelay: option(record.hoverDelay, HOVER_DELAYS, fallback.hoverDelay),
     signatureHelp: bool('signatureHelp'),
     builtinSignatureHelp: bool('builtinSignatureHelp'),
+    inlayHintMode: option(record.inlayHintMode, INLAY_HINT_MODES, fallback.inlayHintMode),
+    inlayBuiltins: bool('inlayBuiltins'),
     goToDefinition: bool('goToDefinition'),
     documentSymbols: bool('documentSymbols'),
     localAnalysisKiB: option(record.localAnalysisKiB, ANALYSIS_BUDGETS, fallback.localAnalysisKiB),
@@ -139,6 +147,7 @@ export function intelliSenseEditorOptions(settings: Readonly<IntelliSensePrefere
     tabCompletion: enabled ? settings.tabCompletion : 'off' as const,
     hover: { enabled: settings.hover, delay: settings.hoverDelay },
     parameterHints: { enabled: settings.signatureHelp },
+    inlayHints: { enabled: settings.inlayHintMode === 'off' ? 'off' as const : 'on' as const },
   };
 }
 

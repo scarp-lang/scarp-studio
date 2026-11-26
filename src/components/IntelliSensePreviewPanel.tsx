@@ -22,6 +22,7 @@ export function IntelliSensePreviewPanel({ preferences }: { preferences: Readonl
       <span>Mode: {preferences.completionMode}</span>
       <span>Scarp result limit: {preferences.suggestionLimit}</span>
       <span>Local budget: {preferences.localAnalysisKiB} Ki UTF-16 units</span>
+      <span>Inline labels: {preferences.inlayHintMode}</span>
     </div>
     <p role="status">{result.explanation} {result.results.length} result(s).</p>
     {result.results.length > 0 ? <div className="preview-results" aria-label="Sample results">

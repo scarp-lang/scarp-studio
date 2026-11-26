@@ -1,5 +1,5 @@
 import { serializeIntelliSensePreferences, type IntelliSensePreferences, type IntelliSenseStorage } from './intelliSensePreferences';
-import { exactKeys, hasUniqueJsonKeys, profileError, recordOf, strictIntelliSensePreferences, type ProfileResult } from './intelliSenseProfileTransfer';
+import { exactKeys, hasUniqueJsonKeys, profileError, recordOf, strictIntelliSensePreferences, PROFILE_FORMAT_VERSION, type ProfileResult } from './intelliSenseProfileTransfer';
 
 export const PROFILE_STORAGE_KEY = 'studio.intelliSenseProfiles.v1';
 export const MAX_SAVED_PROFILES = 16;
@@ -42,7 +42,7 @@ export function parseSavedProfiles(raw: string | null): ProfileResult<readonly S
   try { value = JSON.parse(raw); } catch { return profileError('Saved profiles contain invalid JSON.'); }
   if (!hasUniqueJsonKeys(raw)) return profileError('Saved profiles contain duplicate keys or unsupported nesting.');
   const root = recordOf(value);
-  if (!root || !exactKeys(root, ['version', 'profiles']) || (root.version !== 1 && root.version !== 2) || !Array.isArray(root.profiles)) {
+  if (!root || !exactKeys(root, ['version', 'profiles']) || (root.version !== 1 && root.version !== 2 && root.version !== PROFILE_FORMAT_VERSION) || !Array.isArray(root.profiles)) {
     return profileError('Saved profiles format is unsupported.');
   }
   if (root.profiles.length > MAX_SAVED_PROFILES) return profileError('Too many saved profiles.');
@@ -61,7 +61,7 @@ export function parseSavedProfiles(raw: string | null): ProfileResult<readonly S
   return { ok: true, value: Object.freeze(profiles) };
 }
 export function serializeSavedProfiles(profiles: readonly SavedIntelliSenseProfile[]): string {
-  return JSON.stringify({ version: 2, profiles: profiles.map(profile => ({
+  return JSON.stringify({ version: PROFILE_FORMAT_VERSION, profiles: profiles.map(profile => ({
     name: profile.name, preferences: JSON.parse(serializeIntelliSensePreferences(profile.preferences)),
   })) });
 }

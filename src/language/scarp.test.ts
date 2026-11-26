@@ -27,6 +27,7 @@ function captureProvider(): TokenProvider {
       registerDocumentSymbolProvider: vi.fn(),
       registerDefinitionProvider: vi.fn(),
       registerSignatureHelpProvider: vi.fn(),
+      registerInlayHintsProvider: vi.fn(),
       CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
     },
   };
@@ -204,6 +205,7 @@ describe('Scarp syntax highlighting and compiler compatibility', () => {
         registerDocumentSymbolProvider: vi.fn(),
       registerDefinitionProvider: vi.fn(),
       registerSignatureHelpProvider: vi.fn(),
+      registerInlayHintsProvider: vi.fn(),
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
       },
     };
@@ -220,6 +222,7 @@ describe('Scarp editor assistance registration', () => {
     const provideSymbols = vi.fn();
     const provideDefinition = vi.fn();
     const provideSignature = vi.fn();
+    const provideInlays = vi.fn();
     const mockMonaco = {
       Range: class {
         constructor(public startLineNumber: number, public startColumn: number,
@@ -235,6 +238,8 @@ describe('Scarp editor assistance registration', () => {
         registerDocumentSymbolProvider: provideSymbols,
         registerDefinitionProvider: provideDefinition,
         registerSignatureHelpProvider: provideSignature,
+        registerInlayHintsProvider: provideInlays,
+        InlayHintKind: { Parameter: 2 },
         CompletionItemInsertTextRule: { InsertAsSnippet: 4 },
         CompletionItemKind: { Keyword: 17, Class: 5, Function: 1, Snippet: 27 },
         SymbolKind: { Function: 11, Enum: 9, Struct: 22 },
@@ -242,7 +247,7 @@ describe('Scarp editor assistance registration', () => {
     };
     let settings: IntelliSensePreferences = { ...DEFAULT_INTELLISENSE_PREFERENCES };
     registerScarpLanguage(mockMonaco as unknown as Parameters<typeof registerScarpLanguage>[0], () => settings);
-    for (const spy of [provideCompletion, provideHover, provideSymbols, provideDefinition, provideSignature]) {
+    for (const spy of [provideCompletion, provideHover, provideSymbols, provideDefinition, provideSignature, provideInlays]) {
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][0]).toBe('scarp');
     }
@@ -434,6 +439,25 @@ describe('Scarp editor assistance registration', () => {
     });
     settings = { ...settings, builtinSignatureHelp: false };
     expect(signatures.provideSignatureHelp(builtinModel, { lineNumber: 1, column: 19 }, { isCancellationRequested: false })).toBeNull();
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES };
+    const inlays = provideInlays.mock.calls[0][1] as {
+      provideInlayHints: (model: unknown, range: unknown, token: unknown) => unknown;
+    };
+    const inlayRange = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 21 };
+    expect(inlays.provideInlayHints(forbiddenInlayModel(), inlayRange, { isCancellationRequested: false })).toBeNull();
+    function forbiddenInlayModel() { return { getValueLength: () => { throw Error('disabled inlay accessed model'); } }; }
+    settings = { ...settings, inlayHintMode: 'literals' };
+    const inlaySource = 'bigint_pow(value, 2);';
+    const inlayModel = {
+      getValueLength: () => inlaySource.length, getValue: () => inlaySource,
+      getOffsetAt: (p: { column: number }) => p.column - 1,
+      getPositionAt: (offset: number) => ({ lineNumber: 1, column: offset + 1 }),
+    };
+    expect(inlays.provideInlayHints(inlayModel, inlayRange, { isCancellationRequested: false })).toMatchObject({
+      hints: [{ label: 'exponent:', position: { lineNumber: 1, column: 19 }, kind: 2 }],
+    });
+    expect(inlays.provideInlayHints(inlayModel, { ...inlayRange, endColumn: 10 }, { isCancellationRequested: false })).toMatchObject({ hints: [] });
+    expect(inlays.provideInlayHints(forbiddenInlayModel(), inlayRange, { isCancellationRequested: true })).toBeNull();
     settings = { ...DEFAULT_INTELLISENSE_PREFERENCES };
     const outline = provideSymbols.mock.calls[0][1] as {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,

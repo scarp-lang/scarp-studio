@@ -10,7 +10,7 @@ describe('Settings-only language assistance examples', () => {
       expect(item.marked.length).toBeLessThan(1024);
       const result = evaluateIntelliSensePreview(item.id, defaults);
       expect(result.before + '|' + result.after).toBe(item.marked);
-      if (item.id === 'abbreviation' || item.id === 'qualified' || item.id === 'multiline-qualified') expect(result.results, item.id).toEqual([]);
+      if (item.id === 'abbreviation' || item.id === 'qualified' || item.id === 'multiline-qualified' || item.id === 'inline-parameters') expect(result.results, item.id).toEqual([]);
       else expect(result.results.length, item.id).toBeGreaterThan(0);
     }
   });
@@ -74,4 +74,11 @@ it('previews builtin parameter labels independently from local parameter hints',
   expect(evaluateIntelliSensePreview('builtin-signature', defaults).results[0].detail).toBe('Active parameter: exponent: integer');
   expect(evaluateIntelliSensePreview('builtin-signature', { ...defaults, builtinSignatureHelp: false }).results).toEqual([]);
   expect(evaluateIntelliSensePreview('signature', { ...defaults, builtinSignatureHelp: false }).results).toHaveLength(1);
+});
+
+
+it('previews inline labels independently from popup parameter hints', () => {
+  const prefs = { ...defaults, inlayHintMode: 'literals' as const, signatureHelp: false };
+  expect(evaluateIntelliSensePreview('inline-parameters', prefs).results.map(item => item.label)).toEqual(['b:', 'exponent:']);
+  expect(evaluateIntelliSensePreview('inline-parameters', { ...prefs, inlayBuiltins: false }).results.map(item => item.label)).toEqual(['b:']);
 });

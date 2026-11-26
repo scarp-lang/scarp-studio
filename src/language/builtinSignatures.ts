@@ -106,3 +106,11 @@ export function hasPotentialCatalogShadow(lexical: SourceLexResult, name: string
   }
   return false;
 }
+
+
+/** Inline labels require a fixed known argument count; variadic hints remain
+ * available in the popup provider only. */
+export function fixedBuiltinParameterLabels(name: string): readonly string[] | null {
+  if (!Object.hasOwn(entries, name) || entries[name].variadic) return null;
+  return [...entries[name].parameters];
+}
