@@ -343,6 +343,14 @@ describe('Scarp editor assistance registration', () => {
         { lineNumber: multi.split('\n').length, column: 3 }).suggestions;
       expect(result.some(item => item.label === 'add'), context).toBe(expected);
     }
+    const qualifiedLines = ['module. // qualifier', '// continuation', 'pri'];
+    const qualifiedModel = {
+      ...model, getLineContent: (n: number) => qualifiedLines[n - 1],
+      getLineMaxColumn: (n: number) => qualifiedLines[n - 1].length + 1,
+      getWordUntilPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+      getWordAtPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+    };
+    expect(handler.provideCompletionItems(qualifiedModel, { lineNumber: 3, column: 4 }).suggestions).toEqual([]);
     const oversizedCompletion = {
       ...localModel, getValueLength: () => 1024 * 1024,
       getValue: () => { throw new Error('large buffer must not be copied'); },

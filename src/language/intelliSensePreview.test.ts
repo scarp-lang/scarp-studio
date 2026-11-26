@@ -10,7 +10,7 @@ describe('Settings-only language assistance examples', () => {
       expect(item.marked.length).toBeLessThan(1024);
       const result = evaluateIntelliSensePreview(item.id, defaults);
       expect(result.before + '|' + result.after).toBe(item.marked);
-      if (item.id === 'abbreviation' || item.id === 'qualified') expect(result.results, item.id).toEqual([]);
+      if (item.id === 'abbreviation' || item.id === 'qualified' || item.id === 'multiline-qualified') expect(result.results, item.id).toEqual([]);
       else expect(result.results.length, item.id).toBeGreaterThan(0);
     }
   });
@@ -61,4 +61,10 @@ describe('safe insertion preview', () => {
     const result = evaluateIntelliSensePreview('existing-call', defaults);
     expect(result.results.find(item => item.label === 'print')).toMatchObject({ insertion: 'print', asSnippet: false });
   });
+});
+
+
+it('suppresses a qualified multiline preview only under conservative catalog policy', () => {
+  expect(evaluateIntelliSensePreview('multiline-qualified', defaults).results).toEqual([]);
+  expect(evaluateIntelliSensePreview('multiline-qualified', { ...defaults, conservativeCatalog: false }).results.some(item => item.label === 'print')).toBe(true);
 });

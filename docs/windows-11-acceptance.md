@@ -292,3 +292,5 @@ actually testing the Studio desktop build.**
 | S28 | Edit an unfinished call, then introduce mismatched brackets and declaration-shaped text inside grouping. | Local navigation and typed assistance retain valid earlier declarations in an unfinished call, but do not resolve from an inconsistent lexical inventory. | NOT RUN |
 
 | S29 | Accept catalog completion within print(42), bigint_pow(...), array<integer, 2>, and before an existing semicolon. | Existing arguments, generic parameters and terminators remain intact; fresh completions still insert supported snippets. | NOT RUN |
+
+| S30 | Invoke completion after a qualifier followed by several blank or comment lines; repeat after a quoted string or comparison. | Conservative catalog policy skips qualified suggestions within the eight-line, 16 Ki-unit lookback; ordinary expressions remain available. | NOT RUN |

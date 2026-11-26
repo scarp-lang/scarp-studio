@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { completionMatchRank, lineCompletionContext } from './completionMatching';
+import { boundedCompletionContext, completionMatchRank, lineCompletionContext, MAX_COMPLETION_LOOKBACK_LINES, MAX_COMPLETION_LOOKBACK_UNITS } from './completionMatching';
 import { DEFAULT_INTELLISENSE_PREFERENCES as defaults } from '../model/intelliSensePreferences';
 import { collectScarpSuggestions } from './suggestionPipeline';
 import { LocalSourceAnalysis } from './localAnalysis';
@@ -48,5 +48,40 @@ describe('same-line catalog context', () => {
     const forbidden = () => { throw Error('blocked local context'); };
     expect(collectScarpSuggestions(defaults, 'pri', forbidden, 'blocked')).toEqual([]);
     expect(collectScarpSuggestions({ ...defaults, conservativeCatalog: false }, 'pri', forbidden, 'blocked').some(item => item.label === 'print')).toBe(true);
+  });
+});
+
+
+describe('bounded multiline completion context', () => {
+  function context(lines: string[]) {
+    const line = lines.at(-1)!;
+    return boundedCompletionContext(line, line.indexOf('pri'), lines.length, (n, remaining) => {
+      const previous = lines[n - 1];
+      return previous.length <= remaining ? previous : null;
+    });
+  }
+  it('carries explicit qualifiers and declaration introducers through comments and empty lines', () => {
+    for (const prefix of ['module.', 'Choice:: // variant', 'obj->', 'funcra', 'bind // name']) {
+      expect(context([prefix, '// trivia', '', '  pri']), prefix).toBe('blocked');
+    }
+  });
+  it('does not treat comment text, strings or comparisons as qualifiers', () => {
+    for (const prefix of ['// module.', 'print("module.")', '"funcra"', 'x >', 'x >=', 'return']) {
+      expect(context([prefix, '  pri']), prefix).toBe('unqualified');
+    }
+    expect(context(['module.', 'print(pri'])).toBe('unqualified');
+  });
+  it('honors bounded line count and aggregate size and never reads past a blocked current prefix', () => {
+    let reads = 0;
+    const reader = () => { reads++; return ''; };
+    expect(boundedCompletionContext('module.pri', 7, 100, reader)).toBe('blocked');
+    expect(reads).toBe(0);
+    expect(boundedCompletionContext('pri', 0, 100, reader)).toBe('unqualified');
+    expect(reads).toBe(MAX_COMPLETION_LOOKBACK_LINES);
+    let budget = 0;
+    expect(boundedCompletionContext('pri', 0, 100, (_n, remaining) => {
+      budget = remaining; return ' '.repeat(remaining + 1);
+    })).toBe('unqualified');
+    expect(budget).toBe(MAX_COMPLETION_LOOKBACK_UNITS);
   });
 });

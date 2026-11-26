@@ -3,7 +3,7 @@ import { readIntelliSensePreferences, type IntelliSensePreferences } from '../mo
 import { LocalAnalysisCache } from './localAnalysis';
 import { canCompleteLocalFunction } from './localCompletion';
 import { collectScarpSuggestions, scarpCompletionEnabled } from './suggestionPipeline';
-import { completionMatchRank, lineCompletionContext } from './completionMatching';
+import { boundedCompletionContext, completionMatchRank } from './completionMatching';
 import { MAX_DEFINITION_SOURCE_UNITS } from './definition';
 import {
   isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scarpTokenHelp,
@@ -131,7 +131,11 @@ export function registerScarpLanguage(monaco: typeof Monaco,
         startColumn: word.startColumn,
         endColumn,
       };
-      const context = lineCompletionContext(line, word.startColumn - 1);
+      const context = boundedCompletionContext(line, word.startColumn - 1, position.lineNumber,
+        settings.conservativeCatalog && typeof model.getLineMaxColumn === 'function' ? (number, remaining) => {
+          if (model.getLineMaxColumn(number) - 1 > remaining) return null;
+          return model.getLineContent(number);
+        } : undefined);
       const rank = (name: string, needle: string) => completionMatchRank(name, needle, settings.matchingMode);
       const planned = collectScarpSuggestions(settings, word.word, exclude => {
         const sourceLength = model.getValueLength();

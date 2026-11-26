@@ -22,7 +22,7 @@ const completionFlags: readonly { key: Flag; label: string; description: string 
   { key: 'localFunctions', label: 'Local function declarations', description: 'Bounded same-file function suggestions, not import resolution.' },
   { key: 'documentWords', label: 'Words from current document', description: 'Monaco text suggestions, not compiler-verified symbols.' },
   { key: 'preferLocal', label: 'Prefer local functions', description: 'Prioritize local declarations over catalog suggestions.' },
-  { key: 'conservativeCatalog', label: 'Context-aware catalog suggestions', description: 'Suppress catalog suggestions immediately after same-line qualifiers and declaration keywords. This is not compiler scope resolution.' },
+  { key: 'conservativeCatalog', label: 'Context-aware catalog suggestions', description: 'Suppress catalog suggestions after qualifiers and declaration keywords, including a bounded lookback across line breaks and comments. This is not compiler scope resolution.' },
 ];
 const navigationFlags: readonly { key: Flag; label: string; description: string }[] = [
   { key: 'hover', label: 'Hover documentation', description: 'Show editor help for known Scarp tokens and decimal literals.' },

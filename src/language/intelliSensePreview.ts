@@ -2,7 +2,7 @@ import type { IntelliSensePreferences } from '../model/intelliSensePreferences';
 import { LocalSourceAnalysis } from './localAnalysis';
 import { canCompleteLocalFunction } from './localCompletion';
 import { collectScarpSuggestions } from './suggestionPipeline';
-import { completionMatchRank, lineCompletionContext } from './completionMatching';
+import { boundedCompletionContext, completionMatchRank } from './completionMatching';
 import { scarpTokenHelp } from './assist';
 
 const header = 'funcra add(a: integer, b: integer) -> integer { return a + b; }\n';
@@ -23,6 +23,7 @@ export const INTELLISENSE_EXAMPLES = [
   { id: 'priority', title: 'Local and catalog priority', kind: 'completion', marked: mixedHeader + 'pri|', prefix: 'pri' },
   { id: 'abbreviation', title: 'Ordered-character abbreviation', kind: 'completion', marked: 'bgpw|', prefix: 'bgpw' },
   { id: 'qualified', title: 'Qualified name context', kind: 'completion', marked: 'module.pri|', prefix: 'pri' },
+  { id: 'multiline-qualified', title: 'Qualified name across lines', kind: 'completion', marked: 'module.\n// continuation\npri|', prefix: 'pri' },
   { id: 'existing-call', title: 'Complete an existing call', kind: 'completion', marked: 'pri|nt(42);', prefix: 'pri' },
   { id: 'catalog-hover', title: 'Built-in hover documentation', kind: 'hover', marked: 'pri|nt(42);' },
   { id: 'local-hover', title: 'Local function hover', kind: 'hover', marked: header + 'a|dd(1, 2);' },
@@ -75,11 +76,16 @@ export function evaluateIntelliSensePreview(id: PreviewId, settings: Readonly<In
     let end = offset;
     while (end < source.length && /[A-Za-z_0-9]/.test(source[end])) end++;
     const rank = (name: string, needle: string) => completionMatchRank(name, needle, settings.matchingMode);
+    const priorLines = source.slice(0, lineStart).split('\n');
+    const context = boundedCompletionContext(line, start - lineStart, priorLines.length, (number, remaining) => {
+      const previous = priorLines[number - 1];
+      return previous !== undefined && previous.length <= remaining ? previous : null;
+    });
     const items = collectScarpSuggestions(settings, prefix, exclude => {
       if (!canCompleteLocalFunction(line, start - lineStart, prefix)) return [];
       return local()?.complete(start, end, prefix, exclude, (name, needle) => Number.isFinite(rank(name, needle)),
         settings.matchingMode === 'subsequence' ? rank : undefined) ?? [];
-    }, lineCompletionContext(line, start - lineStart), source.slice(end, lineEnd < 0 ? source.length : lineEnd));
+    }, context, source.slice(end, lineEnd < 0 ? source.length : lineEnd));
     result.results = items.map(item => ({ label: item.label, kind: item.source + ' · ' + item.kind, detail: item.detail,
       insertion: item.insertText, asSnippet: item.asSnippet }));
     result.explanation = settings.completionMode === 'off' ? 'Scarp completion is off.' :
