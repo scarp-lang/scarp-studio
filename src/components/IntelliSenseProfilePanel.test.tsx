@@ -22,7 +22,7 @@ describe('profile management controls', () => {
     expect(html).toContain('Session only');
     expect(html).toContain('for="intellisense-profile-name"');
     expect(html).toContain('for="intellisense-profile-select"');
-    for (const label of ['Save current as profile', 'Review and apply', 'Review replace with current', 'Review remove profile']) {
+    for (const label of ['Save current as profile', 'Review and apply', 'Review replace with current', 'Review remove profile', 'Review rename profile']) {
       expect(button(html, label)).toContain('disabled');
     }
     expect(html).toContain('Export configuration');

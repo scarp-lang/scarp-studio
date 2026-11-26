@@ -37,11 +37,75 @@ export function exportIntelliSenseProfile(preferences: Readonly<IntelliSensePref
     preferences: JSON.parse(serializeIntelliSensePreferences(preferences)),
   }, null, 2);
 }
+/** Reject duplicate properties rather than accepting JSON.parse's last-wins
+ * behavior. Run after JSON.parse validates syntax; bounded nesting also
+ * prevents recursion over hostile but syntactically valid input. */
+export function hasUniqueJsonKeys(raw: string): boolean {
+  let i = 0;
+  const whitespace = () => { while (i < raw.length && /[\t\r\n ]/.test(raw[i])) i++; };
+  function string(): string {
+    const start = i++;
+    while (i < raw.length) {
+      const ch = raw[i++];
+      if (ch === '\\') { i++; continue; }
+      if (ch === '"') return JSON.parse(raw.slice(start, i)) as string;
+    }
+    throw new Error('Invalid string');
+  }
+  function value(depth: number): boolean {
+    if (depth > 8) return false;
+    whitespace();
+    if (raw[i] === '{') {
+      i++;
+      whitespace();
+      const keys = new Set<string>();
+      if (raw[i] === '}') { i++; return true; }
+      while (i < raw.length) {
+        whitespace();
+        if (raw[i] !== '"') return false;
+        const key = string();
+        if (keys.has(key)) return false;
+        keys.add(key);
+        whitespace();
+        if (raw[i++] !== ':' || !value(depth + 1)) return false;
+        whitespace();
+        const delimiter = raw[i++];
+        if (delimiter === '}') return true;
+        if (delimiter !== ',') return false;
+      }
+      return false;
+    }
+    if (raw[i] === '[') {
+      i++;
+      whitespace();
+      if (raw[i] === ']') { i++; return true; }
+      while (i < raw.length) {
+        if (!value(depth + 1)) return false;
+        whitespace();
+        const delimiter = raw[i++];
+        if (delimiter === ']') return true;
+        if (delimiter !== ',') return false;
+      }
+      return false;
+    }
+    if (raw[i] === '"') { string(); return true; }
+    const start = i;
+    while (i < raw.length && !/[\t\r\n ,}\]]/.test(raw[i])) i++;
+    return i > start;
+  }
+  try {
+    if (!value(0)) return false;
+    whitespace();
+    return i === raw.length;
+  } catch { return false; }
+}
+
 export function importIntelliSenseProfile(raw: string): ProfileResult<IntelliSensePreferences> {
-  if (!raw.trim()) return profileError('Paste an exported IntelliSense configuration first.');
   if (raw.length > MAX_PROFILE_TRANSFER_UNITS) return profileError('Configuration is too large.');
+  if (!raw.trim()) return profileError('Paste an exported IntelliSense configuration first.');
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return profileError('Configuration is not valid JSON.'); }
+  if (!hasUniqueJsonKeys(raw)) return profileError('Configuration has duplicate keys or unsupported nesting.');
   const record = recordOf(value);
   if (!record || !exactKeys(record, ['format', 'version', 'preferences']) || record.format !== PROFILE_FORMAT) {
     return profileError('This is not a supported Scarp Studio IntelliSense configuration.');

@@ -1,5 +1,5 @@
 import { serializeIntelliSensePreferences, type IntelliSensePreferences, type IntelliSenseStorage } from './intelliSensePreferences';
-import { exactKeys, profileError, recordOf, strictIntelliSensePreferences, type ProfileResult } from './intelliSenseProfileTransfer';
+import { exactKeys, hasUniqueJsonKeys, profileError, recordOf, strictIntelliSensePreferences, type ProfileResult } from './intelliSenseProfileTransfer';
 
 export const PROFILE_STORAGE_KEY = 'studio.intelliSenseProfiles.v1';
 export const MAX_SAVED_PROFILES = 16;
@@ -17,6 +17,7 @@ export interface SavedProfileState {
 export type ProfileMutation =
   | { kind: 'create'; name: string; preferences: Readonly<IntelliSensePreferences> }
   | { kind: 'replace'; expected: SavedIntelliSenseProfile; preferences: Readonly<IntelliSensePreferences> }
+  | { kind: 'rename'; expected: SavedIntelliSenseProfile; name: string }
   | { kind: 'delete'; expected: SavedIntelliSenseProfile };
 
 export function normalizeProfileName(raw: string): string | null {
@@ -39,6 +40,7 @@ export function parseSavedProfiles(raw: string | null): ProfileResult<readonly S
   if (raw.length > MAX_PROFILE_STORAGE_UNITS) return profileError('Saved profiles record is too large.');
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return profileError('Saved profiles contain invalid JSON.'); }
+  if (!hasUniqueJsonKeys(raw)) return profileError('Saved profiles contain duplicate keys or unsupported nesting.');
   const root = recordOf(value);
   if (!root || !exactKeys(root, ['version', 'profiles']) || root.version !== 1 || !Array.isArray(root.profiles)) {
     return profileError('Saved profiles format is unsupported.');
@@ -77,6 +79,15 @@ export function mutateSavedProfiles(profiles: readonly SavedIntelliSenseProfile[
   const index = profiles.findIndex(profile => profileIdentity(profile.name) === profileIdentity(mutation.expected.name));
   if (index < 0 || !sameSavedProfile(profiles[index], mutation.expected)) return profileError('Saved profile changed. Review it again.');
   if (mutation.kind === 'delete') return { ok: true, value: Object.freeze(profiles.filter((_, i) => i !== index)) };
+  if (mutation.kind === 'rename') {
+    const name = normalizeProfileName(mutation.name);
+    if (!name) return profileError('Enter a valid new profile name.');
+    if (profiles.some((profile, i) => i !== index && profileIdentity(profile.name) === profileIdentity(name))) {
+      return profileError('A profile with that name already exists.');
+    }
+    return { ok: true, value: Object.freeze(profiles.map((profile, i) =>
+      i === index ? frozenProfile(name, profile.preferences) : profile)) };
+  }
   const validated = strictIntelliSensePreferences(mutation.preferences);
   if (!validated.ok) return validated;
   return { ok: true, value: Object.freeze(profiles.map((profile, i) =>

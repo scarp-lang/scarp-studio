@@ -12,6 +12,7 @@ import {
 type Pending =
   | { kind: 'apply'; review: ProfileReview; source: SavedIntelliSenseProfile | null; origin: string }
   | { kind: 'replace'; expected: SavedIntelliSenseProfile; review: ProfileReview }
+  | { kind: 'rename'; expected: SavedIntelliSenseProfile; name: string }
   | { kind: 'delete'; expected: SavedIntelliSenseProfile }
   | { kind: 'discard' };
 
@@ -24,6 +25,7 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [name, setName] = useState('');
   const [selection, setSelection] = useState('');
+  const [rename, setRename] = useState('');
   const [raw, setRaw] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -32,7 +34,7 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
   const selected = state.profiles.find(profile => profileIdentity(profile.name) === selection);
   const blocked = state.persistence === 'blocked';
   const review = pending?.kind === 'apply' || pending?.kind === 'replace' ? pending.review : null;
-  const expected = pending?.kind === 'replace' || pending?.kind === 'delete' ? pending.expected
+  const expected = pending?.kind === 'replace' || pending?.kind === 'delete' || pending?.kind === 'rename' ? pending.expected
     : pending?.kind === 'apply' ? pending.source : null;
   const stale = pending?.kind === 'apply' && !isCurrentProfileReview(pending.review, preferences);
   // Replace review compares the selected saved profile with a captured current
@@ -59,7 +61,11 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
   }
   function confirm() {
     if (!pending) return;
-    if (stale || replaceStale || profileStale) { feedback('The configuration changed. Review it again.', true); setPending(null); return; }
+    // Recheck live profile state, not just the previous render's selection.
+    const live = store.getSnapshot();
+    if ((expected && !live.profiles.some(profile => sameSavedProfile(profile, expected))) ||
+        (pending.kind !== 'apply' && pending.kind !== 'discard' && live.persistence === 'blocked') ||
+        stale || replaceStale || profileStale) { feedback('The configuration changed. Review it again.', true); setPending(null); return; }
     if (pending.kind === 'apply') {
       onApply({ ...pending.review.target });
       setPending(null);
@@ -68,11 +74,13 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
     }
     const result = pending.kind === 'discard' ? store.discardBlocked() :
       pending.kind === 'delete' ? store.mutate({ kind: 'delete', expected: pending.expected }) :
+      pending.kind === 'rename' ? store.mutate({ kind: 'rename', expected: pending.expected, name: pending.name }) :
         store.mutate({ kind: 'replace', expected: pending.expected, preferences: pending.review.target });
     setPending(null);
     if (!result.ok) { feedback(result.error, true); return; }
     if (pending.kind === 'delete' || pending.kind === 'discard') setSelection('');
-    feedback(pending.kind === 'replace' ? 'Saved profile replaced.' : pending.kind === 'delete' ? 'Saved profile removed.' : 'Unreadable profile record discarded.');
+    if (pending.kind === 'rename') { setSelection(profileIdentity(pending.name)); setRename(''); }
+    feedback(pending.kind === 'replace' ? 'Saved profile replaced.' : pending.kind === 'rename' ? 'Saved profile renamed.' : pending.kind === 'delete' ? 'Saved profile removed.' : 'Unreadable profile record discarded.');
   }
   return (
     <section className="intellisense-section intellisense-profile-panel" aria-label="Saved IntelliSense profiles">
@@ -101,7 +109,7 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
       <div className="settings-control-row">
         <label htmlFor="intellisense-profile-select">Saved profile</label>
         <select id="intellisense-profile-select" value={selected ? selection : ''} disabled={blocked || !state.profiles.length}
-          onChange={event => { setSelection(event.target.value); resetReview(); }}>
+          onChange={event => { setSelection(event.target.value); setRename(''); resetReview(); }}>
           <option value="">Select a saved profile</option>
           {state.profiles.map(profile => <option key={profileIdentity(profile.name)}
             value={profileIdentity(profile.name)}>{profile.name}</option>)}
@@ -120,6 +128,19 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
           if (!selected) return; resetReview(); setPending({ kind: 'delete', expected: selected });
         }}>Review remove profile</button>
       </div>
+      <div className="settings-control-row">
+        <label htmlFor="intellisense-profile-rename">Rename selected profile</label>
+        <input id="intellisense-profile-rename" type="text" value={rename} maxLength={MAX_PROFILE_NAME_UNITS}
+          disabled={!selected || blocked} onChange={event => { setRename(event.target.value); resetReview(); }} />
+      </div>
+      <button className="settings-reset" type="button" disabled={!selected || blocked || !rename.trim()}
+        onClick={() => {
+          if (!selected) return;
+          resetReview();
+          const normalized = normalizeProfileName(rename);
+          if (!normalized) { feedback('Enter a valid new profile name.', true); return; }
+          setPending({ kind: 'rename', expected: selected, name: normalized });
+        }}>Review rename profile</button>
       <div className="profile-transfer">
         <h3>Portable configuration</h3>
         <p>Transfer IntelliSense settings only. Source text, workspace paths, compiler approval and recovery data are excluded. No files are read or written.</p>
@@ -136,6 +157,14 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
         {importOpen && <div className="profile-transfer">
           <label htmlFor="intellisense-profile-import">Paste configuration JSON</label>
           <textarea id="intellisense-profile-import" rows={5} maxLength={MAX_PROFILE_TRANSFER_UNITS} value={raw}
+            onPaste={event => {
+              const target = event.currentTarget;
+              const size = raw.length - (target.selectionEnd - target.selectionStart) +
+                event.clipboardData.getData('text/plain').length;
+              if (size > MAX_PROFILE_TRANSFER_UNITS) {
+                event.preventDefault(); resetReview(); feedback('Configuration is too large; paste was rejected.', true);
+              }
+            }}
             onChange={event => { setRaw(event.target.value.slice(0, MAX_PROFILE_TRANSFER_UNITS)); resetReview(); }} />
           <div className="profile-controls">
             <button className="settings-reset" type="button" onClick={previewImport} disabled={!raw.trim()}>Review import</button>
@@ -146,11 +175,13 @@ export function IntelliSenseProfilePanel({ preferences, onApply, store = savedPr
       {pending && <div className="profile-review" role="group" aria-label="Confirm IntelliSense profile action">
         <strong>{pending.kind === 'apply' ? 'Apply ' + pending.origin :
           pending.kind === 'replace' ? 'Replace ' + pending.expected.name :
+          pending.kind === 'rename' ? 'Rename ' + pending.expected.name + ' to ' + pending.name :
           pending.kind === 'delete' ? 'Remove ' + pending.expected.name : 'Discard unreadable saved profiles?'}</strong>
         {review && <p>{review.changes.length} preference(s) would change.</p>}
         {review && review.changes.length > 0 && <ul className="profile-diff">
           {review.changes.map(change => <li key={change.key}>{change.label}: {change.before} → {change.after}</li>)}
         </ul>}
+        {pending.kind === 'rename' && <p>Only the name changes; saved and active preferences remain unchanged.</p>}
         {pending.kind === 'delete' && <p>Only this named profile is removed. Current preferences remain unchanged.</p>}
         {pending.kind === 'discard' && <p>This replaces only an unreadable saved profile record. Current preferences and source files remain unchanged.</p>}
         {(stale || replaceStale || profileStale) && <p role="alert">Configuration changed since review. Cancel and review again.</p>}

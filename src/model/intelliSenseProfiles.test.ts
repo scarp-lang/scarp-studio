@@ -120,3 +120,25 @@ describe('saved profile persistence', () => {
     expect(session.reload().ok).toBe(false);
   });
 });
+
+
+describe('profile rename and ambiguous storage', () => {
+  it('renames only the exact reviewed profile and preserves its preferences', () => {
+    const initial = [saved('Learning', { ...defaults, hover: false }), saved('Other')];
+    const renamed = mutateSavedProfiles(initial, { kind: 'rename', expected: initial[0], name: 'Learning Hindi' });
+    expect(renamed.ok).toBe(true);
+    if (!renamed.ok) throw Error(renamed.error);
+    expect(renamed.value[0]).toEqual(saved('Learning Hindi', { ...defaults, hover: false }));
+    expect(renamed.value[1]).toBe(initial[1]);
+    expect(initial[0].name).toBe('Learning');
+    expect(mutateSavedProfiles(renamed.value, { kind: 'rename', expected: initial[0], name: 'Stale' }).ok).toBe(false);
+    expect(mutateSavedProfiles(initial, { kind: 'rename', expected: initial[0], name: 'other' }).ok).toBe(false);
+    expect(mutateSavedProfiles(initial, { kind: 'rename', expected: initial[0], name: '../bad' }).ok).toBe(false);
+    expect(mutateSavedProfiles(initial, { kind: 'rename', expected: initial[0], name: 'LEARNING' }).ok).toBe(true);
+  });
+  it('rejects duplicate stored keys rather than silently choosing a value', () => {
+    const raw = serializeSavedProfiles([saved('One')]);
+    expect(parseSavedProfiles(raw.replace('"version":1', '"version":1,"version":1')).ok).toBe(false);
+    expect(parseSavedProfiles(raw.replace('"name":"One"', '"name":"One","name":"Two"')).ok).toBe(false);
+  });
+});

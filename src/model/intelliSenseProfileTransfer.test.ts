@@ -53,3 +53,16 @@ describe('portable IntelliSense configuration', () => {
     expect(isCurrentProfileReview(review, { ...defaults, templates: false })).toBe(false);
   });
 });
+
+
+describe('ambiguous configuration rejection', () => {
+  it('rejects duplicate literal and escaped keys, even when values agree', () => {
+    const raw = exportIntelliSenseProfile(defaults);
+    expect(importIntelliSenseProfile(raw.replace('"version": 1', '"version": 1, "version": 1')).ok).toBe(false);
+    expect(importIntelliSenseProfile(raw.replace('"hover": true', '"hover": false, "\\u0068over": true')).ok).toBe(false);
+    expect(importIntelliSenseProfile(raw.replace('"hover": true', '"hover": true, "hover": true')).ok).toBe(false);
+  });
+  it('rejects excessively nested input without recursive parser failure', () => {
+    expect(importIntelliSenseProfile('['.repeat(100) + '0' + ']'.repeat(100)).ok).toBe(false);
+  });
+});
