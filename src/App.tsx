@@ -18,7 +18,7 @@ import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForLi
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
-  DEFAULT_EDITOR_PREFERENCES, FONT_SIZES, TAB_SIZES,
+  DEFAULT_EDITOR_PREFERENCES, editorDisplayOptions,
   parseEditorPreferences, type EditorPreferences,
 } from './model/editorPreferences';
 import {
@@ -55,6 +55,7 @@ import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
+import { StudioSettingsPanel } from './components/StudioSettingsPanel';
 import { WorkspaceSessionPanel } from './components/WorkspaceSessionPanel';
 import { RecentlyClosedPanel } from './components/RecentlyClosedPanel';
 import { emptyRecentlyClosed, reconcileRecentlyClosed, resolveRecentlyClosed,
@@ -97,8 +98,7 @@ import {
 import { restoreStudioDefaults } from './model/studioDefaults';
 import { CompilerDiscoveryRequests } from './model/compilerDiscoveryRequests';
 import {
-  loadAutoSavePreferences, persistAutoSavePreferences,
-  type AutoSaveDelay,
+  loadAutoSavePreferences, persistAutoSavePreferences, DEFAULT_AUTO_SAVE,
 } from './model/autoSaveSettings';
 
 import {
@@ -112,7 +112,7 @@ import {
 import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplaceUndo } from './model/openFileReplaceUndo';
 
 import { nextOutputPanelMode, revealOutputPanel, type OutputPanelMode } from './model/outputPanelLayout';
-import { DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, clampLayoutSize, EXPLORER_MIN, EXPLORER_MAX, OUTPUT_MIN, OUTPUT_MAX, type LayoutDimension } from './model/workspaceLayout';
+import { DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, clampLayoutSize, type LayoutDimension } from './model/workspaceLayout';
 import { WorkspaceSplitter } from './components/WorkspaceSplitter';
 import { effectiveWorkspaceVisibility } from './model/workspaceFocus';
 
@@ -143,7 +143,7 @@ const studioCommands: readonly NavigationEntry[] = [
   { id: 'next-tab', label: 'Next Open Tab', detail: 'Ctrl+Tab' },
   { id: 'previous-tab', label: 'Previous Open Tab', detail: 'Ctrl+Shift+Tab' },
   { id: 'theme', label: 'Toggle Dark / Light Theme', detail: 'Appearance' },
-  { id: 'settings', label: 'Open Editor and Auto Save Settings', detail: 'Ctrl+,' },
+  { id: 'settings', label: 'Open Studio Settings', detail: 'Ctrl+,' },
   { id: 'explorer', label: 'Show / Hide Scarp Explorer', detail: 'Ctrl+B' },
   { id: 'select-compiler', label: 'Select Trusted Scarp Compiler', detail: 'Run / Verify' },
   { id: 'scan-compiler', label: 'Scan for Installed Scarp Compiler', detail: 'Non-executing discovery' },
@@ -2535,118 +2535,43 @@ export default function App() {
       </header>
 
       {editorSettingsOpen && (
-        <section id="editor-settings" className="editor-settings" aria-label="Scarp editor settings">
-          <DraftRecoveryPanel view={recoveryView}
+        <StudioSettingsPanel
+          theme={theme} editor={editorPreferences} autoSave={autoSavePreferences}
+          layout={workspaceLayout} onTheme={setTheme}
+          onEditorChange={patch => setEditorPreferences(current => ({ ...current, ...patch }))}
+          onAutoSaveChange={patch => {
+            // Revoke queued writes before React commits a disabled setting.
+            if (patch.enabled !== undefined) autoSaveEnabledRef.current = patch.enabled;
+            setAutoSavePreferences(current => ({ ...current, ...patch }));
+          }}
+          onLayoutChange={updateWorkspaceDimension}
+          onResetEditor={() => {
+            setEditorPreferences({ ...DEFAULT_EDITOR_PREFERENCES });
+            setNotice('Restored editor display defaults.');
+          }}
+          onResetAutoSave={() => {
+            autoSaveEnabledRef.current = false;
+            setAutoSavePreferences({ ...DEFAULT_AUTO_SAVE });
+            setNotice('Auto Save disabled; default delay restored.');
+          }}
+          onResetLayout={resetWorkspaceLayout}
+          onResetAll={() => {
+            const restored = restoreStudioDefaults();
+            autoSaveEnabledRef.current = false;
+            setAutoSavePreferences(restored.autoSave);
+            setEditorPreferences(restored.editor);
+            setTheme('dark');
+            resetWorkspaceLayout();
+            setNotice('Restored theme, editor, layout and Auto Save defaults. Recovery and remembered workspace metadata are unchanged.');
+          }}
+          onClose={() => setEditorSettingsOpen(false)}
+          recoveryNeedsReview={recoveryView.previous !== null || recoveryView.blocked}
+          recovery={<DraftRecoveryPanel view={recoveryView}
             blocked={busy || compilerBusy || compilerSelecting || compilerScanning}
             onEnable={enableDraftRecovery} onDisable={disableDraftRecovery}
             onRestore={restorePreviousDrafts} onDiscard={discardPreviousDrafts}
-            onCheckpoint={() => flushDraftRecovery(true)} />
-          <label className="editor-setting-checkbox" htmlFor="studio-auto-save">
-            <input id="studio-auto-save" type="checkbox"
-              checked={autoSavePreferences.enabled}
-              onChange={(event) => {
-                // Synchronously revoke queued writes before React commits the
-                // settings update. Async pre-write guards read this ref.
-                autoSaveEnabledRef.current = event.target.checked;
-                setAutoSavePreferences((current) => ({
-                  ...current, enabled: event.target.checked,
-                }));
-              }} />
-            Auto Save (named .srp files only; off by default)
-          </label>
-          <label htmlFor="studio-auto-save-delay">Save after inactivity</label>
-          <select id="studio-auto-save-delay" aria-label="Auto Save delay"
-            value={autoSavePreferences.delay} disabled={!autoSavePreferences.enabled}
-            onChange={(event) => setAutoSavePreferences((current) => ({
-              ...current, delay: Number(event.target.value) as AutoSaveDelay,
-            }))}>
-            <option value={1000}>1 second</option>
-            <option value={3000}>3 seconds (recommended)</option>
-            <option value={5000}>5 seconds</option>
-          </select>
-          <span className="editor-settings-hint">Auto Save never opens Save As, pauses during compiler commands and rejects external disk changes.</span>
-          <label htmlFor="editor-font-size">Font size</label>
-          <select
-            id="editor-font-size"
-            value={editorPreferences.fontSize}
-            onChange={(event) => setEditorPreferences((current) => ({
-              ...current, fontSize: Number(event.target.value) as EditorPreferences['fontSize'],
-            }))}
-          >
-            {FONT_SIZES.map((size) => <option key={size} value={size}>{size} px</option>)}
-          </select>
-          <label htmlFor="editor-tab-size">Tab width</label>
-          <select
-            id="editor-tab-size"
-            value={editorPreferences.tabSize}
-            onChange={(event) => setEditorPreferences((current) => ({
-              ...current, tabSize: Number(event.target.value) as EditorPreferences['tabSize'],
-            }))}
-          >
-            {TAB_SIZES.map((size) => <option key={size} value={size}>{size} spaces</option>)}
-          </select>
-          <label className="editor-setting-checkbox" htmlFor="editor-word-wrap">
-            <input
-              id="editor-word-wrap"
-              type="checkbox"
-              checked={editorPreferences.wordWrap}
-              onChange={(event) => setEditorPreferences((current) => ({
-                ...current, wordWrap: event.target.checked,
-              }))}
-            />
-            Wrap long lines
-          </label>
-          <label className="editor-setting-checkbox" htmlFor="editor-minimap">
-            <input
-              id="editor-minimap"
-              type="checkbox"
-              checked={editorPreferences.minimap}
-              onChange={(event) => setEditorPreferences((current) => ({
-                ...current, minimap: event.target.checked,
-              }))}
-            />
-            Show code minimap
-          </label>
-          <label className="editor-setting-checkbox" htmlFor="editor-whitespace">
-            <input
-              id="editor-whitespace"
-              type="checkbox"
-              checked={editorPreferences.showWhitespace}
-              onChange={(event) => setEditorPreferences((current) => ({
-                ...current, showWhitespace: event.target.checked,
-              }))}
-            />
-            Show spaces and tabs
-          </label>
-          <fieldset className="workspace-settings">
-            <legend>Workspace layout</legend>
-            <label htmlFor="studio-explorer-width">Explorer width <output>{workspaceLayout.explorerWidth}px</output></label>
-            <input id="studio-explorer-width" type="range" min={EXPLORER_MIN} max={EXPLORER_MAX} step={1}
-              value={workspaceLayout.explorerWidth}
-              onChange={event => setWorkspaceLayout(current => ({ ...current, explorerWidth: Number(event.target.value) }))} />
-            <label htmlFor="studio-output-height">Output height <output>{workspaceLayout.outputHeight}px</output></label>
-            <input id="studio-output-height" type="range" min={OUTPUT_MIN} max={OUTPUT_MAX} step={1}
-              value={workspaceLayout.outputHeight}
-              onChange={event => updateWorkspaceDimension('outputHeight', Number(event.target.value))} />
-            <button type="button" className="settings-reset" onClick={resetWorkspaceLayout}>Reset layout only</button>
-            <span className="workspace-settings-hint">Preferred sizes are limited by available editor space.</span>
-          </fieldset>
-          <button
-            className="settings-reset"
-            type="button"
-            onClick={() => {
-              // Revocation is synchronous: an in-flight Auto Save preflight
-              // cannot write old content while the UI state is still batching.
-              const restored = restoreStudioDefaults();
-              autoSaveEnabledRef.current = false;
-              setAutoSavePreferences(restored.autoSave);
-              setEditorPreferences(restored.editor);
-              resetWorkspaceLayout();
-              setNotice('Restored appearance and Auto Save defaults. Recovery and remembered workspace metadata are unchanged.');
-            }}
-            title="Reset editor appearance and disable Auto Save; does not erase recovery copies"
-          >Restore appearance and Auto Save defaults</button>
-        </section>
+            onCheckpoint={() => flushDraftRecovery(true)} />}
+        />
       )}
       <div className="studio-main" ref={studioMainElement}>
         <aside id="scarp-explorer" className={'sidebar' + (explorerVisible ? '' : ' sidebar-hidden')}
@@ -3084,12 +3009,7 @@ export default function App() {
                   }
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
-                options={{
-                  automaticLayout: true, fontSize: editorPreferences.fontSize, fontFamily: 'Consolas, monospace',
-                  minimap: { enabled: editorPreferences.minimap }, scrollBeyondLastLine: false,
-                  renderWhitespace: editorPreferences.showWhitespace ? 'all' : 'none',
-                  tabSize: editorPreferences.tabSize, wordWrap: editorPreferences.wordWrap ? 'on' : 'off', detectIndentation: false,
-                }}
+                options={editorDisplayOptions(editorPreferences)}
               />
             ) : (
               <section className="empty-state welcome-screen" aria-label="Start working in Scarp Studio">
