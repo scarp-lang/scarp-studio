@@ -60,6 +60,7 @@ import { IntelliSenseSettings } from './components/IntelliSenseSettings';
 import { StudioShortcutSettings } from './components/StudioShortcutSettings';
 import { studioShortcutStore, matchStudioShortcut, shortcutLabel, studioCommandDetail, type ShortcutCommand } from './model/studioShortcuts';
 import { StudioPreferenceTransferPanel } from './components/StudioPreferenceTransferPanel';
+import { createPreferenceHistory } from './model/preferenceHistory';
 import { captureStudioPreferences, sameStudioPreferences } from './model/studioPreferenceTransfer';
 import { inspectIntelliSenseDocument } from './language/intelliSenseDiagnostics';
 import { intelliSenseStore, intelliSenseEditorOptions } from './model/intelliSensePreferences';
@@ -307,6 +308,10 @@ export default function App() {
     try { return parseWorkspaceLayout(localStorage.getItem('studio.workspaceLayout')); }
     catch { return { ...DEFAULT_WORKSPACE_LAYOUT }; }
   });
+  const portablePreferences = useMemo(() => captureStudioPreferences(theme, editorPreferences, intelligence.preferences,
+    workspaceLayout, autoSavePreferences.delay), [theme, editorPreferences, intelligence.preferences, workspaceLayout, autoSavePreferences.delay]);
+  const [preferenceHistory] = useState(() => createPreferenceHistory(portablePreferences));
+  useEffect(() => { preferenceHistory.record(portablePreferences, Date.now()); }, [portablePreferences, preferenceHistory]);
   const studioMainElement = useRef<HTMLDivElement | null>(null);
   const editorOutputRegion = useRef<HTMLDivElement | null>(null);
   const [workspaceDimensions, setWorkspaceDimensions] = useState({ width: 1200, height: 700 });
@@ -2551,7 +2556,8 @@ export default function App() {
             onChange={studioShortcutStore.setBinding} onReset={studioShortcutStore.reset} />}
           portability={<StudioPreferenceTransferPanel
             workspaceRoot={folderPath}
-            current={captureStudioPreferences(theme, editorPreferences, intelligence.preferences, workspaceLayout, autoSavePreferences.delay)}
+            current={portablePreferences}
+            history={preferenceHistory}
             onApply={(expected, next) => {
               const live = captureStudioPreferences(theme, editorPreferences, intelliSenseStore.getSnapshot().preferences, workspaceLayout, autoSavePreferences.delay);
               if (!sameStudioPreferences(live, expected)) return false;

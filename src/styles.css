@@ -1507,3 +1507,11 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .studio-settings-center .settings-grid-focused { grid-template-columns: minmax(0, 1fr); }
 .studio-settings-center [data-settings-revealed="true"] { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { .studio-settings-center { scroll-behavior: auto; } }
+
+
+.preference-history { display: grid; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 8px; min-width: 0; }
+.preference-history .history-entries { max-height: 240px; overflow: auto; display: grid; gap: 6px; }
+.preference-history .history-entries button { text-align: left; display: grid; gap: 3px; min-width: 0; }
+.preference-history .history-entries button[aria-pressed="true"] { border-color: var(--accent); }
+.preference-history .history-entries small { color: var(--muted); }
+.preference-history .history-detail { display: grid; gap: 6px; border: 1px solid var(--border); padding: 8px; border-radius: 5px; }

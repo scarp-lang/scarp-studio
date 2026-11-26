@@ -336,3 +336,6 @@ actually testing the Studio desktop build.**
 | S49 | Review applying a workspace snapshot, switch workspace or edit settings before confirmation, then review forgetting a saved association. | Stale root/revision/baseline prevents apply; forgetting metadata never removes workspace files. | NOT RUN |
 
 | S50 | Search globally for line height, parameter labels, Auto Save delay and keyboard commands; select individual search results and press Enter in search. | Correct category opens, nested filters clear, advanced controls expand, focus moves to enabled control or category fallback without changing values. Recovery review remains visible. | NOT RUN |
+
+| S51 | Change several portable settings, including a continuous layout slider, close and reopen Settings, compare prior history entries and review a selective rollback. | Session history coalesces a continuous same-field change, retains bounded snapshots, and applies only selected reviewed groups. No source, paths or permissions are recorded. | NOT RUN |
+| S52 | Review a historical restore, then change preferences or clear history before confirmation. | Stale plans are refused. Clearing history does not change active preferences. | NOT RUN |
