@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { advancedSettingsSmoke } from './settings-browser-advanced.mjs';
 import { eventually, launchBrowser, serveBuild } from './settings-browser-harness.mjs';
 
 const server = await serveBuild();
@@ -158,6 +159,7 @@ try {
     await button('Browse preference history');
     assert.equal(await evaluate(() => document.querySelectorAll('.history-entries button').length), 0);
   });
+  await advancedSettingsSmoke({ evaluate, wait, visible, click, button, change, category, stored, step, cdp });
   assert.deepEqual(cdp.errors, [], 'uncaught browser exceptions');
   console.log('Settings browser smoke: ' + completed + ' checks passed.');
 } finally {
