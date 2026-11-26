@@ -46,7 +46,9 @@ export function serializeSnippets(items: readonly UserSnippet[]): string {
   return JSON.stringify({ format: SNIPPET_FORMAT, version: 1, snippets: items.map(portable) });
 }
 export function exportSnippets(items: readonly UserSnippet[]): string {
-  return JSON.stringify(JSON.parse(serializeSnippets(items)), null, 2);
+  const compact = serializeSnippets(items);
+  const formatted = JSON.stringify(JSON.parse(compact), null, 2);
+  return formatted.length <= MAX_SNIPPET_STORAGE_UNITS ? formatted : compact;
 }
 export function parseSnippets(raw: string | null): ProfileResult<readonly PreparedUserSnippet[]> {
   if (raw === null) return { ok: true, value: Object.freeze([]) };
