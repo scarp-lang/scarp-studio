@@ -3,7 +3,7 @@ export const MAX_SETTINGS_QUERY_UNITS = 120;
 export const SETTINGS_GROUPS = [
   { id: 'appearance', label: 'Appearance', words: 'theme light dark color interface' },
   { id: 'editor', label: 'Code editor', words: 'font family size consolas cascadia monospace tab width wrap lines line numbers minimap whitespace spaces highlight active current indentation guides bracket colors smooth scrolling' },
-  { id: 'intellisense', label: 'IntelliSense and language assistance', words: 'autocomplete completion suggestions automatic manual snippets templates keywords types builtins local functions hover documentation signature parameter hints definition navigation symbols outline delay limit budget word based suggestions enter tab presets profiles' },
+  { id: 'intellisense', label: 'IntelliSense and language assistance', words: 'autocomplete completion suggestions automatic manual snippets templates keywords types builtins local functions hover documentation signature parameter hints definition navigation symbols outline delay limit budget word based suggestions enter tab presets profiles import export portable configuration transfer json preview examples test bench' },
   { id: 'files', label: 'Files and Auto Save', words: 'autosave auto save delay inactivity disk named source files disable reset' },
   { id: 'layout', label: 'Workspace layout', words: 'explorer width output height panel size focus reset' },
   { id: 'compiler', label: 'Compiler configuration', words: 'scarp executable binary path location version detect discovery scan startup download trust approval manual' },
