@@ -4,7 +4,7 @@ import { matchingSettingsGroups, MAX_SETTINGS_QUERY_UNITS, SETTINGS_GROUPS } fro
 describe('settings search', () => {
   it('shows all groups for empty or whitespace-only queries', () => {
     expect(matchingSettingsGroups('')).toEqual(SETTINGS_GROUPS.map(group => group.id));
-    expect(matchingSettingsGroups(' \t ')).toHaveLength(7);
+    expect(matchingSettingsGroups(' \t ')).toHaveLength(9);
   });
   it('matches case-insensitive words across group labels and aliases', () => {
     expect(matchingSettingsGroups('FONT family')).toEqual(['editor']);
@@ -12,12 +12,14 @@ describe('settings search', () => {
     expect(matchingSettingsGroups('autosave')).toEqual(['files']);
     expect(matchingSettingsGroups('output height')).toEqual(['layout']);
     expect(matchingSettingsGroups('dark')).toEqual(['appearance']);
+    expect(matchingSettingsGroups('keyboard shortcuts')).toEqual(['shortcuts']);
+    expect(matchingSettingsGroups('studio preference transfer')).toEqual(['portability']);
     expect(matchingSettingsGroups('checkpoint')).toEqual(['recovery']);
     expect(matchingSettingsGroups('compiler path')).toEqual(['compiler']);
     expect(matchingSettingsGroups('startup discovery')).toEqual(['compiler']);
     expect(matchingSettingsGroups('parameter hints')).toEqual(['intellisense']);
     expect(matchingSettingsGroups('autocomplete')).toEqual(['intellisense']);
-    expect(matchingSettingsGroups('export profiles')).toEqual(['intellisense']);
+    expect(matchingSettingsGroups('export profiles')).toEqual(['intellisense', 'portability']);
   });
   it('has no fuzzy guesses and always retains pending recovery review', () => {
     expect(matchingSettingsGroups('unmatched')).toEqual([]);

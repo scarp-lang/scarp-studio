@@ -307,3 +307,30 @@ actually testing the Studio desktop build.**
 | S36 | Inspect IntelliSense availability with no file, a normal file, a file exceeding the configured budget, and malformed lexical source. Edit the source after inspection or change the budget. | Preference and size eligibility is visible without scanning; explicit inspection returns only aggregate counts and reason categories; stale reports are not reused; no source, paths or compiler state is persisted. | NOT RUN |
 
 | S37 | Export a collection with several named profiles, import into another Studio session, and review keep/replace/rename conflicts. Change saved profiles before confirming and attempt a merge above capacity. | Backup contains only named IntelliSense snapshots; merge preserves active preferences, rejects stale review and oversized/capacity violations, and writes the reviewed collection as one update. | NOT RUN |
+
+
+### Studio-wide preference portability (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S38 | Export all portable settings, edit theme/editor/layout/IntelliSense and delay, import and select only appearance and editor. | Review lists exact changed fields; confirmation applies only selected categories. No source, path, compiler approval, recovery data or Auto Save enablement is exported or applied. | NOT RUN |
+| S39 | Import malformed JSON, duplicate keys, unsupported schemas, unexpected permission fields, out-of-range panel dimensions and oversized paste. | Rejected before any preference changes. Existing settings and named IntelliSense profiles remain unchanged. | NOT RUN |
+| S40 | Review an import, change a preference, then confirm. Re-review, apply, and review undo; change a preference before undo. | Stale import/undo is refused. A valid undo restores the previous portable snapshot only. No file writes are triggered by enabling Auto Save. | NOT RUN |
+
+| S41 | Save named Studio configurations, switch preferences, review a saved configuration, rename/replace/delete with confirmation, reopen Studio. | Named snapshots remain distinct from IntelliSense-only profiles; application uses the reviewed preference diff; malformed or externally modified storage cannot be silently overwritten. | NOT RUN |
+
+
+### Keyboard shortcut customization (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S42 | Change New/Open/Save/Go to Line to supported unused alternatives, reopen settings, restart Studio. | New bindings work; previous ones are released; displayed toolbar and palette shortcut hints follow current bindings. | NOT RUN |
+| S43 | Try duplicate bindings, disable a configurable command, reset a binding and reset all. | Conflicts are rejected, disabled commands remain accessible by UI, defaults restore, Settings and Stop remain fixed. | NOT RUN |
+| S44 | Test Ctrl/Meta, exact modifier combinations, held keys, AltGraph and composition input, and Monaco editing shortcuts. | Unmatched input is not intercepted. Only tab cycling repeats; composition/AltGraph input remains untouched. OS-reserved shortcuts may not reach Studio. | NOT RUN |
+
+| S45 | Change typography, cursor, folding, minimap and ruler preferences. | Editor options persist; no existing source is rewritten. | NOT RUN |
+| S46 | Change indentation and automatic bracket/quote behavior; type in a new source and switch tabs. | Options affect future typing, not existing source bytes. | NOT RUN |
+| S47 | Apply accessibility preset and import original v1 configuration. | Old choices survive; new fields default safely; preset is explicitly reviewed. | NOT RUN |
+
+| S48 | Select a native workspace, explicitly save a portable preference snapshot, select another workspace, and review its own snapshot. | Associations use only the selected root, not a stored path as authority. No automatic apply on folder selection. | NOT RUN |
+| S49 | Review applying a workspace snapshot, switch workspace or edit settings before confirmation, then review forgetting a saved association. | Stale root/revision/baseline prevents apply; forgetting metadata never removes workspace files. | NOT RUN |

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { AdvancedEditorSettings } from './AdvancedEditorSettings';
 import { EDITOR_FONTS, FONT_SIZES, TAB_SIZES, type EditorFont, type EditorPreferences } from '../model/editorPreferences';
 import type { AutoSaveDelay, AutoSavePreferences } from '../model/autoSaveSettings';
 import { EXPLORER_MIN, EXPLORER_MAX, OUTPUT_MIN, OUTPUT_MAX, type LayoutDimension, type WorkspaceLayout } from '../model/workspaceLayout';
@@ -12,6 +13,8 @@ interface Props {
   recovery: ReactNode;
   compiler: ReactNode;
   intelliSense: ReactNode;
+  portability?: ReactNode;
+  shortcuts?: ReactNode;
   recoveryNeedsReview: boolean;
   onTheme: (theme: 'dark' | 'light') => void;
   onEditorChange: (patch: Partial<EditorPreferences>) => void;
@@ -80,7 +83,7 @@ export function StudioSettingsPanel(props: Props) {
         </fieldset>
         <fieldset className="settings-group" hidden={hidden('editor')}>
           <legend>Code editor</legend>
-          <p>Display preferences only. Changing these settings never rewrites source text.</p>
+          <p>Display and editing preferences. Applying settings never rewrites existing source; editing behavior changes future input only.</p>
           <div className="settings-controls">
             <div className="settings-control-row">
               <label htmlFor="editor-font-family">Font family</label>
@@ -113,6 +116,7 @@ export function StudioSettingsPanel(props: Props) {
                 {flag.label}
               </label>)}
             </div>
+            <AdvancedEditorSettings preferences={editor} theme={props.theme} onChange={props.onEditorChange} />
             <button className="settings-reset" type="button" onClick={props.onResetEditor}>Reset editor only</button>
           </div>
         </fieldset>
@@ -161,11 +165,19 @@ export function StudioSettingsPanel(props: Props) {
           <legend>Compiler configuration</legend>
           {props.compiler}
         </fieldset>
+        <fieldset className="settings-group settings-shortcuts" hidden={hidden('shortcuts')}>
+          <legend>Keyboard shortcuts</legend>
+          {props.shortcuts ?? <p>Shortcut configuration is unavailable.</p>}
+        </fieldset>
+        <fieldset className="settings-group settings-portability" hidden={hidden('portability')}>
+          <legend>Studio preference transfer</legend>
+          {props.portability ?? <p>Preference transfer is unavailable.</p>}
+        </fieldset>
         <div className="settings-recovery settings-group" hidden={hidden('recovery')}>{props.recovery}</div>
       </div>
       <footer className="settings-footer">
         <button className="settings-reset" type="button" onClick={props.onResetAll}>Restore preference defaults</button>
-        <span>Resets theme, editor, IntelliSense, workspace layout, Auto Save and startup discovery. Compiler approval is unchanged. Recovery copies and remembered workspace data are unchanged.</span>
+        <span>Resets theme, editor, IntelliSense, keyboard shortcuts, workspace layout, Auto Save and startup discovery. Compiler approval is unchanged. Recovery copies and remembered workspace data are unchanged.</span>
       </footer>
     </section>
   );
