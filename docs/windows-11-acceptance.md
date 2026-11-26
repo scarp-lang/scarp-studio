@@ -334,3 +334,5 @@ actually testing the Studio desktop build.**
 
 | S48 | Select a native workspace, explicitly save a portable preference snapshot, select another workspace, and review its own snapshot. | Associations use only the selected root, not a stored path as authority. No automatic apply on folder selection. | NOT RUN |
 | S49 | Review applying a workspace snapshot, switch workspace or edit settings before confirmation, then review forgetting a saved association. | Stale root/revision/baseline prevents apply; forgetting metadata never removes workspace files. | NOT RUN |
+
+| S50 | Search globally for line height, parameter labels, Auto Save delay and keyboard commands; select individual search results and press Enter in search. | Correct category opens, nested filters clear, advanced controls expand, focus moves to enabled control or category fallback without changing values. Recovery review remains visible. | NOT RUN |

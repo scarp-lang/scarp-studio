@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSettingsReveal } from './settingsReveal';
 import {
   DEFAULT_SHORTCUTS, MAX_SHORTCUT_QUERY_UNITS, SHORTCUT_COMMANDS, availableShortcutBindings,
   isFixedShortcut, searchStudioShortcuts, shortcutConflict, shortcutLabel,
@@ -16,6 +17,7 @@ export function StudioShortcutSettings({ bindings, persistence, onChange, onRese
   const [modifiedOnly, setModifiedOnly] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [notice, setNotice] = useState('');
+  useSettingsReveal('shortcuts', () => { setQuery(''); setModifiedOnly(false); });
   const entries = searchStudioShortcuts(query, modifiedOnly, bindings);
   const changed = SHORTCUT_COMMANDS.filter(item => bindings[item.id] !== DEFAULT_SHORTCUTS[item.id]).length;
   function change(id: ShortcutCommand, binding: ShortcutBinding) {

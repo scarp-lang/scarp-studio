@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSettingsReveal } from './settingsReveal';
 import { IntelliSenseProfilePanel } from './IntelliSenseProfilePanel';
 import { IntelliSensePreviewPanel } from './IntelliSensePreviewPanel';
 import { IntelliSenseReferencePanel } from './IntelliSenseReferencePanel';
@@ -52,6 +53,7 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
   const completionOff = p.completionMode === 'off';
   const [query, setQuery] = useState('');
   const [modifiedOnly, setModifiedOnly] = useState(false);
+  useSettingsReveal('intellisense', () => { setQuery(''); setModifiedOnly(false); });
   const matches = matchIntelliSenseControls(p, query, modifiedOnly);
   const visible = (key: keyof IntelliSensePreferences) => matches.includes(key);
   const groupVisible = (group: IntelliSenseControlGroup) => matches.some(key => INTELLISENSE_CONTROL_INDEX[key].group === group);

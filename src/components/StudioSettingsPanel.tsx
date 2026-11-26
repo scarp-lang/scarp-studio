@@ -1,9 +1,12 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { AdvancedEditorSettings } from './AdvancedEditorSettings';
 import { EDITOR_FONTS, FONT_SIZES, TAB_SIZES, type EditorFont, type EditorPreferences } from '../model/editorPreferences';
 import type { AutoSaveDelay, AutoSavePreferences } from '../model/autoSaveSettings';
 import { EXPLORER_MIN, EXPLORER_MAX, OUTPUT_MIN, OUTPUT_MAX, type LayoutDimension, type WorkspaceLayout } from '../model/workspaceLayout';
-import { matchingSettingsGroups, MAX_SETTINGS_QUERY_UNITS, type SettingsGroup } from '../model/settingsSearch';
+import { MAX_SETTINGS_QUERY_UNITS, SETTINGS_GROUPS, type SettingsGroup } from '../model/settingsSearch';
+
+import { SettingsRevealContext, type SettingsRevealRequest, focusSettingsTarget } from './settingsReveal';
+import { searchSettingsControls, settingsVisibleGroups, type SettingsSearchEntry } from '../model/settingsControlSearch';
 
 interface Props {
   theme: 'dark' | 'light';
@@ -49,16 +52,37 @@ const editorFlags: readonly { key: EditorFlag; label: string; id: string }[] = [
 export function StudioSettingsPanel(props: Props) {
   const { editor, autoSave, layout } = props;
   const [query, setQuery] = useState('');
-  const matches = matchingSettingsGroups(query, props.recoveryNeedsReview);
+  const [category, setCategory] = useState<SettingsGroup | 'all'>('all');
+  const [reveal, setReveal] = useState<SettingsRevealRequest | null>(null);
+  const sequence = useRef(0);
+  const panel = useRef<HTMLElement | null>(null);
+  const searchInput = useRef<HTMLInputElement | null>(null);
+  const results = searchSettingsControls(query);
+  const matches = settingsVisibleGroups(query, category, props.recoveryNeedsReview);
   const hidden = (id: SettingsGroup) => !matches.includes(id);
+  function jump(entry: SettingsSearchEntry) {
+    setCategory(entry.group); setQuery('');
+    setReveal({ id: entry.target, group: entry.group, sequence: ++sequence.current });
+  }
+  useEffect(() => {
+    if (!reveal || !panel.current) return;
+    // Nested preference sections reveal their own controls before focusing.
+    if (reveal.id.startsWith('editor-experience-') || reveal.id.startsWith('intellisense-') || reveal.id.startsWith('studio-shortcut-')) return;
+    focusSettingsTarget(panel.current, reveal.id);
+  }, [reveal]);
   return (
-    <section id="editor-settings" className="editor-settings studio-settings-center" aria-label="Scarp Studio settings">
+    <section ref={panel} id="editor-settings" className="editor-settings studio-settings-center" aria-label="Scarp Studio settings">
       <header className="studio-settings-header">
         <div><h2>Settings</h2><p>Local preferences · changes apply immediately</p></div>
         <div className="studio-settings-search">
-          <input type="search" aria-label="Search settings" placeholder="Search settings"
+          <input ref={searchInput} type="search" aria-label="Search settings" placeholder="Search settings"
             value={query} maxLength={MAX_SETTINGS_QUERY_UNITS}
-            onChange={event => setQuery(event.target.value.slice(0, MAX_SETTINGS_QUERY_UNITS))} />
+            onChange={event => { setQuery(event.target.value.slice(0, MAX_SETTINGS_QUERY_UNITS)); setReveal(null); }}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && query.trim() && results.entries.length && !event.nativeEvent.isComposing) {
+                event.preventDefault(); jump(results.entries[0]);
+              }
+            }} />
           {query && <button className="settings-reset" type="button" onClick={() => setQuery('')}>Clear search</button>}
         </div>
         <button className="settings-reset" type="button" onClick={props.onClose}>Close settings</button>
@@ -67,8 +91,24 @@ export function StudioSettingsPanel(props: Props) {
         {matches.length ? matches.length + ' settings group(s)' : 'No settings match your search.'}
         {props.recoveryNeedsReview && ' Recovery review remains visible.'}
       </p>
-      <div className="settings-grid">
-        <fieldset className="settings-group" hidden={hidden('appearance')}>
+      <nav className="settings-category-nav" aria-label="Settings categories">
+        <button type="button" aria-pressed={category === 'all' && !query.trim()} onClick={() => { setCategory('all'); setQuery(''); setReveal(null); }}>All settings</button>
+        {SETTINGS_GROUPS.map(group => <button type="button" key={group.id}
+          aria-pressed={category === group.id && !query.trim()} onClick={() => {
+            setCategory(group.id); setQuery(''); setReveal(null);
+          }}>{group.label}{group.id === 'recovery' && props.recoveryNeedsReview ? ' · Review' : ''}</button>)}
+      </nav>
+      {query.trim() && <section className="settings-search-results" aria-label="Matching preferences">
+        <p role="status">{results.total} matching preferences{results.total > results.entries.length ? ' · showing first ' + results.entries.length : ''}. Press Enter to open the first result.</p>
+        {results.entries.length ? <div className="settings-result-list">
+          {results.entries.map(entry => <button type="button" key={entry.id} onClick={() => jump(entry)}>
+            <strong>{entry.label}</strong><small>{SETTINGS_GROUPS.find(group => group.id === entry.group)?.label}</small>
+          </button>)}
+        </div> : <p>No individual preference matches. Try a shorter search or select a category.</p>}
+      </section>}
+      <SettingsRevealContext.Provider value={reveal}>
+      <div className={'settings-grid' + (category !== 'all' && !query.trim() ? ' settings-grid-focused' : '')}>
+        <fieldset className="settings-group" id="settings-category-appearance" tabIndex={-1} hidden={hidden('appearance')}>
           <legend>Appearance</legend>
           <p>Choose the Studio interface and editor theme.</p>
           <div className="settings-control-row">
@@ -81,7 +121,7 @@ export function StudioSettingsPanel(props: Props) {
             </select>
           </div>
         </fieldset>
-        <fieldset className="settings-group" hidden={hidden('editor')}>
+        <fieldset className="settings-group" id="settings-category-editor" tabIndex={-1} hidden={hidden('editor')}>
           <legend>Code editor</legend>
           <p>Display and editing preferences. Applying settings never rewrites existing source; editing behavior changes future input only.</p>
           <div className="settings-controls">
@@ -120,11 +160,11 @@ export function StudioSettingsPanel(props: Props) {
             <button className="settings-reset" type="button" onClick={props.onResetEditor}>Reset editor only</button>
           </div>
         </fieldset>
-        <fieldset className="settings-group settings-intellisense" hidden={hidden('intellisense')}>
+        <fieldset className="settings-group settings-intellisense" id="settings-category-intellisense" tabIndex={-1} hidden={hidden('intellisense')}>
           <legend>IntelliSense and language assistance</legend>
           {props.intelliSense}
         </fieldset>
-        <fieldset className="settings-group" hidden={hidden('files')}>
+        <fieldset className="settings-group" id="settings-category-files" tabIndex={-1} hidden={hidden('files')}>
           <legend>Files and Auto Save</legend>
           <p>Auto Save is off by default. It never opens Save As, pauses during compiler commands and rejects external disk changes.</p>
           <div className="settings-controls">
@@ -148,7 +188,7 @@ export function StudioSettingsPanel(props: Props) {
             <button className="settings-reset" type="button" onClick={props.onResetAutoSave}>Reset Auto Save only</button>
           </div>
         </fieldset>
-        <fieldset className="settings-group" hidden={hidden('layout')}>
+        <fieldset className="settings-group" id="settings-category-layout" tabIndex={-1} hidden={hidden('layout')}>
           <legend>Workspace layout</legend>
           <p>Preferred panel sizes are limited by available editor space.</p>
           <div className="settings-controls">
@@ -161,21 +201,23 @@ export function StudioSettingsPanel(props: Props) {
             <button className="settings-reset" type="button" onClick={props.onResetLayout}>Reset layout only</button>
           </div>
         </fieldset>
-        <fieldset className="settings-group settings-compiler" hidden={hidden('compiler')}>
+        <fieldset className="settings-group settings-compiler" id="settings-category-compiler" tabIndex={-1} hidden={hidden('compiler')}>
           <legend>Compiler configuration</legend>
           {props.compiler}
         </fieldset>
-        <fieldset className="settings-group settings-shortcuts" hidden={hidden('shortcuts')}>
+        <fieldset className="settings-group settings-shortcuts" id="settings-category-shortcuts" tabIndex={-1} hidden={hidden('shortcuts')}>
           <legend>Keyboard shortcuts</legend>
           {props.shortcuts ?? <p>Shortcut configuration is unavailable.</p>}
         </fieldset>
-        <fieldset className="settings-group settings-portability" hidden={hidden('portability')}>
+        <fieldset className="settings-group settings-portability" id="settings-category-portability" tabIndex={-1} hidden={hidden('portability')}>
           <legend>Studio preference transfer</legend>
           {props.portability ?? <p>Preference transfer is unavailable.</p>}
         </fieldset>
-        <div className="settings-recovery settings-group" hidden={hidden('recovery')}>{props.recovery}</div>
+        <div className="settings-recovery settings-group" id="settings-category-recovery" tabIndex={-1} hidden={hidden('recovery')}>{props.recovery}</div>
       </div>
+      </SettingsRevealContext.Provider>
       <footer className="settings-footer">
+        <button className="settings-reset" type="button" onClick={() => { searchInput.current?.focus(); }}>Back to settings search</button>
         <button className="settings-reset" type="button" onClick={props.onResetAll}>Restore preference defaults</button>
         <span>Resets theme, editor, IntelliSense, keyboard shortcuts, workspace layout, Auto Save and startup discovery. Compiler approval is unchanged. Recovery copies and remembered workspace data are unchanged.</span>
       </footer>
