@@ -395,12 +395,17 @@ const templates: readonly ScarpCompletion[] = [
  * identifier copied into a Monaco buffer on every completion request. */
 export const MAX_COMPLETION_PREFIX_UNITS = 128;
 
-export function scarpCompletions(prefix: string, include: (entry: ScarpCompletion) => boolean = () => true): ScarpCompletion[] {
+export function scarpCompletions(prefix: string, include: (entry: ScarpCompletion) => boolean = () => true,
+  matches: (label: string, needle: string) => boolean = (label, needle) => label.startsWith(needle),
+  rank?: (label: string, needle: string) => number,
+): ScarpCompletion[] {
   if (prefix.length > MAX_COMPLETION_PREFIX_UNITS) return [];
   // Invariant across OS UI locales: INPUT_BOOLEAN must find input_boolean
   // even when Windows is configured with Turkish dotted/dotless I rules.
   const needle = prefix.trim().toLowerCase();
-  return templates.filter((entry) => entry.label.toLowerCase().startsWith(needle) && include(entry)).slice(0, 40);
+  const candidates = templates.filter(entry => matches(entry.label.toLowerCase(), needle) && include(entry));
+  if (rank) candidates.sort((a, b) => rank(a.label.toLowerCase(), needle) - rank(b.label.toLowerCase(), needle));
+  return candidates.slice(0, 40);
 }
 
 export function scarpTokenHelp(token: string): ScarpCompletion | undefined {

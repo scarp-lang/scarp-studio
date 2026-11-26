@@ -138,10 +138,7 @@ export function readLocalParameters(source: string, openOffset: number): string[
   return null;
 }
 
-export function localSignatureAt(source: string, offset: number,
-  index: () => readonly LocalFunctionHeader[] | null = () => indexLocalFunctionHeaders(source),
-  readParameters: (openOffset: number) => readonly string[] | null = position => readLocalParameters(source, position),
-): LocalSignature | null {
+export function activeSignatureCall(source: string, offset: number): ReturnType<typeof activeLocalCall> {
   const call = activeLocalCall(source, offset);
   if (!call) return null;
   // Suppress work when the current line's prefix exceeds the lexical budget.
@@ -150,10 +147,26 @@ export function localSignatureAt(source: string, offset: number,
     if (offset - lineStart >= MAX_ASSIST_SCAN_UNITS) return null;
     lineStart--;
   }
-  const matches = index()?.filter(symbol => symbol.name === call.name);
-  if (matches?.length !== 1) return null;
+  return call;
+}
+
+export function localSignatureFromCall(call: { name: string; argument: number },
+  headers: readonly LocalFunctionHeader[], readParameters: (offset: number) => readonly string[] | null,
+): LocalSignature | null {
+  const matches = headers.filter(symbol => symbol.name === call.name);
+  if (matches.length !== 1) return null;
   const parameters = readParameters(matches[0].openOffset);
   if (!parameters || call.argument >= Math.max(1, parameters.length)) return null;
   return { name: call.name, label: call.name + '(' + parameters.join(', ') + ')',
     parameters: [...parameters], activeParameter: call.argument };
+}
+
+export function localSignatureAt(source: string, offset: number,
+  index: () => readonly LocalFunctionHeader[] | null = () => indexLocalFunctionHeaders(source),
+  readParameters: (openOffset: number) => readonly string[] | null = position => readLocalParameters(source, position),
+): LocalSignature | null {
+  const call = activeSignatureCall(source, offset);
+  if (!call) return null;
+  const headers = index();
+  return headers ? localSignatureFromCall(call, headers, readParameters) : null;
 }

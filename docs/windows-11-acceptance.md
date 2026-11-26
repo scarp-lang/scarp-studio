@@ -279,3 +279,20 @@ actually testing the Studio desktop build.**
 |---|---|---|---|
 | S23 | Open Settings IntelliSense preview; select templates, built-ins, types and local completion examples; switch suggestion sources, mode, priority and limit. | Results are derived from the same catalog/pipeline as the provider, including off mode. No source buffer or workspace files change. | NOT RUN |
 | S24 | Select local hover, signature, definition and document symbols examples and independently toggle each control. | Preview updates from the same bounded local analysis functions; disabled features produce no results. Preview is explicitly marked as a built-in sample, not a compiler result. | NOT RUN |
+
+
+### Matching and conservative catalog context (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S25 | Select ordered-character matching, type bgpw, invoke completion, then restore prefix matching. Try an abbreviated local function name. | Ordered matching can surface bigint_pow and same-file abbreviated names; prefix mode does not. Exact/prefix matches rank ahead of nonprefix matches within each source. | NOT RUN |
+| S26 | Try catalog completion after a same-line module qualifier or declaration keyword; toggle context-aware catalog suggestions. | Conservative mode suppresses those catalog suggestions; opt-out restores catalog matches, never unsafe local resolution. | NOT RUN |
+| S27 | Import a v1 profile and load saved v1 profiles, then save a new profile and export. | All existing choices survive; new matching/context preferences take defaults; exports and subsequent profile writes use v2; malformed or incomplete schemas rejected. | NOT RUN |
+
+| S28 | Edit an unfinished call, then introduce mismatched brackets and declaration-shaped text inside grouping. | Local navigation and typed assistance retain valid earlier declarations in an unfinished call, but do not resolve from an inconsistent lexical inventory. | NOT RUN |
+
+| S29 | Accept catalog completion within print(42), bigint_pow(...), array<integer, 2>, and before an existing semicolon. | Existing arguments, generic parameters and terminators remain intact; fresh completions still insert supported snippets. | NOT RUN |
+
+| S30 | Invoke completion after a qualifier followed by several blank or comment lines; repeat after a quoted string or comparison. | Conservative catalog policy skips qualified suggestions within the eight-line, 16 Ki-unit lookback; ordinary expressions remain available. | NOT RUN |
+
+| S31 | Invoke parameter hints in bigint_pow, ask_or, decimal_round, list_set and print; disable only built-in hints; test a shadowing local declaration. | Catalog-backed arguments appear for known unqualified calls, local declaration hints take precedence, ambiguous/shadowed calls do not receive misleading catalog hints. | NOT RUN |

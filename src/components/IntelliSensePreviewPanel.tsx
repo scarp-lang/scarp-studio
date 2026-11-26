@@ -27,6 +27,7 @@ export function IntelliSensePreviewPanel({ preferences }: { preferences: Readonl
     {result.results.length > 0 ? <div className="preview-results" aria-label="Sample results">
       {result.results.map((item, index) => <div className="preview-result" key={item.kind + ':' + item.label + ':' + index}>
         <code>{item.label}</code><span className="preview-kind">{item.kind}</span><p>{item.detail}</p>
+        {item.insertion !== undefined && <p>Insert {item.asSnippet ? 'template' : 'text'}: <code>{item.insertion}</code></p>}
       </div>)}
     </div> : <p>No sample result with the current configuration.</p>}
   </section>;

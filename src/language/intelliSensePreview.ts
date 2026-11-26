@@ -2,6 +2,7 @@ import type { IntelliSensePreferences } from '../model/intelliSensePreferences';
 import { LocalSourceAnalysis } from './localAnalysis';
 import { canCompleteLocalFunction } from './localCompletion';
 import { collectScarpSuggestions } from './suggestionPipeline';
+import { boundedCompletionContext, completionMatchRank } from './completionMatching';
 import { scarpTokenHelp } from './assist';
 
 const header = 'funcra add(a: integer, b: integer) -> integer { return a + b; }\n';
@@ -20,9 +21,14 @@ export const INTELLISENSE_EXAMPLES = [
   { id: 'types', title: 'Type names', kind: 'completion', marked: 'int|', prefix: 'int' },
   { id: 'local', title: 'Local function completion', kind: 'completion', marked: header + 'ad|d(1, 2);', prefix: 'ad' },
   { id: 'priority', title: 'Local and catalog priority', kind: 'completion', marked: mixedHeader + 'pri|', prefix: 'pri' },
+  { id: 'abbreviation', title: 'Ordered-character abbreviation', kind: 'completion', marked: 'bgpw|', prefix: 'bgpw' },
+  { id: 'qualified', title: 'Qualified name context', kind: 'completion', marked: 'module.pri|', prefix: 'pri' },
+  { id: 'multiline-qualified', title: 'Qualified name across lines', kind: 'completion', marked: 'module.\n// continuation\npri|', prefix: 'pri' },
+  { id: 'existing-call', title: 'Complete an existing call', kind: 'completion', marked: 'pri|nt(42);', prefix: 'pri' },
   { id: 'catalog-hover', title: 'Built-in hover documentation', kind: 'hover', marked: 'pri|nt(42);' },
   { id: 'local-hover', title: 'Local function hover', kind: 'hover', marked: header + 'a|dd(1, 2);' },
   { id: 'signature', title: 'Parameter hints', kind: 'signature', marked: header + 'add(1, |2);' },
+  { id: 'builtin-signature', title: 'Built-in parameter hints', kind: 'signature', marked: 'bigint_pow(value, |2);' },
   { id: 'definition', title: 'Go to Definition', kind: 'definition', marked: header + 'a|dd(1, 2);' },
   { id: 'symbols', title: 'Document symbols', kind: 'symbols', marked: header + 'record Point { x: integer }\n|' },
 ] as const satisfies readonly PreviewExample[];
@@ -32,6 +38,8 @@ export interface PreviewResult {
   label: string;
   kind: string;
   detail: string;
+  insertion?: string;
+  asSnippet?: boolean;
 }
 export interface IntelliSensePreview {
   before: string;
@@ -68,11 +76,19 @@ export function evaluateIntelliSensePreview(id: PreviewId, settings: Readonly<In
     const start = offset - prefix.length;
     let end = offset;
     while (end < source.length && /[A-Za-z_0-9]/.test(source[end])) end++;
+    const rank = (name: string, needle: string) => completionMatchRank(name, needle, settings.matchingMode);
+    const priorLines = source.slice(0, lineStart).split('\n');
+    const context = boundedCompletionContext(line, start - lineStart, priorLines.length, (number, remaining) => {
+      const previous = priorLines[number - 1];
+      return previous !== undefined && previous.length <= remaining ? previous : null;
+    });
     const items = collectScarpSuggestions(settings, prefix, exclude => {
       if (!canCompleteLocalFunction(line, start - lineStart, prefix)) return [];
-      return local()?.complete(start, end, prefix, exclude) ?? [];
-    });
-    result.results = items.map(item => ({ label: item.label, kind: item.source + ' · ' + item.kind, detail: item.detail }));
+      return local()?.complete(start, end, prefix, exclude, (name, needle) => Number.isFinite(rank(name, needle)),
+        settings.matchingMode === 'subsequence' ? rank : undefined) ?? [];
+    }, context, source.slice(end, lineEnd < 0 ? source.length : lineEnd));
+    result.results = items.map(item => ({ label: item.label, kind: item.source + ' · ' + item.kind, detail: item.detail,
+      insertion: item.insertText, asSnippet: item.asSnippet }));
     result.explanation = settings.completionMode === 'off' ? 'Scarp completion is off.' :
       settings.completionMode === 'manual' ? 'Simulates explicit Ctrl+Space completion. Monaco word suggestions are not included.' :
         'Simulates the Scarp completion provider. Monaco word suggestions and trigger timing are not included.';
@@ -92,10 +108,11 @@ export function evaluateIntelliSensePreview(id: PreviewId, settings: Readonly<In
   }
   if (example.kind === 'signature') {
     if (!settings.signatureHelp) { result.explanation = 'Parameter hints are disabled.'; return result; }
-    const signature = local()?.signature(offset);
+    const signature = local()?.assistedSignature(offset, settings.builtinSignatureHelp);
     if (signature) result.results.push({ label: signature.label, kind: 'signature',
       detail: 'Active parameter: ' + (signature.parameters[signature.activeParameter] ?? '(none)') });
-    result.explanation = 'Typed parameters from the same-file declaration.';
+    result.explanation = signature?.source === 'catalog' ? 'Catalog parameter hints; confirm installed compiler support with Verify.' :
+      'Local typed parameter hints (or enabled catalog hints) when an unambiguous supported call is found.';
     return result;
   }
   if (example.kind === 'definition') {

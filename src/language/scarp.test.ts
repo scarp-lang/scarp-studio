@@ -308,6 +308,14 @@ describe('Scarp editor assistance registration', () => {
       }).suggestions.find((item) => item.label === 'funcra');
       expect(suggestion?.range).toMatchObject({ startColumn: 1, endColumn: 4 });
     }
+    const existingCall = {
+      ...model, getLineContent: () => 'print(42);',
+      getWordUntilPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+      getWordAtPosition: () => ({ word: 'print', startColumn: 1, endColumn: 6 }),
+    };
+    const existingCallSuggestion = handler.provideCompletionItems(existingCall, { lineNumber: 1, column: 4 }).suggestions.find(item => item.label === 'print');
+    expect(existingCallSuggestion).toMatchObject({ insertText: 'print', range: { startColumn: 1, endColumn: 6 } });
+    expect(existingCallSuggestion).not.toHaveProperty('insertTextRules');
     const localSource = 'funcra add(a: integer) -> integer {}\nadd(1);';
     const localModel = {
       getValueLength: () => localSource.length, getValue: () => localSource,
@@ -335,6 +343,14 @@ describe('Scarp editor assistance registration', () => {
         { lineNumber: multi.split('\n').length, column: 3 }).suggestions;
       expect(result.some(item => item.label === 'add'), context).toBe(expected);
     }
+    const qualifiedLines = ['module. // qualifier', '// continuation', 'pri'];
+    const qualifiedModel = {
+      ...model, getLineContent: (n: number) => qualifiedLines[n - 1],
+      getLineMaxColumn: (n: number) => qualifiedLines[n - 1].length + 1,
+      getWordUntilPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+      getWordAtPosition: () => ({ word: 'pri', startColumn: 1, endColumn: 4 }),
+    };
+    expect(handler.provideCompletionItems(qualifiedModel, { lineNumber: 3, column: 4 }).suggestions).toEqual([]);
     const oversizedCompletion = {
       ...localModel, getValueLength: () => 1024 * 1024,
       getValue: () => { throw new Error('large buffer must not be copied'); },
@@ -408,6 +424,17 @@ describe('Scarp editor assistance registration', () => {
       getValueLength: () => 1024 * 1024,
       getValue: () => { throw new Error('large buffer must not be copied'); },
     }, { lineNumber: 2, column: 8 }, { isCancellationRequested: false })).toBeNull();
+    const builtinSource = 'bigint_pow(value, 2);';
+    const builtinModel = {
+      getValueLength: () => builtinSource.length, getValue: () => builtinSource,
+      getOffsetAt: () => builtinSource.indexOf('2'),
+    };
+    expect(signatures.provideSignatureHelp(builtinModel, { lineNumber: 1, column: 19 }, { isCancellationRequested: false })).toMatchObject({
+      value: { activeParameter: 1, signatures: [{ label: 'bigint_pow(value: bigint, exponent: integer)' }] },
+    });
+    settings = { ...settings, builtinSignatureHelp: false };
+    expect(signatures.provideSignatureHelp(builtinModel, { lineNumber: 1, column: 19 }, { isCancellationRequested: false })).toBeNull();
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES };
     const outline = provideSymbols.mock.calls[0][1] as {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
     };
