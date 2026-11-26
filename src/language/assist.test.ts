@@ -341,3 +341,14 @@ describe('Scarp function outline', () => {
     expect(scanScarpFunctions(text)).toHaveLength(500);
   });
 });
+
+
+describe('catalog completion category filtering', () => {
+  it('filters before applying the catalog result limit', () => {
+    const functions = scarpCompletions('', entry => entry.kind === 'function');
+    expect(functions.length).toBeGreaterThan(0);
+    expect(functions.every(entry => entry.kind === 'function')).toBe(true);
+    expect(scarpCompletions('funcra', entry => entry.kind !== 'snippet')).toEqual([]);
+    expect(scarpCompletions('', () => false)).toEqual([]);
+  });
+});

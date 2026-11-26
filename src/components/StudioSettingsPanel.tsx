@@ -11,6 +11,7 @@ interface Props {
   layout: WorkspaceLayout;
   recovery: ReactNode;
   compiler: ReactNode;
+  intelliSense: ReactNode;
   recoveryNeedsReview: boolean;
   onTheme: (theme: 'dark' | 'light') => void;
   onEditorChange: (patch: Partial<EditorPreferences>) => void;
@@ -115,6 +116,10 @@ export function StudioSettingsPanel(props: Props) {
             <button className="settings-reset" type="button" onClick={props.onResetEditor}>Reset editor only</button>
           </div>
         </fieldset>
+        <fieldset className="settings-group settings-intellisense" hidden={hidden('intellisense')}>
+          <legend>IntelliSense and language assistance</legend>
+          {props.intelliSense}
+        </fieldset>
         <fieldset className="settings-group" hidden={hidden('files')}>
           <legend>Files and Auto Save</legend>
           <p>Auto Save is off by default. It never opens Save As, pauses during compiler commands and rejects external disk changes.</p>
@@ -160,7 +165,7 @@ export function StudioSettingsPanel(props: Props) {
       </div>
       <footer className="settings-footer">
         <button className="settings-reset" type="button" onClick={props.onResetAll}>Restore preference defaults</button>
-        <span>Resets theme, editor, workspace layout, Auto Save and startup discovery. Compiler approval is unchanged. Recovery copies and remembered workspace data are unchanged.</span>
+        <span>Resets theme, editor, IntelliSense, workspace layout, Auto Save and startup discovery. Compiler approval is unchanged. Recovery copies and remembered workspace data are unchanged.</span>
       </footer>
     </section>
   );
