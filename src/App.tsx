@@ -2550,6 +2550,7 @@ export default function App() {
           shortcuts={<StudioShortcutSettings bindings={shortcuts.bindings} persistence={shortcuts.persistence}
             onChange={studioShortcutStore.setBinding} onReset={studioShortcutStore.reset} />}
           portability={<StudioPreferenceTransferPanel
+            workspaceRoot={folderPath}
             current={captureStudioPreferences(theme, editorPreferences, intelligence.preferences, workspaceLayout, autoSavePreferences.delay)}
             onApply={(expected, next) => {
               const live = captureStudioPreferences(theme, editorPreferences, intelliSenseStore.getSnapshot().preferences, workspaceLayout, autoSavePreferences.delay);

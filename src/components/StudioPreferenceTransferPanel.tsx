@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { WorkspacePreferencePanel } from './WorkspacePreferencePanel';
 import { StudioSavedProfilePanel } from './StudioSavedProfilePanel';
 import {
   MAX_STUDIO_TRANSFER_UNITS, PORTABLE_GROUPS, PORTABLE_GROUP_LABELS, exportStudioPreferences,
@@ -8,10 +9,11 @@ import {
 
 interface Props {
   current: StudioPortablePreferences;
+  workspaceRoot?: string | null;
   onApply: (expected: StudioPortablePreferences, target: StudioPortablePreferences) => boolean;
 }
 interface Pending { kind: 'import' | 'undo'; review: StudioTransferReview }
-export function StudioPreferenceTransferPanel({ current, onApply }: Props) {
+export function StudioPreferenceTransferPanel({ current, onApply, workspaceRoot = null }: Props) {
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [raw, setRaw] = useState('');
@@ -48,6 +50,7 @@ export function StudioPreferenceTransferPanel({ current, onApply }: Props) {
   }
   return <section className="studio-transfer" aria-label="Studio preference transfer">
     <p>Export and restore display, editor, IntelliSense, workspace dimensions and Auto Save timing. This excludes automatic-write enablement, startup discovery, compiler trust, source files, workspace paths, recovery copies and named profiles.</p>
+    <WorkspacePreferencePanel root={workspaceRoot} current={current} onApply={onApply} />
     <StudioSavedProfilePanel current={current} onReview={snapshot => {
       setImportOpen(false); clearReview();
       setPending({ kind: 'import', review: reviewStudioPreferences(current, snapshot, PORTABLE_GROUPS) });

@@ -331,3 +331,6 @@ actually testing the Studio desktop build.**
 | S45 | Change typography, cursor, folding, minimap and ruler preferences. | Editor options persist; no existing source is rewritten. | NOT RUN |
 | S46 | Change indentation and automatic bracket/quote behavior; type in a new source and switch tabs. | Options affect future typing, not existing source bytes. | NOT RUN |
 | S47 | Apply accessibility preset and import original v1 configuration. | Old choices survive; new fields default safely; preset is explicitly reviewed. | NOT RUN |
+
+| S48 | Select a native workspace, explicitly save a portable preference snapshot, select another workspace, and review its own snapshot. | Associations use only the selected root, not a stored path as authority. No automatic apply on folder selection. | NOT RUN |
+| S49 | Review applying a workspace snapshot, switch workspace or edit settings before confirmation, then review forgetting a saved association. | Stale root/revision/baseline prevents apply; forgetting metadata never removes workspace files. | NOT RUN |
