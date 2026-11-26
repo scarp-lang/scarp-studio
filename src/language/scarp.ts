@@ -1,9 +1,10 @@
 import type * as Monaco from 'monaco-editor';
-import { localSignatureAt } from './signature';
-import { canCompleteLocalFunction, completeLocalFunctions } from './localCompletion';
-import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAt } from './definition';
+import { readIntelliSensePreferences, allowsCatalogKind, type IntelliSensePreferences } from '../model/intelliSensePreferences';
+import { LocalAnalysisCache } from './localAnalysis';
+import { canCompleteLocalFunction, type LocalFunctionCompletion } from './localCompletion';
+import { MAX_DEFINITION_SOURCE_UNITS } from './definition';
 import {
-  isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
+  isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scarpCompletions, scarpTokenHelp,
   type ScarpCompletion,
 } from './assist';
 
@@ -18,7 +19,9 @@ function canAssistAtColumn(column: number): boolean {
 /** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.20.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
-export function registerScarpLanguage(monaco: typeof Monaco): void {
+export function registerScarpLanguage(monaco: typeof Monaco,
+  preferences: () => Readonly<IntelliSensePreferences> = readIntelliSensePreferences,
+): void {
   if (monaco.languages.getLanguages().some((language) => language.id === 'scarp')) return;
   monaco.languages.register({ id: 'scarp', extensions: ['.srp'], aliases: ['Scarp'] });
   monaco.languages.setLanguageConfiguration('scarp', {
@@ -95,6 +98,7 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
 
   // These are editor-only conveniences. Source acceptance remains the job of
   // the separately installed official Scarp compiler.
+  const localAnalysis = new LocalAnalysisCache();
   const completionKinds: Record<ScarpCompletion['kind'], Monaco.languages.CompletionItemKind> = {
     keyword: monaco.languages.CompletionItemKind.Keyword,
     type: monaco.languages.CompletionItemKind.Class,
@@ -102,8 +106,12 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
     snippet: monaco.languages.CompletionItemKind.Snippet,
   };
   monaco.languages.registerCompletionItemProvider('scarp', {
-    provideCompletionItems(model, position) {
-      if (!canAssistAtColumn(position.column)) return { suggestions: [] };
+    provideCompletionItems(model, position, _context, token) {
+      const settings = preferences();
+      if (settings.completionMode === 'off' || token?.isCancellationRequested ||
+          !canAssistAtColumn(position.column)) return { suggestions: [] };
+      if (!settings.localFunctions && !settings.builtins && !settings.templates &&
+          !settings.keywordsAndTypes) return { suggestions: [] };
       const line = model.getLineContent(position.lineNumber);
       if (!isScarpCodePosition(line, position.column - 1)) return { suggestions: [] };
       const word = model.getWordUntilPosition(position);
@@ -122,21 +130,28 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         startColumn: word.startColumn,
         endColumn,
       };
-      const builtins = scarpCompletions(word.word);
-      const local = canCompleteLocalFunction(line, word.startColumn - 1, word.word) &&
-        model.getValueLength() <= MAX_DEFINITION_SOURCE_UNITS
-        ? completeLocalFunctions(model.getValue(), word.word, new Set(builtins.map(item => item.label)))
-        : [];
-      const suggestions: Monaco.languages.CompletionItem[] = [
-        ...local.map(item => ({
+      const builtins = scarpCompletions(word.word, item => allowsCatalogKind(settings, item.kind));
+      let local: LocalFunctionCompletion[] = [];
+      const sourceLength = settings.localFunctions ? model.getValueLength() : 0;
+      if (settings.localFunctions && canCompleteLocalFunction(line, word.startColumn - 1, word.word) &&
+          sourceLength > 0 && sourceLength <= Math.min(MAX_DEFINITION_SOURCE_UNITS, settings.localAnalysisKiB * 1024)) {
+        const analysis = localAnalysis.get(model, settings.localAnalysisKiB * 1024);
+        if (analysis) {
+          const start = model.getOffsetAt({ lineNumber: position.lineNumber, column: word.startColumn });
+          const end = model.getOffsetAt({ lineNumber: position.lineNumber, column: endColumn });
+          local = analysis.complete(start, end, word.word, new Set(builtins.map(item => item.label)));
+        }
+      }
+      const localItems: Monaco.languages.CompletionItem[] = local.map(item => ({
           label: item.name,
           kind: monaco.languages.CompletionItemKind.Function,
           insertText: item.name,
           range,
           detail: item.detail,
           documentation: 'Local Scarp function declaration (editor-only).',
-        })),
-        ...builtins.map((item) => ({
+          sortText: (settings.preferLocal ? '0_' : '1_') + item.name,
+        }));
+      const catalogItems: Monaco.languages.CompletionItem[] = builtins.map((item) => ({
           label: item.label,
           kind: completionKinds[item.kind],
           insertText: item.insertText,
@@ -144,15 +159,17 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
           range,
           detail: item.detail,
           documentation: item.documentation,
-        })),
-      ];
-      return { suggestions: suggestions.slice(0, 40) };
+          sortText: (settings.preferLocal ? '1_' : '0_') + item.label,
+        }));
+      const suggestions = settings.preferLocal ? [...localItems, ...catalogItems] : [...catalogItems, ...localItems];
+      return { suggestions: token?.isCancellationRequested ? [] : suggestions.slice(0, settings.suggestionLimit) };
     },
   });
 
   monaco.languages.registerHoverProvider('scarp', {
-    provideHover(model, position) {
-      if (!canAssistAtColumn(position.column)) return null;
+    provideHover(model, position, token) {
+      const settings = preferences();
+      if (!settings.hover || token?.isCancellationRequested || !canAssistAtColumn(position.column)) return null;
       const line = model.getLineContent(position.lineNumber);
       if (!isScarpCodePosition(line, position.column - 1)) return null;
       const literal = scarpDecimalLiteralAt(line, position.column - 1);
@@ -169,7 +186,19 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
       const item = scarpTokenHelp(word.word);
-      if (!item) return null;
+      if (!item) {
+        if (!settings.localFunctionHover || model.getValueLength() > settings.localAnalysisKiB * 1024) return null;
+        const analysis = localAnalysis.get(model, settings.localAnalysisKiB * 1024);
+        const local = analysis?.hover(model.getOffsetAt(position));
+        if (!local || token?.isCancellationRequested) return null;
+        return {
+          range: new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn),
+          contents: [
+            { value: '`' + local.label + '`', isTrusted: false, supportHtml: false },
+            { value: 'Local function declaration · line ' + local.line + ' (editor-only, not compiler resolution).' },
+          ],
+        };
+      }
       return {
         range: new monaco.Range(position.lineNumber, word.startColumn,
           position.lineNumber, word.endColumn),
@@ -185,9 +214,10 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
     signatureHelpTriggerCharacters: ['(', ','],
     signatureHelpRetriggerCharacters: [')'],
     provideSignatureHelp(model, position, token) {
-      if (token.isCancellationRequested || !canAssistAtColumn(position.column) ||
-          model.getValueLength() > MAX_DEFINITION_SOURCE_UNITS) return null;
-      const signature = localSignatureAt(model.getValue(), model.getOffsetAt(position));
+      const settings = preferences();
+      if (!settings.signatureHelp || token.isCancellationRequested || !canAssistAtColumn(position.column) ||
+          model.getValueLength() > Math.min(MAX_DEFINITION_SOURCE_UNITS, settings.localAnalysisKiB * 1024)) return null;
+      const signature = localAnalysis.get(model, settings.localAnalysisKiB * 1024)?.signature(model.getOffsetAt(position));
       if (!signature || token.isCancellationRequested) return null;
       return {
         value: {
@@ -206,12 +236,11 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
 
   monaco.languages.registerDefinitionProvider('scarp', {
     provideDefinition(model, position, token) {
-      if (token.isCancellationRequested || !canAssistAtColumn(position.column) ||
+      const settings = preferences();
+      if (!settings.goToDefinition || token.isCancellationRequested || !canAssistAtColumn(position.column) ||
           model.getLineMaxColumn(position.lineNumber) > MAX_ASSIST_SCAN_UNITS + 1 ||
-          model.getValueLength() > MAX_DEFINITION_SOURCE_UNITS) return null;
-      const name = scarpCallNameAt(model.getLineContent(position.lineNumber), position.column);
-      if (!name) return null;
-      const target = findLocalFunctionDefinition(model.getValue(), name);
+          model.getValueLength() > Math.min(MAX_DEFINITION_SOURCE_UNITS, settings.localAnalysisKiB * 1024)) return null;
+      const target = localAnalysis.get(model, settings.localAnalysisKiB * 1024)?.definition(model.getOffsetAt(position));
       if (!target || token.isCancellationRequested) return null;
       return {
         uri: model.uri,
@@ -221,8 +250,12 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
   });
 
   monaco.languages.registerDocumentSymbolProvider('scarp', {
-    provideDocumentSymbols(model) {
-      return scanScarpOutlineSymbols(model.getValue()).map((symbol) => ({
+    provideDocumentSymbols(model, token) {
+      const settings = preferences();
+      if (!settings.documentSymbols || token?.isCancellationRequested ||
+          model.getValueLength() > Math.min(MAX_DEFINITION_SOURCE_UNITS, settings.localAnalysisKiB * 1024)) return [];
+      const analysis = localAnalysis.get(model, settings.localAnalysisKiB * 1024);
+      return (analysis?.symbols() ?? []).map((symbol) => ({
         name: symbol.name,
         detail: 'Scarp ' + symbol.kind,
         kind: symbol.kind === 'function' ? monaco.languages.SymbolKind.Function

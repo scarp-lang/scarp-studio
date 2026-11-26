@@ -240,3 +240,21 @@ actually testing the Studio desktop build.**
 | S06 | Disable startup discovery, restart, then Scan Compiler; repeat with first Run of a saved source; reset compiler preference and restart. | Startup scan stays off until reset/re-enable and restart; explicit scan and first Run still discover; approval remains mandatory. | NOT RUN |
 | S07 | During scan, probe or Run, try setup controls in Settings and output. Select a different candidate after prior approval. | Controls disabled during incompatible operations; explicit confirmation required to replace current approval; cancellation retains previous path. | NOT RUN |
 | S08 | Reset all preferences after approving a compiler. | Compiler path is not persisted or cleared by reset; startup discovery resets to on for next launch; recovery and workspace metadata preserved. | NOT RUN |
+
+
+### IntelliSense settings (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S09 | Open Settings and search autocomplete. Choose automatic, manual, then off; type a Scarp prefix and use Ctrl+Space in each mode. | Automatic suggestions appear after configured delay; manual requires explicit invocation; off returns no Scarp or word suggestions. No source changes until a suggestion is accepted. | NOT RUN |
+| S10 | Toggle statement templates, built-in functions, keywords/types, local declarations and document words independently; use Ctrl+Space with matching prefixes. | Only enabled categories appear; document words are current-document only; configured limits apply to Scarp provider results. | NOT RUN |
+| S11 | Toggle hover, parameter hints, definition and Monaco document symbols while switching tabs; check F12 and hover on a multiline local call. | Each setting applies without restart; disabled providers return no result; source sidebar and compiler verification remain independent. | NOT RUN |
+| S12 | Select a lower local analysis budget and open a disposable source above that limit. | Bounded local analysis is skipped, while configured line-level catalog assistance can remain available. | NOT RUN |
+| S13 | Apply Manual or Minimal preset, customize a setting, restart and reset IntelliSense only; compare full preference reset. | Exact choices persist; preset status reports Custom after deviation; category reset affects only IntelliSense, full reset restores its defaults too. | NOT RUN |
+| S14 | Simulate unavailable preference storage and change IntelliSense controls. | Preferences apply in memory with a session-only warning; no source, file path, compiler approval or recovery data is serialized. | NOT RUN |
+
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S15 | Hover an unqualified local function call with typed parameters, then disable local function hover; hover a built-in token. | Local signature shown only while local function hover is enabled; built-in documentation remains independently available. | NOT RUN |
+| S16 | Use completion, hover, definition and parameter hints on a saved file; edit its declaration to a same-length name, undo, switch to a different file and close the tab. | Only exact current model revisions are reused; no stale declaration appears after edits, undo, tab switching or disposal. | NOT RUN |

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Editor from '@monaco-editor/react';
 import type * as Monaco from 'monaco-editor';
 import { ask, open } from '@tauri-apps/plugin-dialog';
@@ -56,6 +56,8 @@ import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
 import { StudioSettingsPanel } from './components/StudioSettingsPanel';
+import { IntelliSenseSettings } from './components/IntelliSenseSettings';
+import { intelliSenseStore, intelliSenseEditorOptions } from './model/intelliSensePreferences';
 import { CompilerSetupPanel } from './components/CompilerSetupPanel';
 import { loadCompilerPreferences, persistCompilerPreferences, DEFAULT_COMPILER_PREFERENCES } from './model/compilerPreferences';
 import { WorkspaceSessionPanel } from './components/WorkspaceSessionPanel';
@@ -273,6 +275,8 @@ export default function App() {
   }
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
+  const intelligence = useSyncExternalStore(intelliSenseStore.subscribe,
+    intelliSenseStore.getSnapshot, intelliSenseStore.getSnapshot);
   const [autoSavePreferences, setAutoSavePreferences] = useState(loadAutoSavePreferences);
   const autoSaveEnabledRef = useRef(autoSavePreferences.enabled);
   autoSaveEnabledRef.current = autoSavePreferences.enabled;
@@ -2567,6 +2571,10 @@ export default function App() {
         <StudioSettingsPanel
           theme={theme} editor={editorPreferences} autoSave={autoSavePreferences}
           layout={workspaceLayout} onTheme={setTheme}
+          intelliSense={<IntelliSenseSettings preferences={intelligence.preferences}
+            persistence={intelligence.persistence}
+            onChange={intelliSenseStore.update}
+            onReset={intelliSenseStore.reset} />}
           compiler={<>
             <label className="editor-setting-checkbox" htmlFor="compiler-startup-scan">
               <input id="compiler-startup-scan" type="checkbox"
@@ -2603,8 +2611,9 @@ export default function App() {
             setEditorPreferences(restored.editor);
             setTheme('dark');
             setCompilerPreferences({ ...DEFAULT_COMPILER_PREFERENCES });
+            intelliSenseStore.reset();
             resetWorkspaceLayout();
-            setNotice('Restored theme, editor, layout, Auto Save and startup discovery defaults. Compiler approval, recovery and remembered workspace metadata are unchanged.');
+            setNotice('Restored theme, editor, IntelliSense, layout, Auto Save and startup discovery defaults. Compiler approval, recovery and remembered workspace metadata are unchanged.');
           }}
           onClose={() => setEditorSettingsOpen(false)}
           recoveryNeedsReview={recoveryView.previous !== null || recoveryView.blocked}
@@ -3051,7 +3060,7 @@ export default function App() {
                   }
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
-                options={editorDisplayOptions(editorPreferences)}
+                options={{ ...editorDisplayOptions(editorPreferences), ...intelliSenseEditorOptions(intelligence.preferences) }}
               />
             ) : (
               <section className="empty-state welcome-screen" aria-label="Start working in Scarp Studio">
