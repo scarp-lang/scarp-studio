@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAt, scarpCallNameAtOffset } from './definition';
+import { findLocalFunctionDefinition, indexLocalFunctionHeaders, MAX_LOCAL_DECLARATION_NESTING, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAt, scarpCallNameAtOffset } from './definition';
 import { MAX_ASSIST_SCAN_UNITS } from './assist';
 
 describe('conservative current-file function definition lookup', () => {
@@ -94,5 +94,30 @@ describe('whole-source call context', () => {
     expect(at('x;'.repeat(13000) + 'add(1)')).toBeNull();
     expect(at(' '.repeat(MAX_DEFINITION_SOURCE_UNITS) + 'add(1)')).toBeNull();
     expect(scarpCallNameAtOffset('a'.repeat(241) + '()', 0)).toBeNull();
+  });
+});
+
+
+describe('shared lexical declaration inventory', () => {
+  it('ignores declaration-shaped tokens inside grouping and nested bodies', () => {
+    const text = 'print(funcra fake() {}); [funcra other() {}]; funcra real() {}';
+    expect(indexLocalFunctionHeaders(text)?.map(item => item.name)).toEqual(['real']);
+    expect(findLocalFunctionDefinition('module.funcra fake() {}; funcra real() {}', 'fake')).toBeNull();
+  });
+  it('fails closed for mismatched delimiters, dense tokens and unsupported code units', () => {
+    const header = 'funcra real() {} ';
+    for (const tail of [']', '([)]', 'x;'.repeat(13000), 'éfuncra fake() {}',
+      '\x7f', '('.repeat(MAX_LOCAL_DECLARATION_NESTING + 1)]) {
+      expect(indexLocalFunctionHeaders(header + tail), tail.slice(0, 50)).toBeNull();
+    }
+    expect(findLocalFunctionDefinition(header + 'print("हिन्दी 😀"); // हिन्दी', 'real')?.name).toBe('real');
+  });
+  it('retains declarations when the user is editing an unfinished trailing call', () => {
+    expect(findLocalFunctionDefinition('funcra real() {} real(', 'real')?.name).toBe('real');
+    expect(findLocalFunctionDefinition('funcra real() {} print(real([', 'real')?.name).toBe('real');
+  });
+  it('does not offer long or unsupported declaration names', () => {
+    expect(indexLocalFunctionHeaders('funcra ' + 'a'.repeat(129) + '() {}')).toEqual([]);
+    expect(indexLocalFunctionHeaders('funcra 123name() {}')).toEqual([]);
   });
 });

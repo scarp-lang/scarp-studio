@@ -159,8 +159,9 @@ export function registerScarpLanguage(monaco: typeof Monaco,
     provideHover(model, position, token) {
       const settings = preferences();
       if (!settings.hover || token?.isCancellationRequested || !canAssistAtColumn(position.column)) return null;
+      if (model.getLineMaxColumn?.(position.lineNumber) > MAX_ASSIST_SCAN_UNITS + 1) return null;
       const line = model.getLineContent(position.lineNumber);
-      if (!isScarpCodePosition(line, position.column - 1)) return null;
+      if (line.length > MAX_ASSIST_SCAN_UNITS || !isScarpCodePosition(line, position.column - 1)) return null;
       const literal = scarpDecimalLiteralAt(line, position.column - 1);
       if (literal) {
         return {

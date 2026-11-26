@@ -115,3 +115,16 @@ describe('local hover and shared analysis result isolation', () => {
     expect(a.symbols()[0].name).toBe('add');
   });
 });
+
+
+describe('shared lexical inventory consistency', () => {
+  it('does not return local completion, hover, definition or signature from malformed scope', () => {
+    const text = 'funcra add(a: integer, b: integer) -> integer {} ]\nadd(1, 2);';
+    const analysis = new LocalSourceAnalysis(text);
+    const start = text.lastIndexOf('add');
+    expect(analysis.complete(start, start + 3, 'ad', new Set())).toEqual([]);
+    expect(analysis.definition(start + 1)).toBeNull();
+    expect(analysis.hover(start + 1)).toBeNull();
+    expect(analysis.signature(text.lastIndexOf('2'))).toBeNull();
+  });
+});

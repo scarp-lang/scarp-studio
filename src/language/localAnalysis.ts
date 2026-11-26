@@ -19,7 +19,7 @@ export class LocalSourceAnalysis {
     return this.lexical ??= scanScarpSource(this.source);
   };
   private index = (): readonly LocalFunctionHeader[] | null => {
-    if (this.headers === undefined) this.headers = indexLocalFunctionHeaders(this.source);
+    if (this.headers === undefined) this.headers = indexLocalFunctionHeaders(this.source, this.scan);
     return this.headers;
   };
   private parameters = (offset: number): readonly string[] | null => {
