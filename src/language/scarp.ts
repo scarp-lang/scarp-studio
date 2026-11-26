@@ -1,6 +1,6 @@
 import type * as Monaco from 'monaco-editor';
 import { localSignatureAt } from './signature';
-import { canCompleteLocalFunction, completeLocalFunctions } from './localCompletion';
+import { canCompleteLocalFunction, canCompleteLocalFunctionAtOffset, completeLocalFunctions } from './localCompletion';
 import { findLocalFunctionDefinition, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameAtOffset } from './definition';
 import {
   isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scanScarpOutlineSymbols, scarpCompletions, scarpTokenHelp,
@@ -123,10 +123,17 @@ export function registerScarpLanguage(monaco: typeof Monaco): void {
         endColumn,
       };
       const builtins = scarpCompletions(word.word);
-      const local = canCompleteLocalFunction(line, word.startColumn - 1, word.word) &&
-        model.getValueLength() <= MAX_DEFINITION_SOURCE_UNITS
-        ? completeLocalFunctions(model.getValue(), word.word, new Set(builtins.map(item => item.label)))
-        : [];
+      let local: ReturnType<typeof completeLocalFunctions> = [];
+      const sourceLength = model.getValueLength();
+      if (canCompleteLocalFunction(line, word.startColumn - 1, word.word) &&
+          sourceLength > 0 && sourceLength <= MAX_DEFINITION_SOURCE_UNITS) {
+        const source = model.getValue();
+        const start = model.getOffsetAt({ lineNumber: position.lineNumber, column: word.startColumn });
+        const end = model.getOffsetAt({ lineNumber: position.lineNumber, column: endColumn });
+        if (canCompleteLocalFunctionAtOffset(source, start, end, word.word)) {
+          local = completeLocalFunctions(source, word.word, new Set(builtins.map(item => item.label)));
+        }
+      }
       const suggestions: Monaco.languages.CompletionItem[] = [
         ...local.map(item => ({
           label: item.name,

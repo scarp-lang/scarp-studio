@@ -310,6 +310,7 @@ describe('Scarp editor assistance registration', () => {
     const localModel = {
       getValueLength: () => localSource.length, getValue: () => localSource,
       getLineContent: () => 'add(1);',
+      getOffsetAt: (p: { column: number }) => localSource.lastIndexOf('add') + p.column - 1,
       getWordUntilPosition: () => ({ word: 'ad', startColumn: 1, endColumn: 3 }),
       getWordAtPosition: () => ({ word: 'add', startColumn: 1, endColumn: 4 }),
     };
@@ -319,6 +320,25 @@ describe('Scarp editor assistance registration', () => {
       range: { startColumn: 1, endColumn: 4 },
     });
     expect(localResult[0]).not.toHaveProperty('insertTextRules');
+    for (const [context, expected] of [
+      ['return\n', true], ['// math.\n', true], ['math.\n', false],
+      ['Choice::\n// note\n', false], ['funcra\n', false],
+    ] as const) {
+      const multi = 'funcra add(a: integer) -> integer {}\n' + context + 'add(1);';
+      const candidate = {
+        ...localModel, getValue: () => multi, getValueLength: () => multi.length,
+        getOffsetAt: (p: { column: number }) => multi.lastIndexOf('add') + p.column - 1,
+      };
+      const result = handler.provideCompletionItems(candidate,
+        { lineNumber: multi.split('\n').length, column: 3 }).suggestions;
+      expect(result.some(item => item.label === 'add'), context).toBe(expected);
+    }
+    const oversizedCompletion = {
+      ...localModel, getValueLength: () => 1024 * 1024,
+      getValue: () => { throw new Error('large buffer must not be copied'); },
+    };
+    expect(handler.provideCompletionItems(oversizedCompletion,
+      { lineNumber: 2, column: 3 }).suggestions.some(item => item.label === 'add')).toBe(false);
     const definitions = provideDefinition.mock.calls[0][1] as {
       provideDefinition: (model: unknown, position: unknown, token: unknown) => unknown;
     };
