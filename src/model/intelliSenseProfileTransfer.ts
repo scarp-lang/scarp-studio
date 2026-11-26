@@ -4,7 +4,8 @@ import {
 } from './intelliSensePreferences';
 
 export const PROFILE_FORMAT = 'scarp-studio.intellisense';
-export const PROFILE_FORMAT_VERSION = 1;
+export const PROFILE_FORMAT_VERSION = 2;
+const V1_KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES).filter(key => key !== 'matchingMode' && key !== 'conservativeCatalog');
 export const MAX_PROFILE_TRANSFER_UNITS = 8192;
 const KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES) as (keyof IntelliSensePreferences)[];
 export type ProfileResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -21,11 +22,12 @@ export function exactKeys(record: Record<string, unknown>, keys: readonly string
 /** Unlike local preference migration, portable imports are strictly complete.
  * A typo, unknown setting or unsupported value must not silently reset a choice.
  * The existing canonical parser remains the single source of valid values. */
-export function strictIntelliSensePreferences(value: unknown): ProfileResult<IntelliSensePreferences> {
+export function strictIntelliSensePreferences(value: unknown, version = PROFILE_FORMAT_VERSION): ProfileResult<IntelliSensePreferences> {
   const record = recordOf(value);
-  if (!record || !exactKeys(record, KEYS)) return profileError('Configuration must contain exactly the supported IntelliSense preferences.');
+  const keys = version === 1 ? V1_KEYS : version === PROFILE_FORMAT_VERSION ? KEYS : null;
+  if (!record || !keys || !exactKeys(record, keys)) return profileError('Configuration must contain exactly the supported IntelliSense preferences.');
   const normalized = parseIntelliSensePreferences(JSON.stringify(record));
-  for (const key of KEYS) {
+  for (const key of keys as (keyof IntelliSensePreferences)[]) {
     if (record[key] !== normalized[key]) return profileError('Unsupported preference value: ' + key + '.');
   }
   return { ok: true, value: normalized };
@@ -110,8 +112,8 @@ export function importIntelliSenseProfile(raw: string): ProfileResult<IntelliSen
   if (!record || !exactKeys(record, ['format', 'version', 'preferences']) || record.format !== PROFILE_FORMAT) {
     return profileError('This is not a supported Scarp Studio IntelliSense configuration.');
   }
-  if (record.version !== PROFILE_FORMAT_VERSION) return profileError('Unsupported IntelliSense configuration version.');
-  return strictIntelliSensePreferences(record.preferences);
+  if (record.version !== 1 && record.version !== PROFILE_FORMAT_VERSION) return profileError('Unsupported IntelliSense configuration version.');
+  return strictIntelliSensePreferences(record.preferences, record.version);
 }
 
 export interface PreferenceChange {
@@ -122,6 +124,8 @@ export interface PreferenceChange {
 }
 const labels: Record<keyof IntelliSensePreferences, string> = {
   completionMode: 'Completion mode',
+  matchingMode: 'Completion matching',
+  conservativeCatalog: 'Context-aware catalog suggestions',
   templates: 'Statement templates',
   builtins: 'Built-in functions',
   keywordsAndTypes: 'Keywords and types',

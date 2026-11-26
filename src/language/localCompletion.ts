@@ -62,6 +62,8 @@ export function completeLocalFunctions(
   source: string, prefix: string, exclude: ReadonlySet<string> = new Set(),
   index: () => readonly LocalFunctionHeader[] | null = () => indexLocalFunctionHeaders(source),
   readParameters: (openOffset: number) => readonly string[] | null = offset => readLocalParameters(source, offset),
+  matches: (name: string, prefix: string) => boolean = (name, needle) => name.startsWith(needle),
+  rank?: (name: string, prefix: string) => number,
 ): LocalFunctionCompletion[] {
   if (source.length > MAX_DEFINITION_SOURCE_UNITS ||
       prefix.length > MAX_COMPLETION_PREFIX_UNITS ||
@@ -71,8 +73,9 @@ export function completeLocalFunctions(
   const counts = new Map<string, number>();
   for (const header of headers) counts.set(header.name, (counts.get(header.name) ?? 0) + 1);
   const results: LocalFunctionCompletion[] = [];
-  for (const header of headers) {
-    if (!header.name.startsWith(prefix) || counts.get(header.name) !== 1 || exclude.has(header.name)) continue;
+  const candidates = headers.filter(header => matches(header.name, prefix) && counts.get(header.name) === 1 && !exclude.has(header.name));
+  if (rank) candidates.sort((a, b) => rank(a.name, prefix) - rank(b.name, prefix));
+  for (const header of candidates) {
     const parameters = readParameters(header.openOffset);
     if (!parameters) continue;
     results.push({ name: header.name, detail: header.name + '(' + parameters.join(', ') + ')' });

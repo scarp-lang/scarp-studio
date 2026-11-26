@@ -2,6 +2,7 @@ import type { IntelliSensePreferences } from '../model/intelliSensePreferences';
 import { LocalSourceAnalysis } from './localAnalysis';
 import { canCompleteLocalFunction } from './localCompletion';
 import { collectScarpSuggestions } from './suggestionPipeline';
+import { completionMatchRank, lineCompletionContext } from './completionMatching';
 import { scarpTokenHelp } from './assist';
 
 const header = 'funcra add(a: integer, b: integer) -> integer { return a + b; }\n';
@@ -20,6 +21,8 @@ export const INTELLISENSE_EXAMPLES = [
   { id: 'types', title: 'Type names', kind: 'completion', marked: 'int|', prefix: 'int' },
   { id: 'local', title: 'Local function completion', kind: 'completion', marked: header + 'ad|d(1, 2);', prefix: 'ad' },
   { id: 'priority', title: 'Local and catalog priority', kind: 'completion', marked: mixedHeader + 'pri|', prefix: 'pri' },
+  { id: 'abbreviation', title: 'Ordered-character abbreviation', kind: 'completion', marked: 'bgpw|', prefix: 'bgpw' },
+  { id: 'qualified', title: 'Qualified name context', kind: 'completion', marked: 'module.pri|', prefix: 'pri' },
   { id: 'catalog-hover', title: 'Built-in hover documentation', kind: 'hover', marked: 'pri|nt(42);' },
   { id: 'local-hover', title: 'Local function hover', kind: 'hover', marked: header + 'a|dd(1, 2);' },
   { id: 'signature', title: 'Parameter hints', kind: 'signature', marked: header + 'add(1, |2);' },
@@ -68,10 +71,12 @@ export function evaluateIntelliSensePreview(id: PreviewId, settings: Readonly<In
     const start = offset - prefix.length;
     let end = offset;
     while (end < source.length && /[A-Za-z_0-9]/.test(source[end])) end++;
+    const rank = (name: string, needle: string) => completionMatchRank(name, needle, settings.matchingMode);
     const items = collectScarpSuggestions(settings, prefix, exclude => {
       if (!canCompleteLocalFunction(line, start - lineStart, prefix)) return [];
-      return local()?.complete(start, end, prefix, exclude) ?? [];
-    });
+      return local()?.complete(start, end, prefix, exclude, (name, needle) => Number.isFinite(rank(name, needle)),
+        settings.matchingMode === 'subsequence' ? rank : undefined) ?? [];
+    }, lineCompletionContext(line, start - lineStart));
     result.results = items.map(item => ({ label: item.label, kind: item.source + ' · ' + item.kind, detail: item.detail }));
     result.explanation = settings.completionMode === 'off' ? 'Scarp completion is off.' :
       settings.completionMode === 'manual' ? 'Simulates explicit Ctrl+Space completion. Monaco word suggestions are not included.' :

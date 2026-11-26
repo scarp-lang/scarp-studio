@@ -279,3 +279,12 @@ actually testing the Studio desktop build.**
 |---|---|---|---|
 | S23 | Open Settings IntelliSense preview; select templates, built-ins, types and local completion examples; switch suggestion sources, mode, priority and limit. | Results are derived from the same catalog/pipeline as the provider, including off mode. No source buffer or workspace files change. | NOT RUN |
 | S24 | Select local hover, signature, definition and document symbols examples and independently toggle each control. | Preview updates from the same bounded local analysis functions; disabled features produce no results. Preview is explicitly marked as a built-in sample, not a compiler result. | NOT RUN |
+
+
+### Matching and conservative catalog context (pending)
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S25 | Select ordered-character matching, type bgpw, invoke completion, then restore prefix matching. Try an abbreviated local function name. | Ordered matching can surface bigint_pow and same-file abbreviated names; prefix mode does not. Exact/prefix matches rank ahead of nonprefix matches within each source. | NOT RUN |
+| S26 | Try catalog completion after a same-line module qualifier or declaration keyword; toggle context-aware catalog suggestions. | Conservative mode suppresses those catalog suggestions; opt-out restores catalog matches, never unsafe local resolution. | NOT RUN |
+| S27 | Import a v1 profile and load saved v1 profiles, then save a new profile and export. | All existing choices survive; new matching/context preferences take defaults; exports and subsequent profile writes use v2; malformed or incomplete schemas rejected. | NOT RUN |

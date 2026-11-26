@@ -34,10 +34,10 @@ describe('named IntelliSense profile validation', () => {
     expect(loaded.value).toHaveLength(2);
     expect(Object.isFrozen(loaded.value)).toBe(true);
     expect(Object.isFrozen(loaded.value[0].preferences)).toBe(true);
-    for (const invalid of ['', '{', 'null', '{"version":2,"profiles":[]}',
-      JSON.stringify({ version: 1, profiles: [saved('One'), saved('one')] }),
-      JSON.stringify({ version: 1, profiles: [saved('One'), { name: 'Bad', preferences: { hover: false } }] }),
-      JSON.stringify({ version: 1, profiles: [saved('One')], extra: true }),
+    for (const invalid of ['', '{', 'null', '{"version":3,"profiles":[]}',
+      JSON.stringify({ version: 2, profiles: [saved('One'), saved('one')] }),
+      JSON.stringify({ version: 2, profiles: [saved('One'), { name: 'Bad', preferences: { hover: false } }] }),
+      JSON.stringify({ version: 2, profiles: [saved('One')], extra: true }),
       ' '.repeat(MAX_PROFILE_STORAGE_UNITS + 1)]) expect(parseSavedProfiles(invalid).ok).toBe(false);
   });
   it('enforces capacity, duplicate names, and exact expected profile on mutations', () => {
@@ -138,7 +138,22 @@ describe('profile rename and ambiguous storage', () => {
   });
   it('rejects duplicate stored keys rather than silently choosing a value', () => {
     const raw = serializeSavedProfiles([saved('One')]);
-    expect(parseSavedProfiles(raw.replace('"version":1', '"version":1,"version":1')).ok).toBe(false);
+    expect(parseSavedProfiles(raw.replace('"version":2', '"version":2,"version":2')).ok).toBe(false);
     expect(parseSavedProfiles(raw.replace('"name":"One"', '"name":"One","name":"Two"')).ok).toBe(false);
+  });
+});
+
+
+describe('saved profile schema migration', () => {
+  it('loads v1 snapshots without overwriting storage, upgrades on next explicit mutation', () => {
+    const { matchingMode: _matching, conservativeCatalog: _context, ...legacy } = { ...defaults, hover: false };
+    const raw = JSON.stringify({ version: 1, profiles: [{ name: 'Old', preferences: legacy }] });
+    const m = storage(raw);
+    const store = createSavedProfilesStore(m.backend);
+    expect(store.getSnapshot().profiles[0].preferences).toEqual({ ...defaults, hover: false });
+    expect(m.writes()).toBe(0);
+    expect(store.mutate({ kind: 'create', name: 'New', preferences: { ...defaults, matchingMode: 'subsequence' } }).ok).toBe(true);
+    expect(JSON.parse(m.raw()!).version).toBe(2);
+    expect(createSavedProfilesStore(m.backend).getSnapshot().profiles[0].preferences.hover).toBe(false);
   });
 });

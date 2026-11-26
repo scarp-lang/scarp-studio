@@ -1,7 +1,7 @@
 import { IntelliSenseProfilePanel } from './IntelliSenseProfilePanel';
 import { IntelliSensePreviewPanel } from './IntelliSensePreviewPanel';
 import {
-  ANALYSIS_BUDGETS, COMPLETION_MODES, ENTER_BEHAVIORS, HOVER_DELAYS,
+  ANALYSIS_BUDGETS, COMPLETION_MODES, ENTER_BEHAVIORS, HOVER_DELAYS, MATCHING_MODES,
   INTELLISENSE_PRESETS, SUGGESTION_DELAYS, SUGGESTION_LIMITS, TAB_BEHAVIORS,
   currentIntelliSensePreset, type IntelliSensePreferences, type IntelliSensePreset,
   type IntelliSenseSnapshot,
@@ -14,7 +14,7 @@ interface Props {
   onReset: () => void;
 }
 type Flag = 'templates' | 'builtins' | 'keywordsAndTypes' | 'localFunctions' | 'documentWords' |
-  'preferLocal' | 'hover' | 'localFunctionHover' | 'signatureHelp' | 'goToDefinition' | 'documentSymbols';
+  'preferLocal' | 'conservativeCatalog' | 'hover' | 'localFunctionHover' | 'signatureHelp' | 'goToDefinition' | 'documentSymbols';
 const completionFlags: readonly { key: Flag; label: string; description: string }[] = [
   { key: 'templates', label: 'Statement templates', description: 'Scarp declaration, control flow and other template snippets.' },
   { key: 'builtins', label: 'Built-in functions', description: 'Catalog functions, including typed argument placeholders.' },
@@ -22,6 +22,7 @@ const completionFlags: readonly { key: Flag; label: string; description: string 
   { key: 'localFunctions', label: 'Local function declarations', description: 'Bounded same-file function suggestions, not import resolution.' },
   { key: 'documentWords', label: 'Words from current document', description: 'Monaco text suggestions, not compiler-verified symbols.' },
   { key: 'preferLocal', label: 'Prefer local functions', description: 'Prioritize local declarations over catalog suggestions.' },
+  { key: 'conservativeCatalog', label: 'Context-aware catalog suggestions', description: 'Suppress catalog suggestions immediately after same-line qualifiers and declaration keywords. This is not compiler scope resolution.' },
 ];
 const navigationFlags: readonly { key: Flag; label: string; description: string }[] = [
   { key: 'hover', label: 'Hover documentation', description: 'Show editor help for known Scarp tokens and decimal literals.' },
@@ -76,6 +77,17 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
                 if (value) onChange({ completionMode: value });
               }}>{COMPLETION_MODES.map(value => <option key={value} value={value}>{modeLabels[value]}</option>)}</select>
             </div>
+            <div className="settings-control-row">
+              <label htmlFor="intellisense-matching">Completion matching</label>
+              <select id="intellisense-matching" disabled={completionOff} value={p.matchingMode} onChange={event => {
+                const value = MATCHING_MODES.find(choice => choice === event.target.value);
+                if (value) onChange({ matchingMode: value });
+              }}>
+                <option value="prefix">Starts with (default)</option>
+                <option value="subsequence">Ordered characters</option>
+              </select>
+            </div>
+            <p>Ordered characters can match abbreviations such as bgpw for bigint_pow. Local function matching remains case-sensitive.</p>
             <div className="settings-control-row">
               <label htmlFor="intellisense-delay">Automatic delay</label>
               <select id="intellisense-delay" disabled={p.completionMode !== 'automatic'} value={p.suggestionDelay}

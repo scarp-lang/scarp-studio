@@ -16,7 +16,7 @@ describe('portable IntelliSense configuration', () => {
   });
   it('rejects unsupported envelopes and versions', () => {
     const valid = JSON.parse(exportIntelliSenseProfile(defaults));
-    for (const data of [null, [], 1, {}, { ...valid, version: 2 }, { ...valid, version: '1' },
+    for (const data of [null, [], 1, {}, { ...valid, version: 3 }, { ...valid, version: '1' },
       { ...valid, format: 'other' }, { ...valid, source: 'private' }, { ...valid, preferences: [] }]) {
       expect(importIntelliSenseProfile(JSON.stringify(data)).ok).toBe(false);
     }
@@ -58,11 +58,22 @@ describe('portable IntelliSense configuration', () => {
 describe('ambiguous configuration rejection', () => {
   it('rejects duplicate literal and escaped keys, even when values agree', () => {
     const raw = exportIntelliSenseProfile(defaults);
-    expect(importIntelliSenseProfile(raw.replace('"version": 1', '"version": 1, "version": 1')).ok).toBe(false);
+    expect(importIntelliSenseProfile(raw.replace('"version": 2', '"version": 2, "version": 2')).ok).toBe(false);
     expect(importIntelliSenseProfile(raw.replace('"hover": true', '"hover": false, "\\u0068over": true')).ok).toBe(false);
     expect(importIntelliSenseProfile(raw.replace('"hover": true', '"hover": true, "hover": true')).ok).toBe(false);
   });
   it('rejects excessively nested input without recursive parser failure', () => {
     expect(importIntelliSenseProfile('['.repeat(100) + '0' + ']'.repeat(100)).ok).toBe(false);
+  });
+});
+
+
+describe('v1 portable profile migration', () => {
+  it('preserves every old field and supplies only the two new defaults', () => {
+    const { matchingMode: _matching, conservativeCatalog: _context, ...legacy } = { ...defaults, hover: false };
+    const raw = JSON.stringify({ format: 'scarp-studio.intellisense', version: 1, preferences: legacy });
+    expect(importIntelliSenseProfile(raw)).toEqual({ ok: true, value: { ...defaults, hover: false } });
+    expect(importIntelliSenseProfile(JSON.stringify({ format: 'scarp-studio.intellisense', version: 2, preferences: legacy })).ok).toBe(false);
+    expect(importIntelliSenseProfile(JSON.stringify({ format: 'scarp-studio.intellisense', version: 1, preferences: { ...legacy, matchingMode: 'prefix' } })).ok).toBe(false);
   });
 });

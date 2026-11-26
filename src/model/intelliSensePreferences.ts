@@ -2,6 +2,8 @@
  * capabilities or trust state belongs in this record. */
 export const INTELLISENSE_STORAGE_KEY = 'studio.intelliSense.v1';
 export const MAX_INTELLISENSE_STORAGE_UNITS = 4096;
+export const MATCHING_MODES = ['prefix', 'subsequence'] as const;
+export type MatchingMode = (typeof MATCHING_MODES)[number];
 export const COMPLETION_MODES = ['automatic', 'manual', 'off'] as const;
 export const SUGGESTION_DELAYS = [50, 100, 250, 500, 1000] as const;
 export const HOVER_DELAYS = [150, 300, 500, 750] as const;
@@ -13,6 +15,8 @@ export type CompletionMode = (typeof COMPLETION_MODES)[number];
 
 export interface IntelliSensePreferences {
   completionMode: CompletionMode;
+  matchingMode: MatchingMode;
+  conservativeCatalog: boolean;
   templates: boolean;
   builtins: boolean;
   keywordsAndTypes: boolean;
@@ -34,6 +38,8 @@ export interface IntelliSensePreferences {
 
 export const DEFAULT_INTELLISENSE_PREFERENCES: Readonly<IntelliSensePreferences> = Object.freeze({
   completionMode: 'automatic',
+  matchingMode: 'prefix',
+  conservativeCatalog: true,
   templates: true,
   builtins: true,
   keywordsAndTypes: true,
@@ -65,6 +71,8 @@ function normalize(value: unknown, fallback: Readonly<IntelliSensePreferences>):
   };
   return {
     completionMode: option(record.completionMode, COMPLETION_MODES, fallback.completionMode),
+    matchingMode: option(record.matchingMode, MATCHING_MODES, fallback.matchingMode),
+    conservativeCatalog: bool('conservativeCatalog'),
     templates: bool('templates'),
     builtins: bool('builtins'),
     keywordsAndTypes: bool('keywordsAndTypes'),

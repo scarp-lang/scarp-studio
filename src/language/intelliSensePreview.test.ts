@@ -10,7 +10,8 @@ describe('Settings-only language assistance examples', () => {
       expect(item.marked.length).toBeLessThan(1024);
       const result = evaluateIntelliSensePreview(item.id, defaults);
       expect(result.before + '|' + result.after).toBe(item.marked);
-      expect(result.results.length, item.id).toBeGreaterThan(0);
+      if (item.id === 'abbreviation' || item.id === 'qualified') expect(result.results, item.id).toEqual([]);
+      else expect(result.results.length, item.id).toBeGreaterThan(0);
     }
   });
   it('uses actual catalog and local function results', () => {
@@ -41,5 +42,15 @@ describe('Settings-only language assistance examples', () => {
     expect(evaluateIntelliSensePreview('signature', { ...defaults, signatureHelp: false }).results).toEqual([]);
     expect(evaluateIntelliSensePreview('definition', { ...defaults, goToDefinition: false }).results).toEqual([]);
     expect(evaluateIntelliSensePreview('symbols', { ...defaults, documentSymbols: false }).results).toEqual([]);
+  });
+});
+
+
+describe('matching and context preview', () => {
+  it('uses ordered characters only when enabled and suppresses qualified catalog by default', () => {
+    expect(evaluateIntelliSensePreview('abbreviation', defaults).results).toEqual([]);
+    expect(evaluateIntelliSensePreview('abbreviation', { ...defaults, matchingMode: 'subsequence' }).results.some(item => item.label === 'bigint_pow')).toBe(true);
+    expect(evaluateIntelliSensePreview('qualified', defaults).results).toEqual([]);
+    expect(evaluateIntelliSensePreview('qualified', { ...defaults, conservativeCatalog: false }).results.some(item => item.label === 'print')).toBe(true);
   });
 });

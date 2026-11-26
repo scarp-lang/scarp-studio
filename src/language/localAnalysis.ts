@@ -36,9 +36,11 @@ export class LocalSourceAnalysis {
     const matches = this.index()?.filter(header => header.name === name);
     return matches?.length === 1 ? matches[0] : null;
   }
-  complete(start: number, end: number, prefix: string, exclude: ReadonlySet<string>): LocalFunctionCompletion[] {
+  complete(start: number, end: number, prefix: string, exclude: ReadonlySet<string>,
+    matches?: (name: string, prefix: string) => boolean, rank?: (name: string, prefix: string) => number,
+  ): LocalFunctionCompletion[] {
     if (!canCompleteLocalFunctionAtOffset(this.source, start, end, prefix, this.scan)) return [];
-    return completeLocalFunctions(this.source, prefix, exclude, this.index, this.parameters);
+    return completeLocalFunctions(this.source, prefix, exclude, this.index, this.parameters, matches, rank);
   }
   definition(offset: number): ScarpFunctionSymbol | null {
     const header = this.headerAt(offset);

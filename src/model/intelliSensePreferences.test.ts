@@ -157,3 +157,13 @@ describe('live IntelliSense store', () => {
     expect(session.getSnapshot().persistence).toBe('session-only');
   });
 });
+
+
+describe('completion matching preferences', () => {
+  it('defaults old records to prefix matching and conservative catalog context', () => {
+    expect(parseIntelliSensePreferences('{"hover":false}')).toEqual({ ...defaults, hover: false });
+    expect(parseIntelliSensePreferences('{"matchingMode":"subsequence","conservativeCatalog":false}'))
+      .toEqual({ ...defaults, matchingMode: 'subsequence', conservativeCatalog: false });
+    expect(parseIntelliSensePreferences('{"matchingMode":123,"conservativeCatalog":"false"}')).toEqual(defaults);
+  });
+});

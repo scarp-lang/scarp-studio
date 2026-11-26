@@ -42,7 +42,7 @@ export function parseSavedProfiles(raw: string | null): ProfileResult<readonly S
   try { value = JSON.parse(raw); } catch { return profileError('Saved profiles contain invalid JSON.'); }
   if (!hasUniqueJsonKeys(raw)) return profileError('Saved profiles contain duplicate keys or unsupported nesting.');
   const root = recordOf(value);
-  if (!root || !exactKeys(root, ['version', 'profiles']) || root.version !== 1 || !Array.isArray(root.profiles)) {
+  if (!root || !exactKeys(root, ['version', 'profiles']) || (root.version !== 1 && root.version !== 2) || !Array.isArray(root.profiles)) {
     return profileError('Saved profiles format is unsupported.');
   }
   if (root.profiles.length > MAX_SAVED_PROFILES) return profileError('Too many saved profiles.');
@@ -53,7 +53,7 @@ export function parseSavedProfiles(raw: string | null): ProfileResult<readonly S
     if (!item || !exactKeys(item, ['name', 'preferences']) || typeof item.name !== 'string') return profileError('Invalid saved profile.');
     const name = normalizeProfileName(item.name);
     if (!name || name !== item.name || names.has(profileIdentity(name))) return profileError('Invalid or duplicate profile name.');
-    const preferences = strictIntelliSensePreferences(item.preferences);
+    const preferences = strictIntelliSensePreferences(item.preferences, root.version);
     if (!preferences.ok) return preferences;
     names.add(profileIdentity(name));
     profiles.push(frozenProfile(name, preferences.value));
@@ -61,7 +61,7 @@ export function parseSavedProfiles(raw: string | null): ProfileResult<readonly S
   return { ok: true, value: Object.freeze(profiles) };
 }
 export function serializeSavedProfiles(profiles: readonly SavedIntelliSenseProfile[]): string {
-  return JSON.stringify({ version: 1, profiles: profiles.map(profile => ({
+  return JSON.stringify({ version: 2, profiles: profiles.map(profile => ({
     name: profile.name, preferences: JSON.parse(serializeIntelliSensePreferences(profile.preferences)),
   })) });
 }
