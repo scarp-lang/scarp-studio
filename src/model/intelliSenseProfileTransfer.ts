@@ -5,7 +5,7 @@ import {
 
 export const PROFILE_FORMAT = 'scarp-studio.intellisense';
 export const PROFILE_FORMAT_VERSION = 2;
-const V1_KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES).filter(key => key !== 'matchingMode' && key !== 'conservativeCatalog');
+const V1_KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES).filter(key => key !== 'matchingMode' && key !== 'conservativeCatalog' && key !== 'builtinSignatureHelp');
 export const MAX_PROFILE_TRANSFER_UNITS = 8192;
 const KEYS = Object.keys(DEFAULT_INTELLISENSE_PREFERENCES) as (keyof IntelliSensePreferences)[];
 export type ProfileResult<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -138,6 +138,7 @@ const labels: Record<keyof IntelliSensePreferences, string> = {
   localFunctionHover: 'Local function hover',
   hoverDelay: 'Hover delay',
   signatureHelp: 'Function parameter hints',
+  builtinSignatureHelp: 'Built-in parameter hints',
   goToDefinition: 'Go to Definition',
   documentSymbols: 'Monaco document symbols',
   localAnalysisKiB: 'Local analysis budget',

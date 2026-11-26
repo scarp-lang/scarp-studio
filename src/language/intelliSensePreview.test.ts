@@ -68,3 +68,10 @@ it('suppresses a qualified multiline preview only under conservative catalog pol
   expect(evaluateIntelliSensePreview('multiline-qualified', defaults).results).toEqual([]);
   expect(evaluateIntelliSensePreview('multiline-qualified', { ...defaults, conservativeCatalog: false }).results.some(item => item.label === 'print')).toBe(true);
 });
+
+
+it('previews builtin parameter labels independently from local parameter hints', () => {
+  expect(evaluateIntelliSensePreview('builtin-signature', defaults).results[0].detail).toBe('Active parameter: exponent: integer');
+  expect(evaluateIntelliSensePreview('builtin-signature', { ...defaults, builtinSignatureHelp: false }).results).toEqual([]);
+  expect(evaluateIntelliSensePreview('signature', { ...defaults, builtinSignatureHelp: false }).results).toHaveLength(1);
+});

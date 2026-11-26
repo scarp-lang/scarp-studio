@@ -28,6 +28,7 @@ export const INTELLISENSE_EXAMPLES = [
   { id: 'catalog-hover', title: 'Built-in hover documentation', kind: 'hover', marked: 'pri|nt(42);' },
   { id: 'local-hover', title: 'Local function hover', kind: 'hover', marked: header + 'a|dd(1, 2);' },
   { id: 'signature', title: 'Parameter hints', kind: 'signature', marked: header + 'add(1, |2);' },
+  { id: 'builtin-signature', title: 'Built-in parameter hints', kind: 'signature', marked: 'bigint_pow(value, |2);' },
   { id: 'definition', title: 'Go to Definition', kind: 'definition', marked: header + 'a|dd(1, 2);' },
   { id: 'symbols', title: 'Document symbols', kind: 'symbols', marked: header + 'record Point { x: integer }\n|' },
 ] as const satisfies readonly PreviewExample[];
@@ -107,10 +108,11 @@ export function evaluateIntelliSensePreview(id: PreviewId, settings: Readonly<In
   }
   if (example.kind === 'signature') {
     if (!settings.signatureHelp) { result.explanation = 'Parameter hints are disabled.'; return result; }
-    const signature = local()?.signature(offset);
+    const signature = local()?.assistedSignature(offset, settings.builtinSignatureHelp);
     if (signature) result.results.push({ label: signature.label, kind: 'signature',
       detail: 'Active parameter: ' + (signature.parameters[signature.activeParameter] ?? '(none)') });
-    result.explanation = 'Typed parameters from the same-file declaration.';
+    result.explanation = signature?.source === 'catalog' ? 'Catalog parameter hints; confirm installed compiler support with Verify.' :
+      'Local typed parameter hints (or enabled catalog hints) when an unambiguous supported call is found.';
     return result;
   }
   if (example.kind === 'definition') {

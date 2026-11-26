@@ -14,7 +14,7 @@ interface Props {
   onReset: () => void;
 }
 type Flag = 'templates' | 'builtins' | 'keywordsAndTypes' | 'localFunctions' | 'documentWords' |
-  'preferLocal' | 'conservativeCatalog' | 'hover' | 'localFunctionHover' | 'signatureHelp' | 'goToDefinition' | 'documentSymbols';
+  'preferLocal' | 'conservativeCatalog' | 'hover' | 'localFunctionHover' | 'signatureHelp' | 'builtinSignatureHelp' | 'goToDefinition' | 'documentSymbols';
 const completionFlags: readonly { key: Flag; label: string; description: string }[] = [
   { key: 'templates', label: 'Statement templates', description: 'Scarp declaration, control flow and other template snippets.' },
   { key: 'builtins', label: 'Built-in functions', description: 'Catalog functions, including typed argument placeholders.' },
@@ -27,7 +27,8 @@ const completionFlags: readonly { key: Flag; label: string; description: string 
 const navigationFlags: readonly { key: Flag; label: string; description: string }[] = [
   { key: 'hover', label: 'Hover documentation', description: 'Show editor help for known Scarp tokens and decimal literals.' },
   { key: 'localFunctionHover', label: 'Local function hover', description: 'Show typed signatures on unambiguous same-file calls when hover is enabled.' },
-  { key: 'signatureHelp', label: 'Function parameter hints', description: 'Show local typed parameters while editing a call.' },
+  { key: 'signatureHelp', label: 'Function parameter hints', description: 'Show typed local parameters while editing a call; also enables the built-in hint option below.' },
+  { key: 'builtinSignatureHelp', label: 'Built-in parameter hints', description: 'Show catalog-backed argument hints for supported unqualified calls. This does not establish compiler-resolved overloads.' },
   { key: 'goToDefinition', label: 'Go to Definition', description: 'Enable Monaco same-file navigation to unambiguous local functions.' },
   { key: 'documentSymbols', label: 'Monaco document symbols', description: 'Enable Monaco symbols; the Studio sidebar outline is independent.' },
 ];
@@ -129,7 +130,7 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
         </div>
         <div className="intellisense-section">
           <h3>Documentation and navigation</h3>
-          <div className="intellisense-checks">{navigationFlags.map(item => flag(item, item.key === 'localFunctionHover' && !p.hover))}</div>
+          <div className="intellisense-checks">{navigationFlags.map(item => flag(item, (item.key === 'localFunctionHover' && !p.hover) || (item.key === 'builtinSignatureHelp' && !p.signatureHelp)))}</div>
           <div className="settings-control-row">
             <label htmlFor="intellisense-hover-delay">Hover delay</label>
             <select id="intellisense-hover-delay" disabled={!p.hover} value={p.hoverDelay} onChange={event => {

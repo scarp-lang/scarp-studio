@@ -24,7 +24,7 @@ describe('IntelliSense Settings UI', () => {
       tag(html, 'intellisense-' + id, 'select');
     }
     for (const flag of ['templates', 'builtins', 'keywordsAndTypes', 'localFunctions', 'documentWords',
-      'preferLocal', 'conservativeCatalog', 'hover', 'localFunctionHover', 'signatureHelp', 'goToDefinition', 'documentSymbols']) {
+      'preferLocal', 'conservativeCatalog', 'hover', 'localFunctionHover', 'signatureHelp', 'builtinSignatureHelp', 'goToDefinition', 'documentSymbols']) {
       expect(tag(html, 'intellisense-' + flag)).toContain('aria-describedby="intellisense-' + flag + '-help"');
       expect(html).toContain('id="intellisense-' + flag + '-help"');
     }
@@ -53,4 +53,11 @@ describe('IntelliSense Settings UI', () => {
     expect(tag(html, 'intellisense-hover')).not.toContain('checked');
     expect(tag(html, 'intellisense-localFunctionHover')).toContain('disabled');
   });
+});
+
+
+it('preserves the built-in hint choice while master parameter hints are off', () => {
+  const html = render({ preferences: { ...defaults, signatureHelp: false, builtinSignatureHelp: true } });
+  expect(tag(html, 'intellisense-builtinSignatureHelp')).toContain('checked');
+  expect(tag(html, 'intellisense-builtinSignatureHelp')).toContain('disabled');
 });

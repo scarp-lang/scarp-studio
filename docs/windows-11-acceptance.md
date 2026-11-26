@@ -294,3 +294,5 @@ actually testing the Studio desktop build.**
 | S29 | Accept catalog completion within print(42), bigint_pow(...), array<integer, 2>, and before an existing semicolon. | Existing arguments, generic parameters and terminators remain intact; fresh completions still insert supported snippets. | NOT RUN |
 
 | S30 | Invoke completion after a qualifier followed by several blank or comment lines; repeat after a quoted string or comparison. | Conservative catalog policy skips qualified suggestions within the eight-line, 16 Ki-unit lookback; ordinary expressions remain available. | NOT RUN |
+
+| S31 | Invoke parameter hints in bigint_pow, ask_or, decimal_round, list_set and print; disable only built-in hints; test a shadowing local declaration. | Catalog-backed arguments appear for known unqualified calls, local declaration hints take precedence, ambiguous/shadowed calls do not receive misleading catalog hints. | NOT RUN |

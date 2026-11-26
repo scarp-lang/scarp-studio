@@ -146,7 +146,7 @@ describe('profile rename and ambiguous storage', () => {
 
 describe('saved profile schema migration', () => {
   it('loads v1 snapshots without overwriting storage, upgrades on next explicit mutation', () => {
-    const { matchingMode: _matching, conservativeCatalog: _context, ...legacy } = { ...defaults, hover: false };
+    const { matchingMode: _matching, conservativeCatalog: _context, builtinSignatureHelp: _builtin, ...legacy } = { ...defaults, hover: false };
     const raw = JSON.stringify({ version: 1, profiles: [{ name: 'Old', preferences: legacy }] });
     const m = storage(raw);
     const store = createSavedProfilesStore(m.backend);

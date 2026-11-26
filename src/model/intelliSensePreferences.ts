@@ -29,6 +29,7 @@ export interface IntelliSensePreferences {
   localFunctionHover: boolean;
   hoverDelay: (typeof HOVER_DELAYS)[number];
   signatureHelp: boolean;
+  builtinSignatureHelp: boolean;
   goToDefinition: boolean;
   documentSymbols: boolean;
   localAnalysisKiB: (typeof ANALYSIS_BUDGETS)[number];
@@ -52,6 +53,7 @@ export const DEFAULT_INTELLISENSE_PREFERENCES: Readonly<IntelliSensePreferences>
   localFunctionHover: true,
   hoverDelay: 300,
   signatureHelp: true,
+  builtinSignatureHelp: true,
   goToDefinition: true,
   documentSymbols: true,
   localAnalysisKiB: 512,
@@ -85,6 +87,7 @@ function normalize(value: unknown, fallback: Readonly<IntelliSensePreferences>):
     localFunctionHover: bool('localFunctionHover'),
     hoverDelay: option(record.hoverDelay, HOVER_DELAYS, fallback.hoverDelay),
     signatureHelp: bool('signatureHelp'),
+    builtinSignatureHelp: bool('builtinSignatureHelp'),
     goToDefinition: bool('goToDefinition'),
     documentSymbols: bool('documentSymbols'),
     localAnalysisKiB: option(record.localAnalysisKiB, ANALYSIS_BUDGETS, fallback.localAnalysisKiB),

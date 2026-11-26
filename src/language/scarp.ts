@@ -211,13 +211,13 @@ export function registerScarpLanguage(monaco: typeof Monaco,
       const settings = preferences();
       if (!settings.signatureHelp || token.isCancellationRequested || !canAssistAtColumn(position.column) ||
           model.getValueLength() > Math.min(MAX_DEFINITION_SOURCE_UNITS, settings.localAnalysisKiB * 1024)) return null;
-      const signature = localAnalysis.get(model, settings.localAnalysisKiB * 1024)?.signature(model.getOffsetAt(position));
+      const signature = localAnalysis.get(model, settings.localAnalysisKiB * 1024)?.assistedSignature(model.getOffsetAt(position), settings.builtinSignatureHelp);
       if (!signature || token.isCancellationRequested) return null;
       return {
         value: {
           signatures: [{
             label: signature.label,
-            documentation: 'Local Scarp declaration (editor-only assistance).',
+            documentation: signature.documentation,
             parameters: signature.parameters.map(label => ({ label })),
           }],
           activeSignature: 0,

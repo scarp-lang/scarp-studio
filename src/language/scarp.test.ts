@@ -424,6 +424,17 @@ describe('Scarp editor assistance registration', () => {
       getValueLength: () => 1024 * 1024,
       getValue: () => { throw new Error('large buffer must not be copied'); },
     }, { lineNumber: 2, column: 8 }, { isCancellationRequested: false })).toBeNull();
+    const builtinSource = 'bigint_pow(value, 2);';
+    const builtinModel = {
+      getValueLength: () => builtinSource.length, getValue: () => builtinSource,
+      getOffsetAt: () => builtinSource.indexOf('2'),
+    };
+    expect(signatures.provideSignatureHelp(builtinModel, { lineNumber: 1, column: 19 }, { isCancellationRequested: false })).toMatchObject({
+      value: { activeParameter: 1, signatures: [{ label: 'bigint_pow(value: bigint, exponent: integer)' }] },
+    });
+    settings = { ...settings, builtinSignatureHelp: false };
+    expect(signatures.provideSignatureHelp(builtinModel, { lineNumber: 1, column: 19 }, { isCancellationRequested: false })).toBeNull();
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES };
     const outline = provideSymbols.mock.calls[0][1] as {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
     };

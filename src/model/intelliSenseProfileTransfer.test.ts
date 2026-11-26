@@ -69,8 +69,8 @@ describe('ambiguous configuration rejection', () => {
 
 
 describe('v1 portable profile migration', () => {
-  it('preserves every old field and supplies only the two new defaults', () => {
-    const { matchingMode: _matching, conservativeCatalog: _context, ...legacy } = { ...defaults, hover: false };
+  it('preserves every old field and supplies only the new defaults', () => {
+    const { matchingMode: _matching, conservativeCatalog: _context, builtinSignatureHelp: _builtin, ...legacy } = { ...defaults, hover: false };
     const raw = JSON.stringify({ format: 'scarp-studio.intellisense', version: 1, preferences: legacy });
     expect(importIntelliSenseProfile(raw)).toEqual({ ok: true, value: { ...defaults, hover: false } });
     expect(importIntelliSenseProfile(JSON.stringify({ format: 'scarp-studio.intellisense', version: 2, preferences: legacy })).ok).toBe(false);

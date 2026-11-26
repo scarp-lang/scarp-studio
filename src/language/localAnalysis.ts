@@ -1,8 +1,9 @@
 import { scanScarpOutlineSymbols, type ScarpFunctionSymbol, type ScarpOutlineSymbol } from './assist';
 import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameFromLexical, type LocalFunctionHeader } from './definition';
 import { canCompleteLocalFunctionAtOffset, completeLocalFunctions, type LocalFunctionCompletion } from './localCompletion';
-import { localSignatureAt, readLocalParameters, type LocalSignature } from './signature';
+import { activeSignatureCall, localSignatureFromCall, localSignatureAt, readLocalParameters, type LocalSignature } from './signature';
 import { scanScarpSource, type SourceLexResult } from './sourceLex';
+import { builtinSignatureAt, hasPotentialCatalogShadow, type AssistedSignature } from './builtinSignatures';
 
 /** One exact immutable source string, with independently lazy lexical and
  * declaration inventories. No disk access, cross-file resolution or compiler
@@ -57,6 +58,19 @@ export class LocalSourceAnalysis {
   }
   signature(offset: number): LocalSignature | null {
     return localSignatureAt(this.source, offset, this.index, this.parameters);
+  }
+  assistedSignature(offset: number, includeBuiltin: boolean): AssistedSignature | null {
+    const call = activeSignatureCall(this.source, offset);
+    if (!call) return null;
+    const headers = this.index();
+    if (!headers) return null;
+    if (headers.some(header => header.name === call.name)) {
+      const signature = localSignatureFromCall(call, headers, this.parameters);
+      return signature ? { ...signature, source: 'local',
+        documentation: 'Local Scarp declaration (editor-only assistance).' } : null;
+    }
+    if (!includeBuiltin || hasPotentialCatalogShadow(this.scan(), call.name)) return null;
+    return builtinSignatureAt(call.name, call.argument);
   }
   symbols(): ScarpOutlineSymbol[] {
     if (this.source.length > MAX_DEFINITION_SOURCE_UNITS) return [];
