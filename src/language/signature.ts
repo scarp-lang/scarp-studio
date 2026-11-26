@@ -1,5 +1,5 @@
 import { MAX_ASSIST_SCAN_UNITS } from './assist';
-import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS } from './definition';
+import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS, type LocalFunctionHeader } from './definition';
 import { blocksIndirectCall, blocksLocalFunctionName } from './localCallContext';
 import { MAX_INSIGHT_TOKENS, scarpInsightIdentifier } from './sourceLex';
 
@@ -138,7 +138,10 @@ export function readLocalParameters(source: string, openOffset: number): string[
   return null;
 }
 
-export function localSignatureAt(source: string, offset: number): LocalSignature | null {
+export function localSignatureAt(source: string, offset: number,
+  index: () => readonly LocalFunctionHeader[] | null = () => indexLocalFunctionHeaders(source),
+  readParameters: (openOffset: number) => readonly string[] | null = position => readLocalParameters(source, position),
+): LocalSignature | null {
   const call = activeLocalCall(source, offset);
   if (!call) return null;
   // Suppress work when the current line's prefix exceeds the lexical budget.
@@ -147,10 +150,10 @@ export function localSignatureAt(source: string, offset: number): LocalSignature
     if (offset - lineStart >= MAX_ASSIST_SCAN_UNITS) return null;
     lineStart--;
   }
-  const matches = indexLocalFunctionHeaders(source)?.filter(symbol => symbol.name === call.name);
+  const matches = index()?.filter(symbol => symbol.name === call.name);
   if (matches?.length !== 1) return null;
-  const parameters = readLocalParameters(source, matches[0].openOffset);
+  const parameters = readParameters(matches[0].openOffset);
   if (!parameters || call.argument >= Math.max(1, parameters.length)) return null;
   return { name: call.name, label: call.name + '(' + parameters.join(', ') + ')',
-    parameters, activeParameter: call.argument };
+    parameters: [...parameters], activeParameter: call.argument };
 }

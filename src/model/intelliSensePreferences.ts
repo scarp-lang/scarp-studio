@@ -22,6 +22,7 @@ export interface IntelliSensePreferences {
   suggestionDelay: (typeof SUGGESTION_DELAYS)[number];
   suggestionLimit: (typeof SUGGESTION_LIMITS)[number];
   hover: boolean;
+  localFunctionHover: boolean;
   hoverDelay: (typeof HOVER_DELAYS)[number];
   signatureHelp: boolean;
   goToDefinition: boolean;
@@ -42,6 +43,7 @@ export const DEFAULT_INTELLISENSE_PREFERENCES: Readonly<IntelliSensePreferences>
   suggestionDelay: 100,
   suggestionLimit: 40,
   hover: true,
+  localFunctionHover: true,
   hoverDelay: 300,
   signatureHelp: true,
   goToDefinition: true,
@@ -72,6 +74,7 @@ function normalize(value: unknown, fallback: Readonly<IntelliSensePreferences>):
     suggestionDelay: option(record.suggestionDelay, SUGGESTION_DELAYS, fallback.suggestionDelay),
     suggestionLimit: option(record.suggestionLimit, SUGGESTION_LIMITS, fallback.suggestionLimit),
     hover: bool('hover'),
+    localFunctionHover: bool('localFunctionHover'),
     hoverDelay: option(record.hoverDelay, HOVER_DELAYS, fallback.hoverDelay),
     signatureHelp: bool('signatureHelp'),
     goToDefinition: bool('goToDefinition'),
@@ -95,7 +98,7 @@ export const INTELLISENSE_PRESETS: Readonly<Record<IntelliSensePreset, Readonly<
   balanced: DEFAULT_INTELLISENSE_PREFERENCES,
   manual: Object.freeze({ ...DEFAULT_INTELLISENSE_PREFERENCES, completionMode: 'manual', acceptOnEnter: 'off' }),
   minimal: Object.freeze({ ...DEFAULT_INTELLISENSE_PREFERENCES, completionMode: 'manual',
-    templates: false, localFunctions: false, hover: false, signatureHelp: false,
+    templates: false, localFunctions: false, hover: false, localFunctionHover: false, signatureHelp: false,
     suggestionLimit: 10, localAnalysisKiB: 64, acceptOnEnter: 'off' }),
 });
 export function currentIntelliSensePreset(value: Readonly<IntelliSensePreferences>): IntelliSensePreset | 'custom' {

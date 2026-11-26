@@ -252,3 +252,9 @@ actually testing the Studio desktop build.**
 | S12 | Select a lower local analysis budget and open a disposable source above that limit. | Bounded local analysis is skipped, while configured line-level catalog assistance can remain available. | NOT RUN |
 | S13 | Apply Manual or Minimal preset, customize a setting, restart and reset IntelliSense only; compare full preference reset. | Exact choices persist; preset status reports Custom after deviation; category reset affects only IntelliSense, full reset restores its defaults too. | NOT RUN |
 | S14 | Simulate unavailable preference storage and change IntelliSense controls. | Preferences apply in memory with a session-only warning; no source, file path, compiler approval or recovery data is serialized. | NOT RUN |
+
+
+| ID | Procedure | Expected result | Status |
+|---|---|---|---|
+| S15 | Hover an unqualified local function call with typed parameters, then disable local function hover; hover a built-in token. | Local signature shown only while local function hover is enabled; built-in documentation remains independently available. | NOT RUN |
+| S16 | Use completion, hover, definition and parameter hints on a saved file; edit its declaration to a same-length name, undo, switch to a different file and close the tab. | Only exact current model revisions are reused; no stale declaration appears after edits, undo, tab switching or disposal. | NOT RUN |

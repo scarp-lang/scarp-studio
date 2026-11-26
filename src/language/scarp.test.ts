@@ -412,17 +412,17 @@ describe('Scarp editor assistance registration', () => {
       provideDocumentSymbols: (model: unknown) => Array<{ name: string }>,
     };
     expect(outline.provideDocumentSymbols({
-      getValueLength: () => 44,
+      getValueLength: () => 'funcra add(a: integer) -> integer { return a; }'.length,
       getValue: () => 'funcra add(a: integer) -> integer { return a; }',
       getLineMaxColumn: () => 44,
     }).map((item) => item.name)).toEqual(['add']);
-    const nominal = outline.provideDocumentSymbols({
-      getValueLength: () => 120,
-      getValue: () => [
+    const nominalSource = [
         'pub record Task { title: string }',
         'pub variant State { Ready }',
         'pure funcra check() -> boolean { return true; }',
-      ].join('\n'),
+      ].join('\n');
+    const nominal = outline.provideDocumentSymbols({
+      getValueLength: () => nominalSource.length, getValue: () => nominalSource,
       getLineMaxColumn: () => 48,
     }) as Array<{ name: string; detail: string; kind: number;
       selectionRange: { startLineNumber: number; startColumn: number } }>;
@@ -433,6 +433,23 @@ describe('Scarp editor assistance registration', () => {
     ]);
     expect(nominal[0].selectionRange.startLineNumber).toBe(1);
     expect(nominal[1].selectionRange.startColumn).toBe(13);
+    const localHoverSource = 'funcra add(a: integer) -> integer {}\nadd(1);';
+    const localHoverModel = {
+      getLineContent: () => 'add(1);',
+      getWordAtPosition: () => ({ word: 'add', startColumn: 1, endColumn: 4 }),
+      getValueLength: () => localHoverSource.length, getValue: () => localHoverSource,
+      getOffsetAt: () => localHoverSource.lastIndexOf('add') + 1,
+      getVersionId: () => 1,
+    };
+    expect(hoverHandler.provideHover(localHoverModel, { lineNumber: 2, column: 2 })).toMatchObject({
+      contents: [{ value: '\x60add(a: integer)\x60', isTrusted: false, supportHtml: false },
+        { value: expect.stringContaining('line 1') }],
+    });
+    settings = { ...settings, localFunctionHover: false };
+    expect(hoverHandler.provideHover({
+      ...localHoverModel, getValueLength: () => { throw new Error('disabled local hover read size'); },
+    }, { lineNumber: 2, column: 2 })).toBeNull();
+    settings = { ...DEFAULT_INTELLISENSE_PREFERENCES };
     // Live Settings changes must gate providers before any model access.
     const forbidden = new Proxy({}, { get() { throw new Error('disabled provider read model'); } });
     settings = { ...settings, completionMode: 'off', hover: false,

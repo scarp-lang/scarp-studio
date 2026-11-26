@@ -24,7 +24,7 @@ describe('IntelliSense Settings UI', () => {
       tag(html, 'intellisense-' + id, 'select');
     }
     for (const flag of ['templates', 'builtins', 'keywordsAndTypes', 'localFunctions', 'documentWords',
-      'preferLocal', 'hover', 'signatureHelp', 'goToDefinition', 'documentSymbols']) {
+      'preferLocal', 'hover', 'localFunctionHover', 'signatureHelp', 'goToDefinition', 'documentSymbols']) {
       expect(tag(html, 'intellisense-' + flag)).toContain('aria-describedby="intellisense-' + flag + '-help"');
       expect(html).toContain('id="intellisense-' + flag + '-help"');
     }
@@ -51,5 +51,6 @@ describe('IntelliSense Settings UI', () => {
     expect(html).toContain('local storage is unavailable');
     expect(tag(html, 'intellisense-hover-delay', 'select')).toContain('disabled');
     expect(tag(html, 'intellisense-hover')).not.toContain('checked');
+    expect(tag(html, 'intellisense-localFunctionHover')).toContain('disabled');
   });
 });

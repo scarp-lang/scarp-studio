@@ -12,7 +12,7 @@ interface Props {
   onReset: () => void;
 }
 type Flag = 'templates' | 'builtins' | 'keywordsAndTypes' | 'localFunctions' | 'documentWords' |
-  'preferLocal' | 'hover' | 'signatureHelp' | 'goToDefinition' | 'documentSymbols';
+  'preferLocal' | 'hover' | 'localFunctionHover' | 'signatureHelp' | 'goToDefinition' | 'documentSymbols';
 const completionFlags: readonly { key: Flag; label: string; description: string }[] = [
   { key: 'templates', label: 'Statement templates', description: 'Scarp declaration, control flow and other template snippets.' },
   { key: 'builtins', label: 'Built-in functions', description: 'Catalog functions, including typed argument placeholders.' },
@@ -23,6 +23,7 @@ const completionFlags: readonly { key: Flag; label: string; description: string 
 ];
 const navigationFlags: readonly { key: Flag; label: string; description: string }[] = [
   { key: 'hover', label: 'Hover documentation', description: 'Show editor help for known Scarp tokens and decimal literals.' },
+  { key: 'localFunctionHover', label: 'Local function hover', description: 'Show typed signatures on unambiguous same-file calls when hover is enabled.' },
   { key: 'signatureHelp', label: 'Function parameter hints', description: 'Show local typed parameters while editing a call.' },
   { key: 'goToDefinition', label: 'Go to Definition', description: 'Enable Monaco same-file navigation to unambiguous local functions.' },
   { key: 'documentSymbols', label: 'Monaco document symbols', description: 'Enable Monaco symbols; the Studio sidebar outline is independent.' },
@@ -114,7 +115,7 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
         </div>
         <div className="intellisense-section">
           <h3>Documentation and navigation</h3>
-          <div className="intellisense-checks">{navigationFlags.map(item => flag(item))}</div>
+          <div className="intellisense-checks">{navigationFlags.map(item => flag(item, item.key === 'localFunctionHover' && !p.hover))}</div>
           <div className="settings-control-row">
             <label htmlFor="intellisense-hover-delay">Hover delay</label>
             <select id="intellisense-hover-delay" disabled={!p.hover} value={p.hoverDelay} onChange={event => {
@@ -132,7 +133,7 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
               if (value !== undefined) onChange({ localAnalysisKiB: value });
             }}>{ANALYSIS_BUDGETS.map(value => <option key={value} value={value}>{value} Ki UTF-16 units</option>)}</select>
           </div>
-          <p>Applies to local function completion, signatures, definitions and Monaco document symbols. Larger files skip these analyses. Compiler Run and Verify are unaffected.</p>
+          <p>Applies to local function completion, hover, signatures, definitions and Monaco document symbols. Larger files skip these analyses. Compiler Run and Verify are unaffected.</p>
           <p>Existing lexical token, nesting and identifier limits still apply. This is not a setting for compiler memory or program limits.</p>
         </div>
       </div>

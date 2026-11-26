@@ -2,7 +2,7 @@ import {
   isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_SCARP_OUTLINE_SYMBOLS,
   type ScarpFunctionSymbol,
 } from './assist';
-import { scanScarpSource, tokenAtOffset, scarpInsightIdentifier } from './sourceLex';
+import { scanScarpSource, tokenAtOffset, scarpInsightIdentifier, type SourceLexResult } from './sourceLex';
 import { blocksLocalFunctionName } from './localCallContext';
 
 /** Editor-only, bounded lookup for unqualified function calls. It is not
@@ -39,10 +39,16 @@ export function scarpCallNameAt(line: string, column: number): string | null {
  * The offset is a zero-based UTF-16 position inside the identifier.
  */
 export function scarpCallNameAtOffset(source: string, offset: number): string | null {
+  return scarpCallNameFromLexical(source, offset, () => scanScarpSource(source));
+}
+
+/** The lazy scanner must describe the exact supplied source snapshot. */
+export function scarpCallNameFromLexical(source: string, offset: number,
+  scan: () => SourceLexResult): string | null {
   if (!Number.isSafeInteger(offset) || offset < 0 || offset >= source.length ||
       source.length > MAX_DEFINITION_SOURCE_UNITS) return null;
-  const lexical = scanScarpSource(source);
-  if (!lexical.complete || lexical.issues.length) return null;
+  const lexical = scan();
+  if (lexical.sourceLength !== source.length || !lexical.complete || lexical.issues.length) return null;
   const token = tokenAtOffset(lexical.tokens, offset);
   if (!token || token.kind !== 'identifier' || token.previewTruncated ||
       !scarpInsightIdentifier(token.text) || token.column > MAX_ASSIST_SCAN_UNITS) return null;
