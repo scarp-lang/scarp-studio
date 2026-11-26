@@ -339,3 +339,5 @@ actually testing the Studio desktop build.**
 
 | S51 | Change several portable settings, including a continuous layout slider, close and reopen Settings, compare prior history entries and review a selective rollback. | Session history coalesces a continuous same-field change, retains bounded snapshots, and applies only selected reviewed groups. No source, paths or permissions are recorded. | NOT RUN |
 | S52 | Review a historical restore, then change preferences or clear history before confirmation. | Stale plans are refused. Clearing history does not change active preferences. | NOT RUN |
+
+| S53 | Select system theme, high contrast and reduced motion; change OS theme and contrast; switch to explicit light/dark. | Effective Studio and Monaco theme follow configured policy, without rewriting portable preference choices. Reduced motion overrides caret animation and scrolling only while active. | NOT RUN |

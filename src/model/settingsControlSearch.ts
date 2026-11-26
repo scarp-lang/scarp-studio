@@ -8,7 +8,9 @@ export interface SettingsSearchEntry { readonly id: string; readonly label: stri
 const base = (id: string, label: string, group: SettingsGroup, target: string, aliases = ''): SettingsSearchEntry =>
   Object.freeze({ id, label, group, target, aliases });
 const basic: SettingsSearchEntry[] = [
-  base('theme', 'Color theme', 'appearance', 'studio-theme', 'dark light appearance'),
+  base('theme', 'Color theme', 'appearance', 'studio-theme', 'dark light system appearance'),
+  base('contrast', 'Contrast preference', 'appearance', 'studio-contrast', 'high contrast system forced colors'),
+  base('motion', 'Motion preference', 'appearance', 'studio-motion', 'reduced animation system accessibility'),
   base('font', 'Font family', 'editor', 'editor-font-family', 'consolas cascadia monospace'),
   base('fontSize', 'Font size', 'editor', 'editor-font-size', 'text size pixels'),
   base('tabSize', 'Tab width', 'editor', 'editor-tab-size', 'indentation size'),

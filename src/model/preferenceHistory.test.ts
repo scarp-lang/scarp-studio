@@ -34,7 +34,7 @@ describe('bounded session preference history', () => {
     history.record(font(16), 1000);
     history.record(font(18), 999);
     history.record(font(20), 999 + PREFERENCE_HISTORY_COALESCE_MS + 1);
-    const other = { ...font(20), appearance: { theme: 'light' as const } };
+    const other = { ...font(20), appearance: { ...defaults.appearance, theme: 'light' as const } };
     history.record(other, 2000);
     expect(history.getSnapshot().entries).toHaveLength(4);
   });
@@ -57,7 +57,7 @@ describe('bounded session preference history', () => {
 describe('reviewed history restore', () => {
   it('selectively restores historical groups and rejects stale active settings', () => {
     const history = createPreferenceHistory(defaults);
-    const current = { ...font(18), appearance: { theme: 'light' as const } };
+    const current = { ...font(18), appearance: { ...defaults.appearance, theme: 'light' as const } };
     history.record(current, 1000);
     const entry = history.getSnapshot().entries[0];
     const plan = history.review(entry.id, 'before', current, ['editor']);

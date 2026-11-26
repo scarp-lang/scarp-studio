@@ -1,3 +1,4 @@
+import { DEFAULT_APPEARANCE, parseAppearanceRecord, type AppearancePreferences, type ThemeMode, type ContrastMode, type MotionMode } from './studioAppearance';
 import { EDITOR_EXPERIENCE_LABELS } from './editorExperience';
 import { DEFAULT_EDITOR_PREFERENCES, parseEditorPreferences, type EditorPreferences } from './editorPreferences';
 import { DEFAULT_AUTO_SAVE, parseAutoSavePreferences, type AutoSaveDelay } from './autoSaveSettings';
@@ -7,7 +8,7 @@ import { exactKeys, hasUniqueJsonKeys, profileError, recordOf, strictIntelliSens
   diffIntelliSensePreferences, PROFILE_FORMAT_VERSION, type ProfileResult } from './intelliSenseProfileTransfer';
 
 export const STUDIO_TRANSFER_FORMAT = 'scarp-studio.preferences';
-export const STUDIO_TRANSFER_VERSION = 2;
+export const STUDIO_TRANSFER_VERSION = 3;
 const LEGACY_EDITOR_KEYS = ['fontSize', 'tabSize', 'wordWrap', 'minimap', 'showWhitespace', 'font', 'lineNumbers', 'highlightActiveLine', 'indentationGuides', 'bracketColors', 'smoothScrolling'] as const;
 export const MAX_STUDIO_TRANSFER_UNITS = 16384;
 export const PORTABLE_GROUPS = ['appearance', 'editor', 'intelliSense', 'layout', 'files'] as const;
@@ -17,7 +18,7 @@ export const PORTABLE_GROUP_LABELS: Readonly<Record<PortableGroup, string>> = Ob
   layout: 'Workspace dimensions', files: 'Auto Save delay',
 });
 export interface StudioPortablePreferences {
-  readonly appearance: Readonly<{ theme: 'dark' | 'light' }>;
+  readonly appearance: Readonly<AppearancePreferences>;
   readonly editor: Readonly<EditorPreferences>;
   readonly intelliSense: Readonly<IntelliSensePreferences>;
   readonly layout: Readonly<WorkspaceLayout>;
@@ -27,14 +28,14 @@ export interface StudioPortablePreferences {
 /** Explicit field selection prevents accidental export of new internal
  * properties. Auto Save enablement, startup discovery and compiler trust
  * are intentionally not portable because they authorize local actions. */
-export function captureStudioPreferences(theme: 'dark' | 'light', editor: Readonly<EditorPreferences>,
-  intelligence: Readonly<IntelliSensePreferences>, layout: Readonly<WorkspaceLayout>, delay: AutoSaveDelay): StudioPortablePreferences {
+export function captureStudioPreferences(theme: ThemeMode, editor: Readonly<EditorPreferences>,
+  intelligence: Readonly<IntelliSensePreferences>, layout: Readonly<WorkspaceLayout>, delay: AutoSaveDelay, contrast: ContrastMode = DEFAULT_APPEARANCE.contrast, motion: MotionMode = DEFAULT_APPEARANCE.motion): StudioPortablePreferences {
   const normalizedEditor = parseEditorPreferences(JSON.stringify(editor));
   const normalizedLayout = parseWorkspaceLayout(JSON.stringify(layout));
   const normalizedIntelligence = strictIntelliSensePreferences(Object.fromEntries(
     Object.keys(DEFAULT_INTELLISENSE_PREFERENCES).map(key => [key, intelligence[key as keyof IntelliSensePreferences]])));
   return Object.freeze({
-    appearance: Object.freeze({ theme: theme === 'light' ? 'light' as const : 'dark' as const }),
+    appearance: Object.freeze(parseAppearanceRecord({ theme, contrast, motion })),
     editor: Object.freeze(normalizedEditor),
     intelliSense: Object.freeze(normalizedIntelligence.ok ? normalizedIntelligence.value : { ...DEFAULT_INTELLISENSE_PREFERENCES }),
     layout: Object.freeze(normalizedLayout),
@@ -45,7 +46,7 @@ export const DEFAULT_STUDIO_PORTABLE = captureStudioPreferences('dark', DEFAULT_
   DEFAULT_INTELLISENSE_PREFERENCES, DEFAULT_WORKSPACE_LAYOUT, DEFAULT_AUTO_SAVE.delay);
 
 function canonical(value: StudioPortablePreferences): StudioPortablePreferences {
-  return captureStudioPreferences(value.appearance.theme, value.editor, value.intelliSense, value.layout, value.files.autoSaveDelay);
+  return captureStudioPreferences(value.appearance.theme, value.editor, value.intelliSense, value.layout, value.files.autoSaveDelay, value.appearance.contrast, value.appearance.motion);
 }
 export function serializeStudioPreferences(value: StudioPortablePreferences): string {
   return JSON.stringify(canonical(value));
@@ -81,14 +82,16 @@ export function importStudioPreferences(raw: string): ProfileResult<StudioPortab
   if (!hasUniqueJsonKeys(raw)) return profileError('Studio configuration has duplicate keys or unsupported nesting.');
   const root = recordOf(data);
   if (!root || !exactKeys(root, ['format', 'version', 'intelliSenseVersion', 'preferences']) ||
-      root.format !== STUDIO_TRANSFER_FORMAT || (root.version !== 1 && root.version !== STUDIO_TRANSFER_VERSION) ||
+      root.format !== STUDIO_TRANSFER_FORMAT || (root.version !== 1 && root.version !== 2 && root.version !== STUDIO_TRANSFER_VERSION) ||
       typeof root.intelliSenseVersion !== 'number') return profileError('Unsupported Studio configuration format or version.');
   const prefs = recordOf(root.preferences);
   if (!prefs || !exactKeys(prefs, PORTABLE_GROUPS)) return profileError('Studio configuration must contain exactly the portable categories.');
   const appearance = recordOf(prefs.appearance);
-  if (!appearance || !exactKeys(appearance, ['theme']) || (appearance.theme !== 'dark' && appearance.theme !== 'light')) {
-    return profileError('Unsupported appearance preferences.');
-  }
+  const appearanceKeys = root.version === 1 || root.version === 2 ? ['theme'] : ['theme', 'contrast', 'motion'];
+  if (!appearance || !exactKeys(appearance, appearanceKeys)) return profileError('Unsupported appearance preferences.');
+  const normalizedAppearance = parseAppearanceRecord(appearance);
+  if (appearanceKeys.some(key => appearance[key] !== normalizedAppearance[key as keyof AppearancePreferences]) ||
+      (root.version !== STUDIO_TRANSFER_VERSION && appearance.theme === 'system')) return profileError('Unsupported appearance preferences.');
   const editor = exactNormalized(prefs.editor, DEFAULT_EDITOR_PREFERENCES, parseEditorPreferences, 'editor', root.version === 1 ? LEGACY_EDITOR_KEYS : undefined);
   if (!editor.ok) return editor;
   const layout = exactNormalized(prefs.layout, DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, 'layout');
@@ -100,7 +103,7 @@ export function importStudioPreferences(raw: string): ProfileResult<StudioPortab
       (files.autoSaveDelay !== 1000 && files.autoSaveDelay !== 3000 && files.autoSaveDelay !== 5000)) {
     return profileError('Unsupported Auto Save timing. Enablement cannot be imported.');
   }
-  return { ok: true, value: captureStudioPreferences(appearance.theme, editor.value, intelliSense.value, layout.value, files.autoSaveDelay) };
+  return { ok: true, value: captureStudioPreferences(normalizedAppearance.theme, editor.value, intelliSense.value, layout.value, files.autoSaveDelay, normalizedAppearance.contrast, normalizedAppearance.motion) };
 }
 export interface StudioPreferenceChange {
   readonly group: PortableGroup;
@@ -125,6 +128,8 @@ export function diffStudioPreferences(before: StudioPortablePreferences, after: 
     if (a !== b) changes.push({ group, key, label, before: display(a, suffix), after: display(b, suffix) });
   }
   push('appearance', 'theme', 'Color theme', before.appearance.theme, after.appearance.theme);
+  push('appearance', 'contrast', 'Contrast preference', before.appearance.contrast, after.appearance.contrast);
+  push('appearance', 'motion', 'Motion preference', before.appearance.motion, after.appearance.motion);
   for (const key of Object.keys(editorLabels) as (keyof EditorPreferences)[]) {
     push('editor', key, editorLabels[key], before.editor[key], after.editor[key], key === 'fontSize' ? ' px' : key === 'tabSize' ? ' spaces' : '');
   }

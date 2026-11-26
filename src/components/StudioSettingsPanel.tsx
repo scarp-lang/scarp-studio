@@ -1,3 +1,5 @@
+import { AppearanceSettings } from './AppearanceSettings';
+import type { AppearancePreferences, ResolvedAppearance, ThemeMode } from '../model/studioAppearance';
 import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { AdvancedEditorSettings } from './AdvancedEditorSettings';
 import { EDITOR_FONTS, FONT_SIZES, TAB_SIZES, type EditorFont, type EditorPreferences } from '../model/editorPreferences';
@@ -10,6 +12,9 @@ import { searchSettingsControls, settingsVisibleGroups, type SettingsSearchEntry
 
 interface Props {
   theme: 'dark' | 'light';
+  appearance?: AppearancePreferences;
+  resolvedAppearance?: ResolvedAppearance;
+  onAppearanceChange?: (patch: Partial<AppearancePreferences>) => void;
   editor: EditorPreferences;
   autoSave: AutoSavePreferences;
   layout: WorkspaceLayout;
@@ -19,7 +24,7 @@ interface Props {
   portability?: ReactNode;
   shortcuts?: ReactNode;
   recoveryNeedsReview: boolean;
-  onTheme: (theme: 'dark' | 'light') => void;
+  onTheme: (theme: ThemeMode) => void;
   onEditorChange: (patch: Partial<EditorPreferences>) => void;
   onAutoSaveChange: (patch: Partial<AutoSavePreferences>) => void;
   onLayoutChange: (dimension: LayoutDimension, value: number) => void;
@@ -110,16 +115,11 @@ export function StudioSettingsPanel(props: Props) {
       <div className={'settings-grid' + (category !== 'all' && !query.trim() ? ' settings-grid-focused' : '')}>
         <fieldset className="settings-group" id="settings-category-appearance" tabIndex={-1} hidden={hidden('appearance')}>
           <legend>Appearance</legend>
-          <p>Choose the Studio interface and editor theme.</p>
-          <div className="settings-control-row">
-            <label htmlFor="studio-theme">Color theme</label>
-            <select id="studio-theme" value={props.theme} onChange={event => {
-              const value = event.target.value;
-              if (value === 'light' || value === 'dark') props.onTheme(value);
-            }}>
-              <option value="dark">Dark (default)</option><option value="light">Light</option>
-            </select>
-          </div>
+          <AppearanceSettings preferences={props.appearance ?? { theme: props.theme, contrast: 'normal', motion: 'system' }}
+            resolved={props.resolvedAppearance} onChange={patch => {
+              if (props.onAppearanceChange) props.onAppearanceChange(patch);
+              else if (patch.theme) props.onTheme(patch.theme);
+            }} />
         </fieldset>
         <fieldset className="settings-group" id="settings-category-editor" tabIndex={-1} hidden={hidden('editor')}>
           <legend>Code editor</legend>

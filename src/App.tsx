@@ -60,6 +60,7 @@ import { IntelliSenseSettings } from './components/IntelliSenseSettings';
 import { StudioShortcutSettings } from './components/StudioShortcutSettings';
 import { studioShortcutStore, matchStudioShortcut, shortcutLabel, studioCommandDetail, type ShortcutCommand } from './model/studioShortcuts';
 import { StudioPreferenceTransferPanel } from './components/StudioPreferenceTransferPanel';
+import { DEFAULT_APPEARANCE, loadAppearance, persistAppearance, resolveAppearance, subscribeSystemAppearance, readSystemAppearance, reducedMotionEditorOptions, type AppearancePreferences } from './model/studioAppearance';
 import { createPreferenceHistory } from './model/preferenceHistory';
 import { captureStudioPreferences, sameStudioPreferences } from './model/studioPreferenceTransfer';
 import { inspectIntelliSenseDocument } from './language/intelliSenseDiagnostics';
@@ -126,7 +127,7 @@ import { DEFAULT_WORKSPACE_LAYOUT, parseWorkspaceLayout, clampLayoutSize, type L
 import { WorkspaceSplitter } from './components/WorkspaceSplitter';
 import { effectiveWorkspaceVisibility } from './model/workspaceFocus';
 
-type Theme = 'dark' | 'light';
+
 type FolderEntry = { name: string; path: string };
 type PaletteMode = 'files' | 'commands' | 'line' | 'symbols';
 
@@ -173,13 +174,6 @@ const studioCommands: readonly NavigationEntry[] = [
   })),
 ];
 
-function getInitialTheme(): Theme {
-  try {
-    return localStorage.getItem('studio.theme') === 'light' ? 'light' : 'dark';
-  } catch {
-    return 'dark';
-  }
-}
 
 function getInitialEditorPreferences(): EditorPreferences {
   try {
@@ -279,7 +273,12 @@ export default function App() {
       flushDraftRecovery(true);
     }
   }
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const [appearance, setAppearance] = useState(loadAppearance);
+  const [systemAppearance, setSystemAppearance] = useState(readSystemAppearance);
+  useEffect(() => subscribeSystemAppearance(setSystemAppearance), []);
+  const resolvedAppearance = resolveAppearance(appearance, systemAppearance);
+  const theme = resolvedAppearance.theme;
+  function toggleTheme() { setAppearance(current => ({ ...current, theme: theme === 'dark' ? 'light' : 'dark' })); }
   const [editorPreferences, setEditorPreferences] = useState(getInitialEditorPreferences);
   const shortcuts = useSyncExternalStore(studioShortcutStore.subscribe, studioShortcutStore.getSnapshot, studioShortcutStore.getSnapshot);
   const shortcut = (id: ShortcutCommand) => shortcutLabel(shortcuts.bindings[id]);
@@ -308,8 +307,8 @@ export default function App() {
     try { return parseWorkspaceLayout(localStorage.getItem('studio.workspaceLayout')); }
     catch { return { ...DEFAULT_WORKSPACE_LAYOUT }; }
   });
-  const portablePreferences = useMemo(() => captureStudioPreferences(theme, editorPreferences, intelligence.preferences,
-    workspaceLayout, autoSavePreferences.delay), [theme, editorPreferences, intelligence.preferences, workspaceLayout, autoSavePreferences.delay]);
+  const portablePreferences = useMemo(() => captureStudioPreferences(appearance.theme, editorPreferences, intelligence.preferences,
+    workspaceLayout, autoSavePreferences.delay, appearance.contrast, appearance.motion), [appearance, editorPreferences, intelligence.preferences, workspaceLayout, autoSavePreferences.delay]);
   const [preferenceHistory] = useState(() => createPreferenceHistory(portablePreferences));
   useEffect(() => { preferenceHistory.record(portablePreferences, Date.now()); }, [portablePreferences, preferenceHistory]);
   const studioMainElement = useRef<HTMLDivElement | null>(null);
@@ -754,7 +753,7 @@ export default function App() {
       case 'go-to-symbol': showPalette('symbols'); break;
       case 'next-tab': cycleTab(1); break;
       case 'previous-tab': cycleTab(-1); break;
-      case 'theme': setTheme((current) => current === 'dark' ? 'light' : 'dark'); break;
+      case 'theme': toggleTheme(); break;
       case 'settings': setEditorSettingsOpen(true); break;
       case 'explorer': toggleExplorer(); break;
       case 'select-compiler': void selectCompiler(); break;
@@ -772,9 +771,11 @@ export default function App() {
   }
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem('studio.theme', theme); } catch { /* storage unavailable */ }
-  }, [theme]);
+    document.documentElement.dataset.theme = resolvedAppearance.theme;
+    document.documentElement.dataset.contrast = resolvedAppearance.highContrast ? 'high' : 'normal';
+    document.documentElement.dataset.motion = resolvedAppearance.reducedMotion ? 'reduced' : 'normal';
+  }, [resolvedAppearance.theme, resolvedAppearance.highContrast, resolvedAppearance.reducedMotion]);
+  useEffect(() => { persistAppearance(appearance); }, [appearance]);
 
   useEffect(() => {
     mountedEditor.current?.getModel()?.updateOptions({ tabSize: editorPreferences.tabSize, insertSpaces: editorPreferences.insertSpaces, trimAutoWhitespace: editorPreferences.trimAutoWhitespace });
@@ -2531,7 +2532,7 @@ export default function App() {
         >⚙ Settings</button>
         <button
           className="theme-button"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          onClick={toggleTheme}
           aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
         >
           {theme === 'dark' ? '☀ Light' : '☾ Dark'}
@@ -2540,8 +2541,10 @@ export default function App() {
 
       {editorSettingsOpen && (
         <StudioSettingsPanel
-          theme={theme} editor={editorPreferences} autoSave={autoSavePreferences}
-          layout={workspaceLayout} onTheme={setTheme}
+          theme={theme} appearance={appearance} resolvedAppearance={resolvedAppearance}
+          onAppearanceChange={(patch: Partial<AppearancePreferences>) => setAppearance(current => ({ ...current, ...patch }))}
+          editor={editorPreferences} autoSave={autoSavePreferences}
+          layout={workspaceLayout} onTheme={value => setAppearance(current => ({ ...current, theme: value }))}
           intelliSense={<IntelliSenseSettings preferences={intelligence.preferences}
             persistence={intelligence.persistence}
             diagnosticDocument={active ? { id: active.id, revision: active.revision, units: active.content.length } : null}
@@ -2559,9 +2562,9 @@ export default function App() {
             current={portablePreferences}
             history={preferenceHistory}
             onApply={(expected, next) => {
-              const live = captureStudioPreferences(theme, editorPreferences, intelliSenseStore.getSnapshot().preferences, workspaceLayout, autoSavePreferences.delay);
+              const live = captureStudioPreferences(appearance.theme, editorPreferences, intelliSenseStore.getSnapshot().preferences, workspaceLayout, autoSavePreferences.delay, appearance.contrast, appearance.motion);
               if (!sameStudioPreferences(live, expected)) return false;
-              setTheme(next.appearance.theme);
+              setAppearance({ ...next.appearance });
               setEditorPreferences({ ...next.editor });
               intelliSenseStore.update(next.intelliSense);
               setWorkspaceLayout({ ...next.layout });
@@ -2603,7 +2606,7 @@ export default function App() {
             autoSaveEnabledRef.current = false;
             setAutoSavePreferences(restored.autoSave);
             setEditorPreferences(restored.editor);
-            setTheme('dark');
+            setAppearance({ ...DEFAULT_APPEARANCE });
             setCompilerPreferences({ ...DEFAULT_COMPILER_PREFERENCES });
             intelliSenseStore.reset();
             studioShortcutStore.reset();
@@ -2994,7 +2997,7 @@ export default function App() {
                 key={active.id}
                 path={active.path || active.id + '.srp'}
                 language="scarp"
-                theme={theme === 'dark' ? 'vs-dark' : 'vs'}
+                theme={resolvedAppearance.monacoTheme}
                 value={active.content}
                 onChange={(content) => {
                   const nextContent = content ?? '';
@@ -3056,7 +3059,7 @@ export default function App() {
                   }
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
-                options={{ ...editorDisplayOptions(editorPreferences), ...intelliSenseEditorOptions(intelligence.preferences) }}
+                options={{ ...editorDisplayOptions(editorPreferences), ...intelliSenseEditorOptions(intelligence.preferences), ...reducedMotionEditorOptions(resolvedAppearance) }}
               />
             ) : (
               <section className="empty-state welcome-screen" aria-label="Start working in Scarp Studio">
