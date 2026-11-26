@@ -301,3 +301,5 @@ actually testing the Studio desktop build.**
 | S33 | Import v1/v2 profiles and save a new profile with inline hints. | Earlier choices survive; inline hints default off for old profiles; v3 exports preserve the new options. | NOT RUN |
 
 | S34 | Open Scarp language reference in Settings; search by name and documentation, filter category and availability, inspect signature and raw snippet. | Reference shows entries beyond the popup cap; completion filters affect availability badges only. No source is changed; reference remains usable when completion is off. | NOT RUN |
+
+| S35 | Search IntelliSense preferences by aliases, show modified-only, change a value, reset an individual modified control and clear filters. | Only matching controls appear; hidden values are preserved, individual reset changes only that key, and profile/reference/preview remain available. | NOT RUN |

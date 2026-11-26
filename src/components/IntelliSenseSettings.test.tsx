@@ -68,3 +68,15 @@ it('offers independent opt-in inline hints and disables the built-in choice whil
   expect(tag(render(), 'intellisense-inlayBuiltins')).toContain('disabled');
   expect(tag(render({ preferences: { ...defaults, inlayHintMode: 'literals' } }), 'intellisense-inlayBuiltins')).not.toContain('disabled');
 });
+
+
+it('renders focused preference search and individual reset only for modified controls', () => {
+  const initial = render();
+  expect(initial).toContain('Search IntelliSense preferences');
+  expect(initial).toContain('Show modified preferences only');
+  expect(initial).not.toContain('aria-label="Reset Hover documentation"');
+  const changed = render({ preferences: { ...defaults, hover: false, inlayHintMode: 'all' } });
+  expect(changed).toContain('aria-label="Reset Hover documentation"');
+  expect(changed).toContain('aria-label="Reset Inline parameter labels"');
+  expect(changed).not.toContain('aria-label="Reset Completion mode"');
+});

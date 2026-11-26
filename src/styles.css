@@ -1413,3 +1413,15 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .intellisense-reference-panel .reference-detail pre { white-space: pre-wrap; overflow-wrap: anywhere;
   background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 8px; margin: 0; }
 .intellisense-reference-panel .reference-pages { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+
+.intellisense-settings .intellisense-filterable-control[hidden] { display: none !important; }
+.intellisense-control-search { display: grid; gap: 8px; }
+.intellisense-control-search input[type="search"] {
+  width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 5px;
+  color: var(--text); background: var(--surface); padding: 6px 8px; font: inherit;
+}
+.intellisense-settings .intellisense-reset-control { justify-self: start; align-self: center; font-size: 11px; }
+.intellisense-settings .settings-control-row:has(.intellisense-reset-control) {
+  flex-wrap: wrap;
+}

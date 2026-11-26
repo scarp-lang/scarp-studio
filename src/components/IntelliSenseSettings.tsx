@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { IntelliSenseProfilePanel } from './IntelliSenseProfilePanel';
 import { IntelliSensePreviewPanel } from './IntelliSensePreviewPanel';
 import { IntelliSenseReferencePanel } from './IntelliSenseReferencePanel';
+import { matchIntelliSenseControls, INTELLISENSE_CONTROL_INDEX, MAX_INTELLISENSE_SEARCH_UNITS,
+  resetIntelliSensePreference, type IntelliSenseControlGroup } from '../model/intelliSenseSettingsIndex';
 import {
   ANALYSIS_BUDGETS, COMPLETION_MODES, ENTER_BEHAVIORS, HOVER_DELAYS, MATCHING_MODES, INLAY_HINT_MODES,
-  INTELLISENSE_PRESETS, SUGGESTION_DELAYS, SUGGESTION_LIMITS, TAB_BEHAVIORS,
+  DEFAULT_INTELLISENSE_PREFERENCES, INTELLISENSE_PRESETS, SUGGESTION_DELAYS, SUGGESTION_LIMITS, TAB_BEHAVIORS,
   currentIntelliSensePreset, type IntelliSensePreferences, type IntelliSensePreset,
   type IntelliSenseSnapshot,
 } from '../model/intelliSensePreferences';
@@ -42,15 +45,25 @@ const tabLabels = { off: 'Off', on: 'On', onlySnippets: 'Only snippets' };
 export function IntelliSenseSettings({ preferences: p, persistence, onChange, onReset }: Props) {
   const preset = currentIntelliSensePreset(p);
   const completionOff = p.completionMode === 'off';
+  const [query, setQuery] = useState('');
+  const [modifiedOnly, setModifiedOnly] = useState(false);
+  const matches = matchIntelliSenseControls(p, query, modifiedOnly);
+  const visible = (key: keyof IntelliSensePreferences) => matches.includes(key);
+  const groupVisible = (group: IntelliSenseControlGroup) => matches.some(key => INTELLISENSE_CONTROL_INDEX[key].group === group);
+  const resetControl = (key: keyof IntelliSensePreferences) => p[key] !== DEFAULT_INTELLISENSE_PREFERENCES[key] &&
+    <button type="button" className="settings-reset intellisense-reset-control"
+      aria-label={'Reset ' + INTELLISENSE_CONTROL_INDEX[key].label}
+      onClick={() => onChange(resetIntelliSensePreference(key))}>Reset</button>;
   const flag = (item: typeof completionFlags[number], disabled = false) => {
     const id = 'intellisense-' + item.key;
-    return <div key={item.key}>
+    return <div key={item.key} hidden={!visible(item.key)} className="intellisense-filterable-control">
       <label className="editor-setting-checkbox" htmlFor={id}>
         <input type="checkbox" id={id} checked={p[item.key]} disabled={disabled}
           aria-describedby={id + '-help'} onChange={event => onChange({ [item.key]: event.target.checked })} />
         {item.label}
       </label>
       <p id={id + '-help'} className="intellisense-summary">{item.description}</p>
+      {resetControl(item.key)}
     </div>;
   };
   return (
@@ -69,18 +82,38 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
         </div>
         <p>Balanced enables automatic help. Manual avoids popups while typing. Minimal reduces local analysis and disables hover and parameter hints.</p>
       </div>
+      <div className="intellisense-section intellisense-control-search">
+        <h3>Find a preference</h3>
+        <label htmlFor="intellisense-preference-query">Search IntelliSense preferences</label>
+        <input type="search" id="intellisense-preference-query" maxLength={MAX_INTELLISENSE_SEARCH_UNITS}
+          value={query} onChange={event => setQuery(event.target.value.slice(0, MAX_INTELLISENSE_SEARCH_UNITS))}
+          placeholder="e.g. inline labels, delay, snippets" />
+        <label className="editor-setting-checkbox" htmlFor="intellisense-modified-only">
+          <input id="intellisense-modified-only" type="checkbox" checked={modifiedOnly}
+            onChange={event => setModifiedOnly(event.target.checked)} />
+          Show modified preferences only
+        </label>
+        <div className="intellisense-presets">
+          <span role="status">{matches.length} of {Object.keys(INTELLISENSE_CONTROL_INDEX).length} preferences</span>
+          {(query || modifiedOnly) && <button className="settings-reset" type="button" onClick={() => {
+            setQuery(''); setModifiedOnly(false);
+          }}>Clear preference filters</button>}
+        </div>
+        {!matches.length && <p>No preferences match. Presets, preview, reference and saved profiles remain available.</p>}
+      </div>
       <div className="intellisense-options-grid">
-        <div className="intellisense-section">
+        <div className="intellisense-section intellisense-filterable-control" hidden={!groupVisible('completion')}>
           <h3>Completion behavior</h3>
           <div className="settings-controls">
-            <div className="settings-control-row">
+            <div className="settings-control-row intellisense-filterable-control" hidden={!visible('completionMode')}>
               <label htmlFor="intellisense-mode">Completion mode</label>
               <select id="intellisense-mode" value={p.completionMode} onChange={event => {
                 const value = COMPLETION_MODES.find(choice => choice === event.target.value);
                 if (value) onChange({ completionMode: value });
               }}>{COMPLETION_MODES.map(value => <option key={value} value={value}>{modeLabels[value]}</option>)}</select>
+              {resetControl('completionMode')}
             </div>
-            <div className="settings-control-row">
+            <div className="settings-control-row intellisense-filterable-control" hidden={!visible('matchingMode')}>
               <label htmlFor="intellisense-matching">Completion matching</label>
               <select id="intellisense-matching" disabled={completionOff} value={p.matchingMode} onChange={event => {
                 const value = MATCHING_MODES.find(choice => choice === event.target.value);
@@ -89,51 +122,56 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
                 <option value="prefix">Starts with (default)</option>
                 <option value="subsequence">Ordered characters</option>
               </select>
+              {resetControl('matchingMode')}
             </div>
-            <p>Ordered characters can match abbreviations such as bgpw for bigint_pow. Local function matching remains case-sensitive.</p>
-            <div className="settings-control-row">
+            <p hidden={!visible('matchingMode')} className="intellisense-filterable-control">Ordered characters can match abbreviations such as bgpw for bigint_pow. Local function matching remains case-sensitive.</p>
+            <div className="settings-control-row intellisense-filterable-control" hidden={!visible('suggestionDelay')}>
               <label htmlFor="intellisense-delay">Automatic delay</label>
               <select id="intellisense-delay" disabled={p.completionMode !== 'automatic'} value={p.suggestionDelay}
                 onChange={event => {
                   const value = SUGGESTION_DELAYS.find(choice => choice === Number(event.target.value));
                   if (value !== undefined) onChange({ suggestionDelay: value });
                 }}>{SUGGESTION_DELAYS.map(value => <option key={value} value={value}>{value} ms</option>)}</select>
+              {resetControl('suggestionDelay')}
             </div>
-            <div className="settings-control-row">
+            <div className="settings-control-row intellisense-filterable-control" hidden={!visible('suggestionLimit')}>
               <label htmlFor="intellisense-limit">Scarp result limit</label>
               <select id="intellisense-limit" disabled={completionOff} value={p.suggestionLimit} onChange={event => {
                 const value = SUGGESTION_LIMITS.find(choice => choice === Number(event.target.value));
                 if (value !== undefined) onChange({ suggestionLimit: value });
               }}>{SUGGESTION_LIMITS.map(value => <option key={value} value={value}>{value}</option>)}</select>
+              {resetControl('suggestionLimit')}
             </div>
-            <div className="settings-control-row">
+            <div className="settings-control-row intellisense-filterable-control" hidden={!visible('acceptOnEnter')}>
               <label htmlFor="intellisense-enter">Accept using Enter</label>
               <select id="intellisense-enter" disabled={completionOff} value={p.acceptOnEnter} onChange={event => {
                 const value = ENTER_BEHAVIORS.find(choice => choice === event.target.value);
                 if (value) onChange({ acceptOnEnter: value });
               }}>{ENTER_BEHAVIORS.map(value => <option key={value} value={value}>{enterLabels[value]}</option>)}</select>
+              {resetControl('acceptOnEnter')}
             </div>
-            <div className="settings-control-row">
+            <div className="settings-control-row intellisense-filterable-control" hidden={!visible('tabCompletion')}>
               <label htmlFor="intellisense-tab">Tab completion</label>
               <select id="intellisense-tab" disabled={completionOff} value={p.tabCompletion} onChange={event => {
                 const value = TAB_BEHAVIORS.find(choice => choice === event.target.value);
                 if (value) onChange({ tabCompletion: value });
               }}>{TAB_BEHAVIORS.map(value => <option key={value} value={value}>{tabLabels[value]}</option>)}</select>
+              {resetControl('tabCompletion')}
             </div>
           </div>
           <p>Off disables Scarp completion and Monaco word suggestions; navigation and hover are independent. The result limit excludes Monaco word suggestions.</p>
         </div>
-        <div className="intellisense-section">
+        <div className="intellisense-section intellisense-filterable-control" hidden={!groupVisible('sources')}>
           <h3>Suggestion sources</h3>
           <div className="intellisense-checks">
             {completionFlags.map(item => flag(item, completionOff))}
           </div>
           {completionOff && <p>Saved source selections are preserved while completion is off.</p>}
         </div>
-        <div className="intellisense-section">
+        <div className="intellisense-section intellisense-filterable-control" hidden={!groupVisible('navigation')}>
           <h3>Documentation and navigation</h3>
           <div className="intellisense-checks">{navigationFlags.map(item => flag(item, (item.key === 'localFunctionHover' && !p.hover) || (item.key === 'builtinSignatureHelp' && !p.signatureHelp) || (item.key === 'inlayBuiltins' && p.inlayHintMode === 'off')))}</div>
-          <div className="settings-control-row">
+          <div className="settings-control-row intellisense-filterable-control" hidden={!visible('inlayHintMode')}>
             <label htmlFor="intellisense-inlay-mode">Inline parameter labels</label>
             <select id="intellisense-inlay-mode" value={p.inlayHintMode} onChange={event => {
               const value = INLAY_HINT_MODES.find(choice => choice === event.target.value);
@@ -143,24 +181,27 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
               <option value="literals">Literal arguments only</option>
               <option value="all">All supported arguments</option>
             </select>
+              {resetControl('inlayHintMode')}
           </div>
-          <p>Read-only editor decorations for complete, unambiguous calls. Redundant labels, unsupported expressions and variadic catalog calls are omitted. Inline hints do not depend on popup parameter hints.</p>
-          <div className="settings-control-row">
+          <p hidden={!visible('inlayHintMode')} className="intellisense-filterable-control">Read-only editor decorations for complete, unambiguous calls. Redundant labels, unsupported expressions and variadic catalog calls are omitted. Inline hints do not depend on popup parameter hints.</p>
+          <div className="settings-control-row intellisense-filterable-control" hidden={!visible('hoverDelay')}>
             <label htmlFor="intellisense-hover-delay">Hover delay</label>
             <select id="intellisense-hover-delay" disabled={!p.hover} value={p.hoverDelay} onChange={event => {
               const value = HOVER_DELAYS.find(choice => choice === Number(event.target.value));
               if (value !== undefined) onChange({ hoverDelay: value });
             }}>{HOVER_DELAYS.map(value => <option key={value} value={value}>{value} ms</option>)}</select>
+              {resetControl('hoverDelay')}
           </div>
         </div>
-        <div className="intellisense-section">
+        <div className="intellisense-section intellisense-filterable-control" hidden={!groupVisible('performance')}>
           <h3>Local analysis performance</h3>
-          <div className="settings-control-row">
+          <div className="settings-control-row intellisense-filterable-control" hidden={!visible('localAnalysisKiB')}>
             <label htmlFor="intellisense-budget">Maximum analyzed source size</label>
             <select id="intellisense-budget" value={p.localAnalysisKiB} onChange={event => {
               const value = ANALYSIS_BUDGETS.find(choice => choice === Number(event.target.value));
               if (value !== undefined) onChange({ localAnalysisKiB: value });
             }}>{ANALYSIS_BUDGETS.map(value => <option key={value} value={value}>{value} Ki UTF-16 units</option>)}</select>
+              {resetControl('localAnalysisKiB')}
           </div>
           <p>Applies to local function completion, hover, signatures, inline labels, definitions and Monaco document symbols. Larger files skip these analyses. Compiler Run and Verify are unaffected.</p>
           <p>Existing lexical token, nesting and identifier limits still apply. This is not a setting for compiler memory or program limits.</p>
