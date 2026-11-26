@@ -1437,3 +1437,9 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   grid-template-columns: minmax(0, 1fr) auto; border-bottom: 1px solid var(--border); padding: 4px 0; }
 .intellisense-diagnostics .diagnostic-feature-list small { grid-column: 1 / -1; color: var(--muted); }
 .intellisense-diagnostics .diagnostic-report { border: 1px solid var(--border); padding: 8px; border-radius: 5px; }
+
+
+.intellisense-backup-panel { display: grid; gap: 8px; min-width: 0; border-top: 1px solid var(--border); padding-top: 8px; }
+.intellisense-backup-panel .backup-actions { display: grid; gap: 6px; max-height: 220px; overflow: auto; padding: 0; list-style: none; }
+.intellisense-backup-panel .backup-actions li { border: 1px solid var(--border); border-radius: 5px; padding: 6px; overflow-wrap: anywhere; }
+.intellisense-backup-panel .backup-actions li strong { display: block; }
