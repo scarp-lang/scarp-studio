@@ -1,3 +1,4 @@
+import { userSnippetStore } from '../model/userSnippets';
 import type * as Monaco from 'monaco-editor';
 import { intelliSenseStore, readIntelliSensePreferences, type IntelliSensePreferences } from '../model/intelliSensePreferences';
 import { LocalAnalysisCache } from './localAnalysis';
@@ -147,7 +148,7 @@ export function registerScarpLanguage(monaco: typeof Monaco,
         const end = model.getOffsetAt({ lineNumber: position.lineNumber, column: endColumn });
         return analysis.complete(start, end, word.word, exclude,
           (name, needle) => Number.isFinite(rank(name, needle)), settings.matchingMode === 'subsequence' ? rank : undefined);
-      }, context, line.slice(endColumn - 1));
+      }, context, line.slice(endColumn - 1), userSnippetStore.getSnapshot().persistence === 'blocked' ? [] : userSnippetStore.getSnapshot().items);
       const suggestions: Monaco.languages.CompletionItem[] = planned.map(item => ({
         label: item.label,
         kind: completionKinds[item.kind],

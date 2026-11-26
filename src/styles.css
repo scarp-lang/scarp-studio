@@ -1533,3 +1533,11 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .appearance-settings { display: grid; gap: 8px; }
 .appearance-settings .appearance-swatch { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 5px; }
 .appearance-settings .appearance-swatch span { padding: 7px; border: 1px solid var(--border); border-radius: 4px; text-align: center; }
+
+
+.user-snippet-panel textarea, .user-snippet-panel input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; }
+.user-snippet-panel textarea { font-family: Consolas, monospace; resize: vertical; }
+.snippet-search-row, .snippet-editor { display: grid; gap: 8px; margin: 10px 0; }
+.snippet-list { display: grid; gap: 8px; max-height: 280px; overflow: auto; }
+.snippet-list-row { border: 1px solid var(--border); border-radius: 5px; padding: 8px; overflow-wrap: anywhere; }
+.snippet-preview pre, .user-snippet-panel .transfer-review pre { max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

@@ -36,6 +36,7 @@ const basic: SettingsSearchEntry[] = [
   base('reference', 'Scarp language reference', 'intellisense', 'settings-category-intellisense', 'catalog documentation builtins'),
   base('preview', 'IntelliSense preview', 'intellisense', 'settings-category-intellisense', 'test bench examples'),
   base('diagnostics', 'IntelliSense availability', 'intellisense', 'settings-category-intellisense', 'diagnostics source limits'),
+  base('userSnippets', 'User Scarp snippets', 'intellisense', 'studio-user-snippets', 'custom templates library placeholders code reuse'),
   base('profiles', 'Saved IntelliSense profiles', 'intellisense', 'settings-category-intellisense', 'import export backup profiles'),
 ];
 const intelliIds: Partial<Record<keyof IntelliSensePreferences, string>> = {

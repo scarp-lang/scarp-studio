@@ -1,3 +1,4 @@
+import { UserSnippetPanel } from './UserSnippetPanel';
 import { useState } from 'react';
 import { useSettingsReveal } from './settingsReveal';
 import { IntelliSenseProfilePanel } from './IntelliSenseProfilePanel';
@@ -217,6 +218,7 @@ export function IntelliSenseSettings({ preferences: p, persistence, onChange, on
       <IntelliSenseDiagnosticsPanel preferences={p} document={diagnosticDocument} onInspect={onInspectDocument} />
       <IntelliSensePreviewPanel preferences={p} />
       <IntelliSenseReferencePanel preferences={p} />
+      <UserSnippetPanel available={p.templates && p.completionMode !== 'off'} />
       <IntelliSenseProfilePanel preferences={p} onApply={onChange} />
       <button type="button" className="settings-reset" onClick={onReset}>Reset IntelliSense only</button>
     </div>

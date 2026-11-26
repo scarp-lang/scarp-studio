@@ -341,3 +341,6 @@ actually testing the Studio desktop build.**
 | S52 | Review a historical restore, then change preferences or clear history before confirmation. | Stale plans are refused. Clearing history does not change active preferences. | NOT RUN |
 
 | S53 | Select system theme, high contrast and reduced motion; change OS theme and contrast; switch to explicit light/dark. | Effective Studio and Monaco theme follow configured policy, without rewriting portable preference choices. Reduced motion overrides caret animation and scrolling only while active. | NOT RUN |
+
+| S54 | Create a user snippet with numbered and repeated placeholders, save after review, type its prefix in a Scarp file, and accept completion. | Text inserts only after accepting the suggestion; tab stops navigate; user snippets respect template and completion gates, and are not suggested in comments or strings. | NOT RUN |
+| S55 | Export user snippets and import a collection with duplicate prefixes, malformed placeholders or excessive size. | Existing prefixes are preserved, invalid collections are rejected, and adding new snippets requires review. | NOT RUN |
