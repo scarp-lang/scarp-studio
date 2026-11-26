@@ -346,3 +346,5 @@ actually testing the Studio desktop build.**
 | S55 | Export user snippets and import a collection with duplicate prefixes, malformed placeholders or excessive size. | Existing prefixes are preserved, invalid collections are rejected, and adding new snippets requires review. | NOT RUN |
 
 | S56 | Export a shortcut backup, change two commands, import the backup for selected groups, review differences, confirm and undo. | Binding changes apply together, conflicts across selected and unselected groups are rejected, fixed Settings and Stop cannot change, and stale or malformed reviews do not apply. | NOT RUN |
+
+| S57 | Open preference audit, search and select individual modified preferences from different categories, review reset, change an unrelated preference, then attempt confirmation. | The complete audit shows defaults and current values; stale plans are rejected; resetting chosen fields preserves all other fields, Auto Save enablement and compiler trust. | NOT RUN |

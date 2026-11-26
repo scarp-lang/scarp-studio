@@ -155,8 +155,8 @@ function display(key: keyof IntelliSensePreferences, value: IntelliSensePreferen
   return value === 'onlySnippets' ? 'Only snippets' : String(value);
 }
 export function diffIntelliSensePreferences(before: Readonly<IntelliSensePreferences>,
-  after: Readonly<IntelliSensePreferences>): PreferenceChange[] {
-  return KEYS.filter(key => before[key] !== after[key]).map(key => ({
+  after: Readonly<IntelliSensePreferences>, includeUnchanged = false): PreferenceChange[] {
+  return KEYS.filter(key => includeUnchanged || before[key] !== after[key]).map(key => ({
     key, label: labels[key], before: display(key, before[key]), after: display(key, after[key]),
   }));
 }

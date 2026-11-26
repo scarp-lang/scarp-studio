@@ -1547,3 +1547,14 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .shortcut-transfer-groups { display: flex; flex-wrap: wrap; gap: 10px; }
 .shortcut-transfer-changes { max-height: 240px; overflow: auto; }
 .shortcut-transfer-changes li { margin: 6px 0; overflow-wrap: anywhere; }
+
+
+.preference-audit { border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.preference-audit-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.preference-audit-tools input[type="search"] { flex: 1; min-width: 130px; }
+.preference-audit-scroll { max-height: 350px; overflow: auto; }
+.preference-audit-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+.preference-audit-table th, .preference-audit-table td { padding: 6px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.preference-audit-table thead th { position: sticky; top: 0; background: var(--panel, var(--bg)); }
+.preference-audit-table small { display: block; opacity: 0.8; }
+.preference-audit textarea { width: 100%; box-sizing: border-box; resize: vertical; font-family: Consolas, monospace; }

@@ -29,6 +29,7 @@ const basic: SettingsSearchEntry[] = [
   base('startupScan', 'Scan for compiler at startup', 'compiler', 'compiler-startup-scan', 'discovery scan'),
   base('compilerSetup', 'Compiler setup and approval', 'compiler', 'settings-category-compiler', 'executable path location download trust'),
   base('portable', 'Import or export Studio preferences', 'portability', 'settings-category-portability', 'backup restore JSON transfer'),
+  base('audit', 'Preference audit and selective reset', 'portability', 'studio-preference-audit', 'compare defaults modified individual settings report audit reset'),
   base('history', 'Preference change history', 'portability', 'settings-category-portability', 'timeline rollback previous changes undo'),
   base('named', 'Named Studio configurations', 'portability', 'settings-category-portability', 'saved snapshots profiles'),
   base('workspace', 'Workspace preference associations', 'portability', 'settings-category-portability', 'local workspace profile'),

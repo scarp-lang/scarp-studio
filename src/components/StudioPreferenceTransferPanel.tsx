@@ -1,3 +1,4 @@
+import { PreferenceAuditPanel } from './PreferenceAuditPanel';
 import { useState } from 'react';
 import { PreferenceHistoryPanel } from './PreferenceHistoryPanel';
 import type { createPreferenceHistory } from '../model/preferenceHistory';
@@ -53,6 +54,7 @@ export function StudioPreferenceTransferPanel({ current, onApply, workspaceRoot 
   }
   return <section className="studio-transfer" aria-label="Studio preference transfer">
     <p>Export and restore display, editor, IntelliSense, workspace dimensions and Auto Save timing. This excludes automatic-write enablement, startup discovery, compiler trust, source files, workspace paths, recovery copies and named profiles.</p>
+    <PreferenceAuditPanel current={current} onApply={onApply} />
     {history && <PreferenceHistoryPanel current={current} history={history} onApply={onApply} />}
     <WorkspacePreferencePanel root={workspaceRoot} current={current} onApply={onApply} />
     <StudioSavedProfilePanel current={current} onReview={snapshot => {
