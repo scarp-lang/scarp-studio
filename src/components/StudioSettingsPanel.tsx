@@ -10,6 +10,7 @@ interface Props {
   autoSave: AutoSavePreferences;
   layout: WorkspaceLayout;
   recovery: ReactNode;
+  compiler: ReactNode;
   recoveryNeedsReview: boolean;
   onTheme: (theme: 'dark' | 'light') => void;
   onEditorChange: (patch: Partial<EditorPreferences>) => void;
@@ -151,11 +152,15 @@ export function StudioSettingsPanel(props: Props) {
             <button className="settings-reset" type="button" onClick={props.onResetLayout}>Reset layout only</button>
           </div>
         </fieldset>
+        <fieldset className="settings-group settings-compiler" hidden={hidden('compiler')}>
+          <legend>Compiler configuration</legend>
+          {props.compiler}
+        </fieldset>
         <div className="settings-recovery settings-group" hidden={hidden('recovery')}>{props.recovery}</div>
       </div>
       <footer className="settings-footer">
         <button className="settings-reset" type="button" onClick={props.onResetAll}>Restore preference defaults</button>
-        <span>Resets theme, editor, workspace layout and Auto Save. Recovery copies and remembered workspace data are unchanged.</span>
+        <span>Resets theme, editor, workspace layout, Auto Save and startup discovery. Compiler approval is unchanged. Recovery copies and remembered workspace data are unchanged.</span>
       </footer>
     </section>
   );

@@ -56,6 +56,8 @@ import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
 import { StudioSettingsPanel } from './components/StudioSettingsPanel';
+import { CompilerSetupPanel } from './components/CompilerSetupPanel';
+import { loadCompilerPreferences, persistCompilerPreferences, DEFAULT_COMPILER_PREFERENCES } from './model/compilerPreferences';
 import { WorkspaceSessionPanel } from './components/WorkspaceSessionPanel';
 import { RecentlyClosedPanel } from './components/RecentlyClosedPanel';
 import { emptyRecentlyClosed, reconcileRecentlyClosed, resolveRecentlyClosed,
@@ -325,6 +327,8 @@ export default function App() {
   const nativeDialogGate = useRef(new NativeDialogGate());
   const commandInProgress = useRef(false);
   const selectionInProgress = useRef(false);
+  const [compilerPreferences, setCompilerPreferences] = useState(loadCompilerPreferences);
+  const startupDiscovery = useRef(compilerPreferences.scanOnStartup);
   const [compilerSelecting, setCompilerSelecting] = useState(false);
   const [compilerScanning, setCompilerScanning] = useState(false);
   const [detectedCompilers, setDetectedCompilers] = useState<string[]>([]);
@@ -766,7 +770,7 @@ export default function App() {
   // This operation only inspects bounded local directories. It never runs
   // candidate executables and does not grant trust, even after a prior session.
   useEffect(() => {
-    if (!isTauri()) return;
+    if (!isTauri() || !startupDiscovery.current) return;
     let mounted = true;
     const requests = compilerDiscoveryRequests.current;
     const request = requests.begin();
@@ -781,6 +785,10 @@ export default function App() {
       requests.invalidate();
     };
   }, []);
+
+  useEffect(() => {
+    persistCompilerPreferences(compilerPreferences);
+  }, [compilerPreferences]);
 
   useEffect(() => {
     persistAutoSavePreferences(autoSavePreferences);
@@ -1656,6 +1664,27 @@ export default function App() {
     setCompilerOutput(info + '\nCompiler is ready. Run operates on the saved file on disk.');
     setNotice('Scarp compiler approved for this session');
     return true;
+  }
+
+  // Shared UI uses the same native guards and session state in both locations.
+  function renderCompilerSetup(location: 'settings' | 'output') {
+    return <CompilerSetupPanel location={location}
+      native={isTauri()} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+      scanning={compilerScanning} selecting={compilerSelecting}
+      approvedPath={compilerPath} compilerInfo={compilerInfo}
+      candidates={detectedCompilers} selectedCandidate={automaticCompiler}
+      onSelectCandidate={candidate => {
+        if (detectedCompilers.includes(candidate) && !selectionInProgress.current &&
+            !commandInProgress.current && !filePickerInProgress.current &&
+            !saveInProgress.current && !nativeDialogGate.current.isActive) {
+          setPreferredDetectedCompiler(candidate);
+        }
+      }}
+      onScan={() => void rescanCompilers()}
+      onDownload={() => void downloadCompiler()}
+      onChoose={() => void selectCompiler()}
+      onConfirm={() => void confirmDetectedCompiler()}
+    />;
   }
 
   async function rescanCompilers(): Promise<void> {
@@ -2538,6 +2567,18 @@ export default function App() {
         <StudioSettingsPanel
           theme={theme} editor={editorPreferences} autoSave={autoSavePreferences}
           layout={workspaceLayout} onTheme={setTheme}
+          compiler={<>
+            <label className="editor-setting-checkbox" htmlFor="compiler-startup-scan">
+              <input id="compiler-startup-scan" type="checkbox"
+                checked={compilerPreferences.scanOnStartup}
+                onChange={event => setCompilerPreferences({ scanOnStartup: event.target.checked })} />
+              Scan for Scarp when Studio starts
+            </label>
+            <p>Applies on the next launch. Manual scans and first Run or Verify still work when off.</p>
+            {renderCompilerSetup('settings')}
+            <button className="settings-reset" type="button"
+              onClick={() => setCompilerPreferences({ ...DEFAULT_COMPILER_PREFERENCES })}>Reset compiler preference only</button>
+          </>}
           onEditorChange={patch => setEditorPreferences(current => ({ ...current, ...patch }))}
           onAutoSaveChange={patch => {
             // Revoke queued writes before React commits a disabled setting.
@@ -2561,8 +2602,9 @@ export default function App() {
             setAutoSavePreferences(restored.autoSave);
             setEditorPreferences(restored.editor);
             setTheme('dark');
+            setCompilerPreferences({ ...DEFAULT_COMPILER_PREFERENCES });
             resetWorkspaceLayout();
-            setNotice('Restored theme, editor, layout and Auto Save defaults. Recovery and remembered workspace metadata are unchanged.');
+            setNotice('Restored theme, editor, layout, Auto Save and startup discovery defaults. Compiler approval, recovery and remembered workspace metadata are unchanged.');
           }}
           onClose={() => setEditorSettingsOpen(false)}
           recoveryNeedsReview={recoveryView.previous !== null || recoveryView.blocked}
@@ -3083,47 +3125,8 @@ export default function App() {
             </div>
             <div id="compiler-panel-body" className="compiler-panel-body" hidden={outputPanelMode === 'collapsed'}>
             <div id="compiler-controls" className="compiler-controls" hidden={!compilerControlsOpen}>
-            <div className="compiler-setup-actions compiler-actions">
-                <button type="button" onClick={() => void rescanCompilers()}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
-                  title="Scan PATH, standard installed locations and extracted Scarp Downloads folders without executing software">
-                  {compilerScanning ? 'Scanning…' : 'Scan Compiler'}
-                </button>
-                <button type="button" onClick={() => void downloadCompiler()}
-                  disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning || busy}
-                  title="Open the Scarp compiler download destination. Verify the published SHA-256 before trusting the extracted executable.">Download Compiler</button>
-                <button onClick={() => void selectCompiler()} disabled={!isTauri() || compilerBusy || compilerSelecting || compilerScanning}
-                  title="Optional: manually choose a trusted Scarp executable if automatic discovery missed it">
-                  {compilerSelecting ? 'Checking Compiler…' : compilerPath ? 'Change Compiler' : 'Choose Manually'}
-                </button>
-            </div>
-            <div className="compiler-meta">
-              {compilerInfo || (compilerPath
-                ? 'Compiler configured; version checked on the next Run/Verify.'
-                : automaticCompiler
-                  ? 'Detected (not yet trusted): ' + automaticCompiler
-                  : 'No compiler detected. Download the official ZIP, extract it, then click Scan Compiler.')}
-              {automaticCompiler && !compilerPath && (
-                <div className="compiler-location-approval">
-                  <span>Is your Scarp compiler at <code>{automaticCompiler}</code>?</span>
-                  <button type="button" onClick={() => void confirmDetectedCompiler()}
-                    disabled={compilerSelecting || compilerScanning || compilerBusy}>
-                    Yes, confirm this location
-                  </button>
-                </div>
-              )}
-              {detectedCompilers.length > 1 && !compilerPath && (
-                <label className="compiler-candidate-select">Detected candidate:
-                  <select aria-label="Detected compiler to trust and use on Run"
-                    value={automaticCompiler ?? ''}
-                    onChange={(event) => setPreferredDetectedCompiler(event.target.value)}>
-                    {detectedCompilers.map((candidate) =>
-                      <option key={candidate} value={candidate}>{candidate}</option>)}
-                  </select>
-                </label>
-              )}
-            </div>
-            <div className="project-actions" aria-label="Selected Scarp project commands">
+            {renderCompilerSetup('output')}
+             <div className="project-actions" aria-label="Selected Scarp project commands">
               <span>PROJECT</span>
               {folderPath && <label htmlFor="studio-project-root" className="project-target-label">Project target</label>}
               {folderPath && <select id="studio-project-root" className="project-target-select" aria-label="Choose Scarp project root"
