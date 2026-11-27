@@ -149,6 +149,10 @@ import {
   editorChangeInvalidatesProjectSearch, searchListedProjectSources,
   type ProjectSearchHit, type ProjectSearchResult,
 } from './model/projectSearch';
+import { ProjectReplacementPanel } from './components/ProjectReplacementPanel';
+import { prepareProjectReplacement,readProjectReplacementSources,projectReplacementInventoryIsCurrent,
+  planStagedProjectReplacement,stagedProjectReplacementIsCurrent,type ReplacementRequest,
+  type ReplacementResult,type ProjectReplacementPlan } from './model/projectReplacement';
 import { canUndoOpenFileReplace, createOpenFileReplaceUndo, type OpenFileReplaceUndo } from './model/openFileReplaceUndo';
 
 import { nextOutputPanelMode, revealOutputPanel, type OutputPanelMode } from './model/outputPanelLayout';
@@ -364,6 +368,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
+  const [projectReplacementUndo, setProjectReplacementUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [qualityUndo, setQualityUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [lineRangeUndo, setLineRangeUndo] = useState<OpenFileReplaceUndo | null>(null);
@@ -620,6 +625,7 @@ export default function App() {
   useEffect(() => {
     setReplaceUndo((previous) => previous && !canUndoOpenFileReplace(previous, liveEditor.current)
       ? null : previous);
+    setProjectReplacementUndo(previous => previous && !canUndoOpenFileReplace(previous,liveEditor.current) ? null : previous);
   }, [documents]);
 
   useEffect(() => {
@@ -2318,6 +2324,68 @@ export default function App() {
     editorInstance.focus();
   }
 
+  async function stageProjectReplacements(result: ProjectSearchResult, request: ReplacementRequest):
+    Promise<ReplacementResult<ProjectReplacementPlan>> {
+    const fail = (error: string): ReplacementResult<never> => ({ok:false,error});
+    const selection = selectedFolderRef.current;
+    if (!isTauri() || recoveryOperationsBlocked() || !selection || !projectSearchResult ||
+        result !== projectSearchResult.result || selection !== projectSearchResult.selection ||
+        request.query !== searchQuery || request.options.caseSensitive !== searchCaseSensitive ||
+        request.options.wholeWord !== searchWholeWord) return fail('Search or workspace changed. Search again.');
+    const prepared = prepareProjectReplacement(result,request,selection.files,liveEditor.current);
+    if (!prepared.ok) return prepared;
+    const inventory = prepared.value;
+    const epoch = projectSearchEpoch.current;
+    const current = () => epoch === projectSearchEpoch.current && selection === selectedFolderRef.current &&
+      projectReplacementInventoryIsCurrent(inventory,liveEditor.current);
+    filePickerInProgress.current = true;
+    setBusy(true);
+    try {
+      const read = await readProjectReplacementSources(inventory,
+        (path,maxBytes) => readScarpSource(path,maxBytes),current);
+      if (!read.ok) return read;
+      if (!current()) return fail('Workspace or editor changed. Search again.');
+      if (read.value.length) dispatch({type:'restore-workspace-tabs',files:read.value,activePath:null});
+      return planStagedProjectReplacement(inventory,liveEditor.current);
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  function applyProjectReplacements(plan: ProjectReplacementPlan): boolean {
+    if (recoveryOperationsBlocked() || !projectSearchResult ||
+        plan.inventory.result !== projectSearchResult.result ||
+        projectSearchResult.selection !== selectedFolderRef.current ||
+        plan.inventory.request.query !== searchQuery ||
+        plan.inventory.request.options.caseSensitive !== searchCaseSensitive ||
+        plan.inventory.request.options.wholeWord !== searchWholeWord ||
+        !stagedProjectReplacementIsCurrent(plan,liveEditor.current)) {
+      setError('Workspace replacement preview changed. No source was modified.');
+      return false;
+    }
+    const before=liveEditor.current.documents;
+    dispatch({type:'replace-open-files',changes:plan.changes,allSnapshots:before});
+    const after=liveEditor.current.documents;
+    if (before===after) return false;
+    autoSaveReview.current.holdReplacements(after,plan.changes.map(change=>change.id));
+    setProjectReplacementUndo(createOpenFileReplaceUndo(before,after));
+    setError(null);
+    setNotice('Applied reviewed workspace replacements in editor memory. Review or Undo, then Save manually.');
+    return true;
+  }
+
+  function undoProjectReplacements(): void {
+    const undo=projectReplacementUndo;
+    if(recoveryOperationsBlocked()||!undo||!canUndoOpenFileReplace(undo,liveEditor.current)){
+      setError('Workspace replacement undo is no longer current. No changes discarded.');
+      return;
+    }
+    dispatch({type:'replace-open-files',changes:undo.changes,allSnapshots:undo.after});
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents,undo.changes.map(change=>change.id));
+    setProjectReplacementUndo(null);setError(null);setNotice('Undid workspace replacements in memory.');
+  }
+
   async function searchSelectedProject(): Promise<void> {
     const selection = selectedFolderRef.current;
     if (!isTauri() || !selection) {
@@ -3336,6 +3404,8 @@ export default function App() {
                   )}
                 </div>
               )}
+              {projectReplacementUndo && <button type="button" disabled={busy || compilerBusy || !canUndoOpenFileReplace(projectReplacementUndo,editorState)}
+                onClick={undoProjectReplacements}>Undo last workspace replacements</button>}
               {projectSearchResult && projectSearchResult.query === searchQuery &&
                 projectSearchResult.selection === selectedFolderRef.current && (
                 <section className="project-search-results" aria-label="Read-only selected project search">
@@ -3347,6 +3417,10 @@ export default function App() {
                     )}
                     {' '}No files changed.
                   </div>
+                  <ProjectReplacementPanel key={projectSearchEpoch.current} result={projectSearchResult.result} query={searchQuery}
+                    options={{caseSensitive:searchCaseSensitive,wholeWord:searchWholeWord}} editor={editorState}
+                    busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+                    onStage={stageProjectReplacements} onApply={applyProjectReplacements} />
                   <div className="search-results" role="list" aria-label="Matches in selected Scarp project">
                     {projectSearchResult.result.hits.map((hit) => (
                       <div role="listitem"

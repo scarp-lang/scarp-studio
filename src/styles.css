@@ -1804,3 +1804,11 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .diagnostic-report-panel textarea {width:100%;box-sizing:border-box;resize:vertical;}
 .diagnostic-report-message {white-space:pre-wrap;unicode-bidi:isolate;}
 .diagnostic-report-panel .activity-record {white-space:pre-wrap;overflow-wrap:anywhere;}
+
+
+.project-replacement-panel {display:grid;gap:7px;padding:7px;border:1px solid var(--border);min-width:0;}
+.project-replacement-panel label {display:grid;gap:3px;}
+.project-replacement-panel input:not([type="checkbox"]) {width:100%;min-width:0;box-sizing:border-box;}
+.project-replacement-panel .identifier-site {overflow-wrap:anywhere;}
+.project-replacement-preview {display:grid;gap:6px;max-height:240px;overflow:auto;}
+.project-replacement-preview code {display:block;white-space:pre-wrap;unicode-bidi:isolate;}
