@@ -6,12 +6,12 @@ import { createOpenFileReplaceUndo, canUndoOpenFileReplace } from './openFileRep
 import { createSourceCheckpointStore, checkpointCaptureReview, checkpointCaptureIsCurrent, checkpointComparison,
   checkpointRestoreReview, checkpointRestoreIsCurrent, checkpointsForDocument, normalizedCheckpointLabel,
   reviewCheckpointRemoval, checkpointRemovalIsCurrent, MAX_CHECKPOINTS_PER_TAB, MAX_SOURCE_CHECKPOINTS,
-  MAX_CHECKPOINT_SOURCE_UNITS, MAX_CHECKPOINT_TOTAL_BYTES, type CheckpointState } from './sourceCheckpoints';
+  MAX_CHECKPOINT_SOURCE_UNITS, MAX_CHECKPOINT_TOTAL_BYTES } from './sourceCheckpoints';
 
 const doc = (content: string, id = 'a', path: string | null = null): StudioDocument => ({
   ...createUntitled(1), id, name: id + '.srp', path, content, savedContent: content, revision: 1,
 });
-const state = (documents: StudioDocument[], activeId = documents[0]?.id ?? null): EditorState =>
+const state = (documents: StudioDocument[], activeId: string | null = documents[0]?.id ?? null): EditorState =>
   ({ ...initialEditorState, documents, activeId, sessionRevision: 1 });
 const newStore = createSourceCheckpointStore;
 function capture(store: ReturnType<typeof newStore>, editor: EditorState, label = 'First', time = 100) {

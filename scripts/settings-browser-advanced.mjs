@@ -256,4 +256,27 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.match(await evaluate(() => document.querySelector('.monaco-editor .view-lines').textContent), /print\(99\)/);
   });
 
+  await step('compiler activity history requires explicit recording mode and stays off after reload', async () => {
+    await button('History', '.results-view-switch');
+    const panel = '.compiler-activity-panel';
+    await visible(panel);
+    assert.match(await evaluate(() => document.querySelector('.compiler-activity-panel').textContent), /Recording off/);
+    await change('#compiler-activity-mode', 'output');
+    await visible('[aria-label="Confirm compiler activity mode"]');
+    await button('Cancel recording mode', panel);
+    assert.equal(await textValue('#compiler-activity-mode'), 'off');
+    await change('#compiler-activity-mode', 'metadata');
+    await button('Confirm recording mode', panel);
+    assert.equal(await textValue('#compiler-activity-mode'), 'metadata');
+    await button('Show metadata report', panel);
+    const report = await textValue('textarea[aria-label="Compiler activity metadata report"]');
+    assert.match(report, /Records shown: 0/);
+    assert.match(report, /No source text, input, executable paths or raw output included/);
+    await cdp.send('Page.reload', { ignoreCache: true });
+    await wait(() => document.readyState === 'complete' && !!document.querySelector('.results-view-switch'), 'reload for activity privacy');
+    await button('History', '.results-view-switch');
+    await wait(() => document.querySelector('#compiler-activity-mode')?.value === 'off', 'history disabled after reload');
+    assert.match(await evaluate(() => document.querySelector('.compiler-activity-panel').textContent), /No matching recorded invocations/);
+  });
+
 }
