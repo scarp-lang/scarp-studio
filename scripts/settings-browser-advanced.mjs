@@ -230,4 +230,30 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.doesNotMatch(exported, /print\(1\)/);
   });
 
+  await step('session checkpoint capture, reviewed restore, undo and removal use open buffers only', async () => {
+    const panel = '.source-checkpoints';
+    await click(panel + ' .insights-toggle');
+    await change('input[aria-label="Checkpoint label"]', 'Before browser edit');
+    await button('Review checkpoint capture', panel);
+    await button('Confirm checkpoint capture', panel);
+    await wait(() => document.querySelector('.checkpoint-list')?.textContent.includes('Before browser edit'), 'checkpoint captured');
+    await evaluate(() => document.querySelector('.monaco-editor textarea').focus());
+    const selectAll = { key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 };
+    await cdp.send('Input.dispatchKeyEvent', { ...selectAll, type: 'keyDown' });
+    await cdp.send('Input.dispatchKeyEvent', { ...selectAll, type: 'keyUp' });
+    await cdp.send('Input.insertText', { text: 'print(99);\n' });
+    await wait(() => document.querySelector('.monaco-editor .view-lines')?.textContent.includes('print(99)'), 'checkpoint test changed source');
+    await click('.checkpoint-list button');
+    await button('Review checkpoint restore', panel);
+    await visible('[aria-label="Confirm checkpoint restore"]');
+    await button('Confirm checkpoint restore', panel);
+    await wait(() => document.querySelector('.monaco-editor .view-lines')?.textContent.includes('helper'), 'checkpoint restored');
+    await button('Undo last checkpoint restore', panel);
+    await wait(() => document.querySelector('.monaco-editor .view-lines')?.textContent.includes('print(99)'), 'checkpoint restore undone');
+    await button('Review checkpoint removal', panel);
+    await button('Confirm checkpoint removal', panel);
+    await wait(() => !document.querySelector('.checkpoint-list'), 'checkpoint removed');
+    assert.match(await evaluate(() => document.querySelector('.monaco-editor .view-lines').textContent), /print\(99\)/);
+  });
+
 }
