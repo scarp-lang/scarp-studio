@@ -1865,3 +1865,49 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .reconciliation-columns > div {min-width:0;border:1px solid var(--border);padding:5px;}
 .reconciliation-columns pre {white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto;}
 .disk-reconciliation textarea {width:100%;box-sizing:border-box;min-width:0;resize:vertical;font-family:monospace;}
+
+
+/* Session-local command collections and keyboard-accessible controls. */
+.nav-collection-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.nav-collection-controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.nav-collection-controls select { min-width: 0; max-width: 100%; }
+.command-library-settings { display: grid; gap: 8px; min-width: 0; }
+.command-pin-list {
+  display: grid;
+  gap: 5px;
+  padding-inline-start: 24px;
+  margin-block: 4px;
+}
+.command-pin-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.command-pin-list li span { flex: 1 1 150px; overflow-wrap: anywhere; }
+.command-catalog-list {
+  display: grid;
+  gap: 5px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.command-catalog-list .activity-record { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.command-catalog-list .activity-record div { min-width: 0; overflow-wrap: anywhere; }
+.command-catalog-list .activity-record p { margin: 3px 0 0; }
+.fixture-byte-review pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; }
+.test-fixture-panel { display: grid; gap: 8px; min-width: 0; }
+.test-fixture-panel textarea { min-width: 0; width: 100%; box-sizing: border-box; }
+.test-failure-details { display: grid; gap: 8px; min-width: 0; }
+.project-command-disk-rows { display: grid; gap: 4px; padding-inline-start: 16px; }
+.project-command-disk-rows li { display: flex; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }

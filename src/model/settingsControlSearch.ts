@@ -37,6 +37,7 @@ const basic: SettingsSearchEntry[] = [
   base('reference', 'Scarp language reference', 'intellisense', 'settings-category-intellisense', 'catalog documentation builtins'),
   base('preview', 'IntelliSense preview', 'intellisense', 'settings-category-intellisense', 'test bench examples'),
   base('diagnostics', 'IntelliSense availability', 'intellisense', 'settings-category-intellisense', 'diagnostics source limits'),
+  base('commandLibrary', 'Command palette collections', 'shortcuts', 'studio-command-library', 'pin pinned favorite recent command group library'),
   base('shortcutTransfer', 'Keyboard shortcut backup and restore', 'shortcuts', 'studio-shortcut-transfer', 'export import JSON keybindings rollback transfer'),
   base('userSnippets', 'User Scarp snippets', 'intellisense', 'studio-user-snippets', 'custom templates library placeholders code reuse'),
   base('profiles', 'Saved IntelliSense profiles', 'intellisense', 'settings-category-intellisense', 'import export backup profiles'),
