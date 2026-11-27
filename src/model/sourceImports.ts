@@ -7,6 +7,7 @@ import { safeRelativeScarpSourceName } from './folderListing';
  * native filesystem paths until matched to an exact existing Explorer entry.
  */
 export const MAX_IMPORT_GRAPH_SOURCES = 200;
+export const MAX_IMPORT_GRAPH_SOURCE_UNITS = 2 * 1024 * 1024;
 export const MAX_IMPORTS_PER_SOURCE = 128;
 export const MAX_IMPORT_GRAPH_EDGES = 768;
 export const MAX_IMPORT_GRAPH_CYCLES = 32;
@@ -18,6 +19,7 @@ export interface ListedImportSource { name: string; path: string }
 export interface ScarpSourceImport {
   id: string;
   documentId: string;
+  documentRevision: number;
   sourcePath: string;
   sourceName: string;
   specifier: string;
@@ -95,6 +97,7 @@ export function collectScarpRawImports(source: string): {
   incomplete: boolean;
 } {
   const lex = scanScarpSource(source);
+  if (!lex.complete || lex.issues.length) return { references: [], incomplete: true };
   const tokens = lex.tokens.filter(token => token.kind !== 'comment');
   const references: RawImport[] = [];
   for (let i = 0; i < tokens.length && references.length < MAX_IMPORTS_PER_SOURCE; i++) {
@@ -105,7 +108,7 @@ export function collectScarpRawImports(source: string): {
     const aliasToken = tokens[i + 3];
     const alias = validAlias(aliasToken) ? aliasToken!.text : null;
     const recognized = path !== null && asKeyword?.text === 'as' &&
-      asKeyword.kind === 'identifier' && alias !== null;
+      asKeyword.kind === 'identifier' && alias !== null && tokens[i + 4]?.text === ';';
     references.push({
       specifier: path,
       alias: recognized ? alias : null,
@@ -167,6 +170,7 @@ function resolveImport(
   return {
     id: doc.id + ':import:' + raw.offset,
     documentId: doc.id,
+    documentRevision: doc.revision,
     sourcePath: doc.path!,
     sourceName: source.name,
     specifier: raw.specifier ?? '(unrecognized)',
@@ -242,9 +246,15 @@ export function buildScarpImportGraph(
   const nodes: SourceImportNode[] = [], edges: ScarpSourceImport[] = [];
   let limited = currentListing.length > MAX_IMPORT_GRAPH_SOURCES ||
     documents.length > MAX_IMPORT_GRAPH_SOURCES;
+  let units = 0;
   for (const document of documents.slice(0, MAX_IMPORT_GRAPH_SOURCES)) {
     const listed = listedDocument(document, listing);
     if (!listed) continue;
+    if (units + document.content.length > MAX_IMPORT_GRAPH_SOURCE_UNITS || edges.length >= MAX_IMPORT_GRAPH_EDGES) {
+      limited = true;
+      continue;
+    }
+    units += document.content.length;
     const raw = collectScarpRawImports(document.content);
     limited ||= raw.incomplete;
     const imports: ScarpSourceImport[] = [];
@@ -261,7 +271,7 @@ export function buildScarpImportGraph(
       documentId: document.id,
       sourceName: listed.name,
       path: listed.path,
-      imports, incomplete: raw.incomplete,
+      imports, incomplete: raw.incomplete || imports.length < raw.references.length,
     });
   }
   const summary: Record<ImportStatus, number> = {
@@ -282,7 +292,29 @@ export function listedImportNavigationTarget(
 ): string | null {
   if (edge.status !== 'open' && edge.status !== 'listed') return null;
   if (!edge.targetPath || !edge.targetRelativeName) return null;
-  return listing.find(item => item.name === edge.targetRelativeName &&
-    safeRelativeScarpSourceName(item.name) &&
-    sameFilePath(item.path, edge.targetPath!))?.path ?? null;
+  const matches = listing.filter(item => item.name === edge.targetRelativeName &&
+    safeRelativeScarpSourceName(item.name) && isScarpPath(item.path));
+  if (matches.length !== 1 || !sameFilePath(matches[0].path, edge.targetPath)) return null;
+  return matches[0].path;
+}
+
+
+/** A click must refer to the exact current source generation and the same
+ * recognizable import header. The compiler's own resolution is not inferred. */
+export function currentImportNavigationTarget(edge: ScarpSourceImport,
+  documents: readonly StudioDocument[], listing: readonly ListedImportSource[]): string | null {
+  const document = documents.find(item => item.id === edge.documentId);
+  if (!document || document.revision !== edge.documentRevision || !document.path ||
+      !sameFilePath(document.path, edge.sourcePath)) return null;
+  const source = listedDocument(document, listing);
+  if (!source || source.name !== edge.sourceName) return null;
+  const scan = collectScarpRawImports(document.content);
+  if (scan.incomplete) return null;
+  const raw = scan.references.find(item => item.offset === edge.offset && item.line === edge.line &&
+    item.column === edge.column && item.recognized && item.specifier === edge.specifier && item.alias === edge.alias);
+  if (!raw) return null;
+  const current = resolveImport(document, source, raw, listing, documents);
+  if (current.targetRelativeName !== edge.targetRelativeName || !current.targetPath || !edge.targetPath ||
+      !sameFilePath(current.targetPath, edge.targetPath)) return null;
+  return listedImportNavigationTarget(current, listing);
 }

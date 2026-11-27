@@ -1720,3 +1720,23 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .range-preview-side li { display: grid; grid-template-columns: 36px minmax(0, 1fr) 38px; gap: 4px; align-items: baseline; }
 .range-preview-side code { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; unicode-bidi: isolate; }
 .line-range-tools button:focus-visible, .line-range-tools input:focus-visible, .line-range-tools select:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+
+.identifier-edit .insights-body { display: grid; gap: 7px; min-width: 0; }
+.identifier-edit label { display: grid; gap: 4px; }
+.identifier-edit input:not([type="checkbox"]), .identifier-edit select { width: 100%; min-width: 0; box-sizing: border-box; }
+.identifier-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.identifier-site-list { display: grid; gap: 5px; }
+.identifier-site { border: 1px solid currentColor; padding: 5px; overflow-wrap: anywhere; min-width: 0; }
+.identifier-site code { white-space: pre-wrap; unicode-bidi: isolate; min-width: 0; }
+.identifier-site code span { font-family: system-ui, sans-serif; }
+.identifier-edit button:focus-visible, .identifier-edit input:focus-visible, .identifier-edit select:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+
+.import-dependency-review { display:grid;gap:6px;min-width:0; }
+.import-dependency-review h4 { font-size:12px;margin:4px 0; }
+.import-dependency-review input,.import-dependency-review select,.import-dependency-review textarea { width:100%;box-sizing:border-box;min-width:0; }
+.dependency-path-list { list-style:none;margin:0;padding:0;display:grid;gap:4px; }
+.dependency-path-list li { display:grid;gap:4px;padding:5px;border:1px solid currentColor;overflow-wrap:anywhere; }
+.import-dependency-review details { overflow-wrap:anywhere; }
+.import-dependency-review textarea { resize:vertical; }

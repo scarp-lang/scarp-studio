@@ -52,6 +52,8 @@ import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { SourceQualityPanel } from './components/SourceQualityPanel';
 import { LineRangeToolsPanel } from './components/LineRangeToolsPanel';
+import { IdentifierEditPanel } from './components/IdentifierEditPanel';
+import { identifierPlanIsCurrent, type IdentifierEditPlan } from './model/identifierEdit';
 import { lineRangePlanIsCurrent, type LineRangePlan } from './model/lineRangeTools';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
@@ -353,6 +355,7 @@ export default function App() {
   const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [qualityUndo, setQualityUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [lineRangeUndo, setLineRangeUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [identifierUndo, setIdentifierUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [checkpointUndo, setCheckpointUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
@@ -2416,6 +2419,32 @@ export default function App() {
     setCheckpointUndo(null); setError(null); setNotice('Undid checkpoint restore in memory.');
   }
 
+  function applyIdentifierEdit(plan: IdentifierEditPlan): boolean {
+    const current = liveEditor.current;
+    if (recoveryOperationsBlocked() || !identifierPlanIsCurrent(plan, current)) {
+      setError('Identifier review is stale or a native operation is active. Nothing changed.');
+      return false;
+    }
+    const before = current.documents;
+    dispatch({ type: 'replace-open-files', changes: plan.changes, allSnapshots: before });
+    const after = liveEditor.current.documents;
+    if (before === after) return false;
+    autoSaveReview.current.holdReplacements(after, plan.changes.map(change => change.id));
+    setIdentifierUndo(createOpenFileReplaceUndo(before, after));
+    setError(null); setNotice('Applied selected literal identifier edits in memory. Review or Undo before Save.');
+    return true;
+  }
+
+  function undoIdentifierEdit(): void {
+    if (recoveryOperationsBlocked() || !identifierUndo || !canUndoOpenFileReplace(identifierUndo, liveEditor.current)) {
+      setError('Identifier edit undo is stale or a native operation is active. Nothing changed.');
+      return;
+    }
+    dispatch({ type: 'replace-open-files', changes: identifierUndo.changes, allSnapshots: identifierUndo.after });
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents, identifierUndo.changes.map(change => change.id));
+    setIdentifierUndo(null); setError(null); setNotice('Undid identifier edits in open buffers.');
+  }
+
   function applyLineRange(plan: LineRangePlan): boolean {
     const current = liveEditor.current;
     if (recoveryOperationsBlocked() || !lineRangePlanIsCurrent(plan, current)) {
@@ -2969,6 +2998,9 @@ export default function App() {
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!qualityUndo && canUndoOpenFileReplace(qualityUndo, editorState)}
             onNavigate={jumpToSourceInsight} onApply={applyQualityCleanup} onUndo={undoQualityCleanup} />
+          <IdentifierEditPanel editor={editorState} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            undoAvailable={!!identifierUndo && canUndoOpenFileReplace(identifierUndo, editorState)}
+            onApply={applyIdentifierEdit} onUndo={undoIdentifierEdit} />
           <LineRangeToolsPanel editor={editorState} cursorLine={cursor.line}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!lineRangeUndo && canUndoOpenFileReplace(lineRangeUndo, editorState)}

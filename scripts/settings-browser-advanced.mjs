@@ -358,4 +358,24 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     await button('Undo last line transformation', panel);
     await wait(() => /zebra.*apple.*outside/s.test(document.querySelector('.monaco-editor .view-lines')?.textContent ?? ''), 'exact original source restored');
   });
+  await step('selected identifier edits leave comments and string literals unchanged and support undo', async () => {
+    await evaluate(() => document.querySelector('.monaco-editor textarea').focus());
+    const selectAll = { key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 };
+    await cdp.send('Input.dispatchKeyEvent', { ...selectAll, type: 'keyDown' });
+    await cdp.send('Input.dispatchKeyEvent', { ...selectAll, type: 'keyUp' });
+    await cdp.send('Input.insertText', { text: 'bind old_counter = 1;\nprint(old_counter);\n// old_counter\nprint("old_counter");\n' });
+    const panel = '.identifier-edit';
+    await click(panel + ' .insights-toggle');
+    await change('input[aria-label="Existing code identifier"]', 'old_counter');
+    await change('input[aria-label="Replacement code identifier"]', 'new_counter');
+    await button('Scan identifier sites', panel);
+    await wait(() => document.querySelectorAll('.identifier-site').length === 2, 'two code token sites');
+    await button('Select all reviewed sites', panel);
+    await button('Review selected identifier edits', panel);
+    await click('[aria-label="Confirm identifier edits"] input[type="checkbox"]');
+    await button('Confirm identifier edits', panel);
+    await wait(() => /new_counter.*new_counter.*old_counter.*old_counter/s.test(document.querySelector('.monaco-editor .view-lines')?.textContent ?? ''), 'literal identifier edits');
+    await button('Undo last identifier edits', panel);
+    await wait(() => !document.querySelector('.monaco-editor .view-lines')?.textContent.includes('new_counter'), 'identifier edits undone');
+  });
 }
