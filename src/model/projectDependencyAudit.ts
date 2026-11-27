@@ -232,6 +232,12 @@ export function auditSummary(audit:ProjectDependencyAudit,includeLabels=false){
   for(const status of AUDIT_EDGE_STATUSES)lines.push(AUDIT_EDGE_LABELS[status]+': '+audit.counts[status]);
   for(const state of ['scanned','partial','unavailable','not-scanned'] as const)
     lines.push(state+': '+audit.files.filter(file=>file.state===state).length);
-  if(includeLabels)for(const file of audit.files)lines.push(JSON.stringify(file.name)+' | '+file.state+' | '+file.origin);
-  return lines.join('\n').slice(0,64*1024);
+  let units=lines.join('\n').length,omitted=0;
+  if(includeLabels)for(const file of audit.files){
+    const line=JSON.stringify(file.name)+' | '+file.state+' | '+file.origin;
+    if(units+line.length+1>64*1024-100){omitted++;continue;}
+    lines.push(line);units+=line.length+1;
+  }
+  if(omitted)lines.push(omitted+' file row(s) omitted by export budget.');
+  return lines.join('\n');
 }
