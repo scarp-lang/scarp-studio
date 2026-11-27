@@ -1812,3 +1812,9 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .project-replacement-panel .identifier-site {overflow-wrap:anywhere;}
 .project-replacement-preview {display:grid;gap:6px;max-height:240px;overflow:auto;}
 .project-replacement-preview code {display:block;white-space:pre-wrap;unicode-bidi:isolate;}
+
+
+.project-scaffold .workspace-create-form {display:grid;gap:6px;min-width:0;}
+.project-scaffold textarea {width:100%;box-sizing:border-box;resize:vertical;white-space:pre;font-family:monospace;}
+.project-scaffold details,.project-scaffold li {overflow-wrap:anywhere;}
+.project-scaffold p {margin:3px 0;overflow-wrap:anywhere;}

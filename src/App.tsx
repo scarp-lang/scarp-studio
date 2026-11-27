@@ -46,6 +46,9 @@ import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
 import { OpenEditorManager } from './components/OpenEditorManager';
 import { resolveBulkClose, type TabSelection } from './model/openEditorManagement';
+import { ProjectScaffoldPanel } from './components/ProjectScaffoldPanel';
+import { summarizeScaffoldResult, type ProjectScaffoldPlan, type ScaffoldCompletion } from './model/projectScaffold';
+import { createProjectScaffold } from './services/projectScaffold';
 import { WorkspaceCreatePanel } from './components/WorkspaceCreatePanel';
 import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/workspaceCreate';
 import { createWorkspaceItem } from './services/workspaceCreate';
@@ -1302,6 +1305,32 @@ export default function App() {
       // Keep previously listed files and open dirty buffers intact if scan
       // fails; only a successful scan may replace Explorer membership.
       setError('Could not refresh Scarp folder: ' + toMessage(caught));
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function createExplorerProject(plan: ProjectScaffoldPlan): Promise<ScaffoldCompletion> {
+    const selection = selectedFolderRef.current;
+    if (!isTauri() || !selection || recoveryOperationsBlocked() || compilerScanning) {
+      return { status:'blocked', directory:plan.directory, created:[], uncertain:[],
+        error:'Finish the current native operation and select a workspace.' };
+    }
+    const targets = workspaceCreationTargets(folderDirectories, unavailableProjectFolders);
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await createProjectScaffold({
+        root:selection.path,targets,plan,isCurrent:()=>selectedFolderRef.current===selection,
+        openPaths:()=>liveEditor.current.documents.flatMap(document=>document.path?[document.path]:[]),
+      });
+      const refreshed = result.status !== 'blocked' ? await updateExplorerAfterSave() : false;
+      const message = summarizeScaffoldResult(result) + (refreshed ? ' Explorer refreshed.' : '');
+      if (result.status === 'complete') setNotice(message);
+      else setError(message);
+      return result;
     } finally {
       filePickerInProgress.current = false;
       setBusy(false);
@@ -3078,6 +3107,10 @@ export default function App() {
                   Check folder access permissions.
                 </p>
               )}
+              <ProjectScaffoldPanel key={'scaffold:' + folderPath}
+                directories={folderDirectories} unavailable={unavailableProjectFolders}
+                busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
+                onCreate={createExplorerProject} />
               <WorkspaceCreatePanel key={'create:' + folderPath}
                 directories={folderDirectories} unavailable={unavailableProjectFolders}
                 busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
