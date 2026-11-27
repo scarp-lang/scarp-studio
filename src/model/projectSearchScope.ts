@@ -119,6 +119,15 @@ export const SEARCH_COVERAGE_LABELS:Readonly<Record<ProjectSearchFileState,strin
   scanned:'Fully scanned','file-limit':'File count limit','read-failed':'Read unavailable',
   'byte-limit':'Byte budget','content-limit':'Content or match budget','invalid-listing':'Invalid listing identity',
 });
+/** Distinguish the origin of available text from a failed attempt to read it.
+ * An unavailable file never acquires a fictional disk snapshot label. */
+export function searchCoverageOrigin(row:ScopedFileCoverageRow):string{
+  if(row.origin==='open-buffer')return 'Open buffer';
+  if(row.origin==='disk'){
+    return row.state==='read-failed'||row.state==='byte-limit'?'Disk read attempt':'Disk snapshot';
+  }
+  return 'Not read';
+}
 export interface ScopedSearchSummary{
   readonly fileCoverage?:readonly ScopedFileCoverageRow[];
   readonly scope:ProjectSearchScope;
@@ -205,7 +214,7 @@ export function scopedSearchReport(summary:ScopedSearchSummary,options:ScopeRepo
   if(summary.fileCoverage){
     for(const state of PROJECT_SEARCH_FILE_STATES){
       const count=summary.fileCoverage.filter(row=>row.state===state).length;
-      if(count)lines.push(SEARCH_COVERAGE_LABELS[state]+': '+count);
+      if(count&&state!=='scanned')lines.push(SEARCH_COVERAGE_LABELS[state]+': '+count);
     }
   }
   if(options.includeFilenameQuery)lines.push('Filename substring: '+JSON.stringify(summary.scope.filename));
@@ -217,7 +226,7 @@ export function scopedSearchReport(summary:ScopedSearchSummary,options:ScopeRepo
     }));
     for(const row of reportRows){
       const line=JSON.stringify(row.name)+' — '+row.hits+' displayed match(es), '+SEARCH_COVERAGE_LABELS[row.state]+
-        (row.origin?', '+row.origin:'');
+        ', '+searchCoverageOrigin(row);
       if(length+line.length+1>MAX_SCOPE_REPORT_UNITS-100){
         lines.push('Additional file rows omitted from report due to size limit.');break;
       }

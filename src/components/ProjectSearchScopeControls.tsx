@@ -1,6 +1,6 @@
 import { useMemo,useState } from 'react';
 import { DEFAULT_PROJECT_SEARCH_SCOPE, MAX_SCOPE_NAME_QUERY, MAX_SCOPE_PREVIEW_FILES,
-  buildProjectScopeInventory, planScopedProjectSearch, scopeLabel, scopedSearchReport, sameProjectScope, SEARCH_COVERAGE_LABELS,
+  buildProjectScopeInventory, planScopedProjectSearch, scopeLabel, scopedSearchReport, sameProjectScope, SEARCH_COVERAGE_LABELS, searchCoverageOrigin,
   type ProjectSearchScope, type ScopedSearchSummary } from '../model/projectSearchScope';
 import { MAX_PROJECT_SEARCH_FILES, type ProjectSearchSource } from '../model/projectSearch';
 
@@ -102,7 +102,7 @@ export function ProjectSearchCoverage({summary}:{summary:ScopedSearchSummary}){
             (coverageFilter==='incomplete'?row.state!=='scanned':row.hits>0)).map(row=><tr key={row.name}>
             <td><code dir="auto">{row.name}</code></td>
             <td>{SEARCH_COVERAGE_LABELS[row.state]}</td><td>{row.hits}</td>
-            <td>{row.origin==='open-buffer'?'Open buffer':row.origin==='disk'?'Disk snapshot':'Not read'}</td>
+            <td>{searchCoverageOrigin(row)}</td>
           </tr>)}</tbody>
         </table></div>
         <p>Read unavailable includes missing, denied or native bounded-reader failures; no arbitrary native error text is retained.

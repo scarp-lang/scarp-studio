@@ -4,7 +4,7 @@ import { searchOpenFiles, MAX_SEARCH_RESULTS } from './openFileSearch';
 import { searchListedProjectSources, MAX_PROJECT_SEARCH_FILES, MAX_PROJECT_SEARCH_READ_BYTES,
   MAX_PROJECT_SEARCH_TOTAL_BYTES, type ProjectSearchResult } from './projectSearch';
 import { buildProjectScopeInventory,planScopedProjectSearch,summarizeScopedSearch,scopedSearchReport,
-  DEFAULT_PROJECT_SEARCH_SCOPE } from './projectSearchScope';
+  DEFAULT_PROJECT_SEARCH_SCOPE, searchCoverageOrigin } from './projectSearchScope';
 
 const options={caseSensitive:true,wholeWord:false};
 const entry=(name:string)=>({name,path:'C:/work/'+name});
@@ -169,5 +169,23 @@ describe('coverage provenance and export',()=>{
     expect(report).toContain('"src/private-miss.srp" — 0 displayed match(es), Fully scanned');
     expect(report).not.toContain('secret needle');
     expect(report).not.toContain('C:/work');
+  });
+});
+
+describe('coverage origin wording',()=>{
+  it('does not imply an unavailable disk file supplied a snapshot',()=>{
+    const row={name:'a.srp',hits:0,origin:'disk' as const};
+    expect(searchCoverageOrigin({...row,state:'read-failed'})).toBe('Disk read attempt');
+    expect(searchCoverageOrigin({...row,state:'byte-limit'})).toBe('Disk read attempt');
+    expect(searchCoverageOrigin({...row,state:'scanned'})).toBe('Disk snapshot');
+    expect(searchCoverageOrigin({...row,state:'content-limit'})).toBe('Disk snapshot');
+    expect(searchCoverageOrigin({...row,state:'file-limit',origin:null})).toBe('Not read');
+    expect(searchCoverageOrigin({...row,state:'byte-limit',origin:'open-buffer'})).toBe('Open buffer');
+  });
+  it('does not count completed files twice in the report',async()=>{
+    const entries=[entry('a.srp')];
+    const result=await searchListedProjectSources(entries,[],'needle',options,async()=> 'needle');
+    const report=scopedSearchReport(review(entries,result!));
+    expect(report.split('\n').filter(line=>line.startsWith('Fully scanned'))).toEqual(['Fully scanned sources: 1']);
   });
 });
