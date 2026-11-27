@@ -1,6 +1,6 @@
 import { useMemo,useState } from 'react';
 import { DEFAULT_PROJECT_SEARCH_SCOPE, MAX_SCOPE_NAME_QUERY, MAX_SCOPE_PREVIEW_FILES,
-  buildProjectScopeInventory, planScopedProjectSearch, scopeLabel, scopedSearchReport, sameProjectScope,
+  buildProjectScopeInventory, planScopedProjectSearch, scopeLabel, scopedSearchReport, sameProjectScope, SEARCH_COVERAGE_LABELS,
   type ProjectSearchScope, type ScopedSearchSummary } from '../model/projectSearchScope';
 import { MAX_PROJECT_SEARCH_FILES, type ProjectSearchSource } from '../model/projectSearch';
 
@@ -65,6 +65,7 @@ export function ProjectSearchScopeControls({listed,scope,busy,onChange}:Props){
 export function ProjectSearchCoverage({summary}:{summary:ScopedSearchSummary}){
   const [expanded,setExpanded]=useState(false);
   const [includeLabels,setIncludeLabels]=useState(false);
+  const [coverageFilter,setCoverageFilter]=useState<'all'|'incomplete'|'matched'>('all');
   const [includeFilenameQuery,setIncludeFilenameQuery]=useState(false);
   const report=useMemo(()=>expanded?scopedSearchReport(summary,{includeLabels,includeFilenameQuery}):'',
     [expanded,summary,includeLabels,includeFilenameQuery]);
@@ -84,7 +85,30 @@ export function ProjectSearchCoverage({summary}:{summary:ScopedSearchSummary}){
         <div><dt>Displayed matches</dt><dd>{summary.hits}</dd></div>
         <div><dt>Matching files</dt><dd>{summary.matchingFiles}</dd></div>
       </dl>
-      {summary.rows.length>0&&<div className="project-scope-inventory"><table>
+      {summary.fileCoverage&&<>
+        <label>File coverage filter<select aria-label="Project file coverage filter" value={coverageFilter}
+          onChange={event=>{
+            const value=event.target.value;
+            if(value==='all'||value==='incomplete'||value==='matched')setCoverageFilter(value);
+          }}>
+          <option value="all">All in-scope files</option>
+          <option value="incomplete">Not fully scanned</option>
+          <option value="matched">Files with displayed matches</option>
+        </select></label>
+        <div className="project-scope-inventory"><table>
+          <caption>Per-file search coverage</caption>
+          <thead><tr><th>Source label</th><th>Coverage</th><th>Matches</th><th>Origin</th></tr></thead>
+          <tbody>{summary.fileCoverage.filter(row=>coverageFilter==='all'||
+            (coverageFilter==='incomplete'?row.state!=='scanned':row.hits>0)).map(row=><tr key={row.name}>
+            <td><code dir="auto">{row.name}</code></td>
+            <td>{SEARCH_COVERAGE_LABELS[row.state]}</td><td>{row.hits}</td>
+            <td>{row.origin==='open-buffer'?'Open buffer':row.origin==='disk'?'Disk snapshot':'Not read'}</td>
+          </tr>)}</tbody>
+        </table></div>
+        <p>Read unavailable includes missing, denied or native bounded-reader failures; no arbitrary native error text is retained.
+          Content or match budget includes partial and unstarted in-memory scans.</p>
+      </>}
+      {!summary.fileCoverage&&summary.rows.length>0&&<div className="project-scope-inventory"><table>
         <caption>Displayed match counts by listed source</caption>
         <thead><tr><th>Source label</th><th>Matches</th><th>Origin</th></tr></thead>
         <tbody>{summary.rows.map(row=><tr key={row.name}><td><code dir="auto">{row.name}</code></td>

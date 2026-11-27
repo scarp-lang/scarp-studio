@@ -20,7 +20,7 @@ function names(scope:Partial<ProjectSearchScope>={}){return plan(scope).sources.
 describe('observed project scope inventory',()=>{
   it('retains original native paths and derives only observed ancestor directory labels',()=>{
     expect(inventory.sources).toEqual(listed);
-    expect(inventory.directories.map(dir=>dir.name)).toEqual(['','examples','practice','practice/one','practice/one/src','practice/two','practice/two/src','src','src/nested','src-other','tests']);
+    expect(inventory.directories.map(dir=>dir.name)).toEqual(['','examples','practice','practice/one','practice/one/src','practice/two','practice/two/src','src','src-other','src/nested','tests']);
     expect(inventory.directories.find(dir=>dir.name==='')).toEqual({name:'',direct:1,descendants:9});
     expect(inventory.directories.find(dir=>dir.name==='src')).toEqual({name:'src',direct:2,descendants:3});
     expect(inventory.directories.find(dir=>dir.name==='practice')).toEqual({name:'practice',direct:0,descendants:2});
@@ -92,7 +92,7 @@ describe('actual scoped search and coverage reporting',()=>{
   it('reads only original in-scope paths and gives unsaved open content precedence',async()=>{
     const selected=plan({directory:'src',filename:'math'});
     const open={...createUntitled(1),id:'math',name:'Math.srp',path:'C:/practice/src/Math.srp',content:'needle needle',savedContent:'old',revision:4};
-    const reader=vi.fn(async()=> 'needle');
+    const reader=vi.fn(async(_path:string,_limit:number)=> 'needle');
     const result=await searchListedProjectSources(selected.sources,[open],'needle',{caseSensitive:true,wholeWord:true},reader);
     expect(reader.mock.calls).toEqual([['C:/practice/src/nested/math.srp',expect.any(Number)]]);
     const summary=summarizeScopedSearch(selected,result!);

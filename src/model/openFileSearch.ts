@@ -98,6 +98,7 @@ export function searchOpenFiles(
   documents: readonly StudioDocument[],
   query: string,
   options: SearchOptions,
+  onScanned?: (documentId: string) => void,
 ): OpenFileSearchResult {
   const empty: OpenFileSearchResult = {
     hits: [], searchedDocuments: 0, skippedDocuments: 0, truncated: false, error: null,
@@ -171,6 +172,7 @@ export function searchOpenFiles(
       }
     }
     searchedDocuments++;
+    onScanned?.(document.id);
   }
   return { hits, searchedDocuments, skippedDocuments, truncated, error: null };
 }
