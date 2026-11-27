@@ -506,6 +506,38 @@ fn project_test_args(action: &str, folder: &Path, version: &str) -> Result<Vec<O
     Ok(args)
 }
 
+fn apply_project_test_filter(
+    args: &mut Vec<OsString>,
+    action: &str,
+    version: &str,
+    filter: Option<&str>,
+) -> Result<(), String> {
+    let Some(filter) = filter else {
+        return Ok(());
+    };
+    if !matches!(action, "list-tests" | "run-tests") || version != "0.0.7-alpha.3" {
+        return Err("Filtered project tests require Scarp 0.0.7-alpha.3.".into());
+    }
+    if filter.is_empty()
+        || filter.len() > 128
+        || filter.starts_with('-')
+        || filter.chars().any(|ch| {
+            ch.is_control()
+                || matches!(
+                    ch,
+                    '/' | '\\' | ':' | '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'
+                )
+        })
+    {
+        return Err("Use a literal test filename substring of 1–128 UTF-8 bytes.".into());
+    }
+    // The fixed path separator remains last. No shell or argument splitting.
+    let at = args.len() - 2;
+    args.insert(at, OsString::from("--filter"));
+    args.insert(at + 1, OsString::from(filter));
+    Ok(())
+}
+
 /// A project command is a separate, explicit user action. No file-open or
 /// background hook triggers it. Stop cancels the same native process slot.
 #[tauri::command]
@@ -515,6 +547,7 @@ pub async fn scarp_project_action(
     action: String,
     stdin_text: Option<String>,
     interactive: Option<bool>,
+    test_filter: Option<String>,
     state: tauri::State<'_, CompilerRuntime>,
 ) -> Result<
     (
@@ -543,11 +576,12 @@ pub async fn scarp_project_action(
             let root = selected_project_root(&folder)?;
             let (binary, version) =
                 probe_reserved(&binary, Some(&runtime), Some(&reserved))?;
-            let args = if action == "run" {
+            let mut args = if action == "run" {
                 project_run_args(&root, wants_prompt)
             } else {
                 project_test_args(&action, &root, &version)?
             };
+            apply_project_test_filter(&mut args, &action, &version, test_filter.as_deref())?;
             if action == "run" && wants_prompt && !supports_prompt_input(&version) {
                 return Err("Project prompt Run requires Scarp v0.0.6-alpha.10 or newer alpha with --interactive support.".into());
             }
@@ -582,8 +616,11 @@ pub async fn scarp_project_action(
             } else {
                 None
             };
+            let filter_note = test_filter.as_ref().map_or_else(String::new, |filter| {
+                format!("\nLiteral test filename filter: {filter:?} (not a full suite)")
+            });
             let display = format!(
-                "Scarp {version} — project {action} {}\nStatus: {outcome} (exit {exit})\n\n{}{}{}{}",
+                "Scarp {version} — project {action} {}\nStatus: {outcome} (exit {exit}){filter_note}\n\n{}{}{}{}",
                 root.display(), result.stdout,
                 if result.stderr.is_empty() { "" } else { "\nCompiler diagnostics:\n" },
                 result.stderr, cap_notice,
@@ -1049,6 +1086,47 @@ mod tests {
         for action in ["run", "exec", "init", "delete", "test --all", "../run", ""] {
             assert!(project_action_args(action, root).is_err(), "{action}");
         }
+    }
+
+    #[test]
+    fn literal_project_test_filter_is_a_separate_bounded_argument() {
+        let root = Path::new("C:/Scarp Project");
+        for action in ["list-tests", "run-tests"] {
+            let mut args = project_test_args(action, root, "0.0.7-alpha.3").unwrap();
+            apply_project_test_filter(&mut args, action, "0.0.7-alpha.3", Some("हिंदी math"))
+                .unwrap();
+            assert_eq!(args[args.len() - 4], "--filter");
+            assert_eq!(args[args.len() - 3], "हिंदी math");
+            assert_eq!(args[args.len() - 2], "--");
+            assert_eq!(args.last().unwrap(), root.as_os_str());
+        }
+        for value in ["", "-help", "a/b", "a\\b", "C:test", "a\nb", "a\u{202e}b"] {
+            let mut args = project_test_args("run-tests", root, "0.0.7-alpha.3").unwrap();
+            let before = args.clone();
+            assert!(apply_project_test_filter(
+                &mut args,
+                "run-tests",
+                "0.0.7-alpha.3",
+                Some(value)
+            )
+            .is_err());
+            assert_eq!(args, before);
+        }
+        let mut args = project_test_args("run-tests", root, "0.0.7-alpha.3").unwrap();
+        assert!(apply_project_test_filter(
+            &mut args,
+            "run-tests",
+            "0.0.7-alpha.3",
+            Some(&"é".repeat(65))
+        )
+        .is_err());
+        assert!(
+            apply_project_test_filter(&mut args, "run-tests", "0.0.6-alpha.20", Some("math"))
+                .is_err()
+        );
+        assert!(
+            apply_project_test_filter(&mut args, "verify", "0.0.7-alpha.3", Some("math")).is_err()
+        );
     }
 
     #[test]

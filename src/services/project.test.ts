@@ -120,3 +120,20 @@ describe('static project diagnostic channel',()=>{
     }
   });
 });
+
+
+describe('literal project test filter bridge',()=>{
+  it('forwards a validated substring as a distinct optional argument',async()=>{
+    vi.mocked(invoke).mockResolvedValue(['display',null,0,[0,false,false,false]]);
+    await scarpProjectAction('C:/scarp.exe','C:/project','list-tests','',false,'हिंदी math');
+    expect(invoke).toHaveBeenLastCalledWith('scarp_project_action',{binary:'C:/scarp.exe',folder:'C:/project',action:'list-tests',testFilter:'हिंदी math'});
+  });
+  it('rejects invalid filters and non-test commands without invocation',async()=>{
+    vi.mocked(invoke).mockClear();
+    for(const filter of ['-help','tests/a','é'.repeat(65),'a\nb']){
+      await expect(scarpProjectAction('C:/scarp.exe','C:/project','run-tests','',false,filter)).rejects.toThrow('Invalid literal');
+    }
+    await expect(scarpProjectAction('C:/scarp.exe','C:/project','verify','',false,'math')).rejects.toThrow('Invalid literal');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+});

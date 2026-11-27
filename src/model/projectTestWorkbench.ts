@@ -1,3 +1,4 @@
+import { selectionCoverageLabel } from './projectTestSelection';
 import { sameFilePath } from './documents';
 import { resolveListedTestSource, type TestSourceListing } from './projectTestNavigation';
 import type { ScarpTestCase, ScarpTestReport, ScarpTestStatus } from './projectTestReport';
@@ -125,7 +126,7 @@ export interface TestBaselineReview {
 }
 export function reviewTestBaseline(result: TestResultIdentity, baseline: TestBaseline | null,
   historical: boolean): TestBaselineReview | null {
-  if (historical || result.report.mode !== 'run') return null;
+  if (historical || result.report.mode !== 'run' || result.report.filter !== undefined) return null;
   return Object.freeze({ result, previous: baseline });
 }
 export function captureTestBaseline(review: TestBaselineReview, current: TestResultIdentity,
@@ -133,7 +134,7 @@ export function captureTestBaseline(review: TestBaselineReview, current: TestRes
   // A reviewed capture cannot silently follow a different report or replace
   // a newer baseline. Never copy compiler messages or help into the baseline.
   if (historical || review.result !== current || review.previous !== baseline ||
-      current.report.mode !== 'run' || !Number.isSafeInteger(timestamp) || timestamp < 0 ||
+      (current.report.mode !== 'run' || current.report.filter !== undefined) || !Number.isSafeInteger(timestamp) || timestamp < 0 ||
       timestamp > 8640000000000000) return null;
   const cases: TestBaselineCase[] = [];
   for (const test of current.report.tests) {
@@ -167,6 +168,7 @@ export function compareProjectTestBaseline(baseline: TestBaseline | null, curren
   if (!baseline) return { ok: false, error: 'Capture a completed run as a session baseline first.' };
   if (historical) return { ok: false, error: 'Current test results are historical. Rerun tests before comparison.' };
   if (current.report.mode !== 'run') return { ok: false, error: 'Discovery is not an executed test run.' };
+  if (current.report.filter !== undefined) return { ok: false, error: 'Filtered runs are not comparable to a full-suite baseline.' };
   if (!sameFilePath(baseline.folder, current.folder)) return { ok: false, error: 'The baseline belongs to a different selected project.' };
   const before = new Map(baseline.cases.map(test => [test.path, test]));
   const after = new Map(current.report.tests.map(test => [test.path, test]));
@@ -199,6 +201,7 @@ export function buildTestTextReport(result: TestResultIdentity, review: TestRevi
     'Scarp Studio structured project test review',
     review.historical ? 'Historical report; not a current test result.' :
       result.report.mode === 'list' ? 'Discovery only; no tests executed.' : 'Completed structured run report.',
+    selectionCoverageLabel(result.report),
     'Matching rows: ' + review.matched + '/' + review.total,
     'Messages may contain private text or paths. No native project folder included as a field.',
   ].join('\n') + '\n';

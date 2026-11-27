@@ -1,3 +1,4 @@
+import { validateFilteredTestReport } from './projectTestSelection';
 import type { ScarpProjectAction } from '../services/project';
 
 /** Strict interpretation of Scarp's published project-test report schema v2.
@@ -16,6 +17,8 @@ export interface ScarpTestCase {
 
 export interface ScarpTestReport {
   mode: 'list' | 'run';
+  /** Explicit command selection, never inferred from compiler JSON. */
+  filter?: string;
   discovered: number;
   passed: number;
   failed: number;
@@ -102,6 +105,7 @@ export function parseScarpTestReportForAction(
   json: string | null,
   action: ScarpProjectAction,
   exitCode: number | null,
+  testFilter?: string,
 ): ScarpTestReport | null {
   const expectedMode = action === 'list-tests'
     ? 'list'
@@ -115,8 +119,12 @@ export function parseScarpTestReportForAction(
   if (expectedMode === 'run' && exitCode !== 0 && exitCode !== 1) return null;
   const report = parseScarpTestReport(json);
   if (!report || report.mode !== expectedMode) return null;
+  if (testFilter !== undefined && !validateFilteredTestReport(report, testFilter)) return null;
   if (expectedMode === 'run' && ((exitCode === 0) !== (report.failed === 0))) {
-    return null;
+    // Native Run Tests uses --require-tests. A strict empty selection
+    // is a genuine zero-case report, but not a passing run.
+    if (!(testFilter !== undefined && exitCode === 1 && report.discovered === 0)) return null;
   }
-  return report;
+  if (testFilter !== undefined && expectedMode === 'run' && report.discovered === 0 && exitCode === 0) return null;
+  return testFilter === undefined ? report : { ...report, filter: testFilter };
 }

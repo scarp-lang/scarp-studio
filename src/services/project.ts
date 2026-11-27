@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { testFilterError } from '../model/projectTestSelection';
 import { nativeExitCode, parseNativeOutcome, type NativeOutcome } from './nativeOutcome';
 
 /** Only these explicit, bounded commands may run against the chosen project. */
@@ -6,9 +7,12 @@ export type ScarpProjectAction = 'info' | 'verify' | 'list-tests' | 'run-tests' 
 
 export function scarpProjectAction(
   binary: string, folder: string, action: ScarpProjectAction,
-  stdinText = '', interactive = false,
+  stdinText = '', interactive = false, testFilter?: string,
 ): Promise<{ output: string; testReportJson: string | null; exitCode: number | null; nativeOutcome?: NativeOutcome; inspectionJson?: string; projectInfoJson?: string; diagnosticStderr?: string }> {
-  const args = { binary, folder, action };
+  if (testFilter !== undefined && ((action !== 'list-tests' && action !== 'run-tests') || testFilterError(testFilter))) {
+    return Promise.reject(new Error('Invalid literal project test filter.'));
+  }
+  const args = { binary, folder, action, ...(testFilter !== undefined ? { testFilter } : {}) };
   // Preserve the arguments for existing non-executing commands.
   return invoke<[string, string | null, number | null, unknown?, unknown?, unknown?]>('scarp_project_action',
     action === 'run' ? { ...args, stdinText, interactive } : args,
