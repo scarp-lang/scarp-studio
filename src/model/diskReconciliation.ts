@@ -80,7 +80,7 @@ export function buildReconciliationGroups(base:string,local:string,disk:string):
   const left=edits(base,local,'local'),right=edits(base,disk,'disk');
   if(!left.ok)return left;if(!right.ok)return right;
   const changes=[...left.value,...right.value].sort((a,b)=>a.block.beforeStart-b.block.beforeStart||
-    a.block.beforeEnd-b.block.beforeEnd||(a.side==='local'?-1:1));
+    a.block.beforeEnd-b.block.beforeEnd||(a.side===b.side?0:a.side==='local'?-1:1));
   const regions:{start:number;end:number;line:number;changes:Edit[]}[]=[];
   for(const change of changes){
     const {beforeStart:start,beforeEnd:end,beforeLine:line}=change.block;

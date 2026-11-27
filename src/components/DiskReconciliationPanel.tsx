@@ -54,7 +54,7 @@ export function DiskReconciliationPanel({editor,snapshot,diskContent,busy,onAppl
   return <section className="disk-reconciliation" aria-label="Reviewed three-way disk reconciliation">
     {!review?<button type="button" disabled={busy||diskContent===null} onClick={start}>Review three-way reconciliation</button>:<>
       <p>Compare last saved text, current working text and reviewed external disk text. Non-overlapping regions have suggested
-        choices; touching/overlapping edits require explicit resolution. This is a textual merge, not semantic compiler validation.</p>
+        choices; touching/overlapping edits require explicit resolution. This is a textual merge, not semantic compiler validation. Region previews escape line endings; manual text uses the browser's newline handling.</p>
       <p>{review.groups.length} changed region(s) · {conflictCount} overlapping/touching · {unresolved} unresolved.</p>
       <label><input type="checkbox" checked={showAll} disabled={pending} onChange={event=>{setShowAll(event.target.checked);setPage(1);}}/>Show all changed regions, including suggested choices</label>
       {!shown.length&&<p>No overlapping regions. Review the suggested changes using Show all changed regions.</p>}
