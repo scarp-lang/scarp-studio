@@ -1,5 +1,5 @@
 import { useState, useSyncExternalStore } from 'react';
-import { MAX_PREFERENCE_HISTORY_ENTRIES, type createPreferenceHistory, type HistoryRestorePlan } from '../model/preferenceHistory';
+import { MAX_PREFERENCE_HISTORY_ENTRIES, type createPreferenceHistory, type HistoryRestorePlan, type HistoryRestoreScope } from '../model/preferenceHistory';
 import { PORTABLE_GROUPS, PORTABLE_GROUP_LABELS, diffStudioPreferences,
   type StudioPortablePreferences, type PortableGroup } from '../model/studioPreferenceTransfer';
 interface Props {
@@ -20,10 +20,10 @@ export function PreferenceHistoryPanel({ current, history, onApply }: Props) {
   const stale = !!plan && !history.canRestore(plan, current);
   const comparison = selected ? diffStudioPreferences(current, selected[endpoint]) : [];
   function clearReview() { setPlan(null); setClearRevision(null); setNotice(''); }
-  function review() {
+  function review(scope: HistoryRestoreScope) {
     clearReview();
     if (!selected) return;
-    const result = history.review(selected.id, endpoint, current, groups);
+    const result = history.review(selected.id, endpoint, current, groups, scope);
     if (result.ok) setPlan(result.value);
     else setNotice(result.error);
   }
@@ -66,12 +66,15 @@ export function PreferenceHistoryPanel({ current, history, onApply }: Props) {
                   setGroups(previous => checked ? [...previous, group] : previous.filter(item => item !== group)); clearReview();
                 }} />{PORTABLE_GROUP_LABELS[group]}</label>)}
             </fieldset>
-            <button type="button" className="settings-reset" disabled={!groups.length} onClick={review}>Review historical restore</button>
+            <p>Restore recorded fields to preserve later unrelated changes, or review the complete historical values of selected categories.</p>
+            <button type="button" className="settings-reset" disabled={!groups.length} onClick={() => review('changed-fields')}>Review recorded fields only</button>
+            <button type="button" className="settings-reset" disabled={!groups.length} onClick={() => review('categories')}>Review historical restore</button>
           </div>}
           <button type="button" className="settings-reset" onClick={() => { clearReview(); setClearRevision(state.revision); }}>Review clear session history</button>
         </>}
         {plan && <div className="transfer-review" role="group" aria-label="Confirm historical preference restore">
           <strong>{plan.review.changes.length} preference(s) would change</strong>
+          <p>{plan.scope === 'changed-fields' ? 'Only fields changed in the selected history entry can be restored.' : 'Complete historical values of selected categories are being reviewed.'}</p>
           <ul className="transfer-changes">{plan.review.changes.map(change => <li key={change.group + ':' + change.key}>
             {PORTABLE_GROUP_LABELS[change.group]} · {change.label}: {change.before} → {change.after}</li>)}</ul>
           {stale && <p role="alert">History or active preferences changed. Review again.</p>}

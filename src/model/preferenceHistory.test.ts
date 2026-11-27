@@ -79,3 +79,62 @@ describe('reviewed history restore', () => {
     expect(history.canRestore({ ...result.value, review: { ...result.value.review, target: font(24) } }, current)).toBe(false);
   });
 });
+
+describe('changed-fields historical restore', () => {
+  it('restores only the recorded field, preserving later edits in the same group', () => {
+    const history = createPreferenceHistory(defaults);
+    history.record(font(18), 100);
+    const id = history.getSnapshot().entries[0].id;
+    const later = { ...font(20), editor: { ...font(20).editor, wordWrap: !defaults.editor.wordWrap } };
+    history.record(later, 1000);
+    const current = history.getSnapshot().current;
+    const result = history.review(id, 'before', current, ['editor'], 'changed-fields');
+    if (!result.ok) throw Error(result.error);
+    expect(result.value.review.target.editor.fontSize).toBe(14);
+    expect(result.value.review.target.editor.wordWrap).toBe(later.editor.wordWrap);
+    expect(result.value.review.changes.map(change => change.key)).toEqual(['fontSize']);
+    expect(history.canRestore(result.value, current)).toBe(true);
+    const after = history.review(id, 'after', current, ['editor'], 'changed-fields');
+    if (!after.ok) throw Error(after.error);
+    expect(after.value.review.target.editor.fontSize).toBe(18);
+    expect(after.value.review.target.editor.wordWrap).toBe(later.editor.wordWrap);
+  });
+  it('honors category filtering and returns a no-op for unrelated groups', () => {
+    const history = createPreferenceHistory(defaults);
+    const changed = { ...font(18), appearance: { ...defaults.appearance, theme: 'light' as const } };
+    history.record(changed, 1000);
+    const current = history.getSnapshot().current;
+    const id = history.getSnapshot().entries[0].id;
+    const result = history.review(id, 'before', current, ['appearance'], 'changed-fields');
+    if (!result.ok) throw Error(result.error);
+    expect(result.value.review.target.appearance.theme).toBe(defaults.appearance.theme);
+    expect(result.value.review.target.editor.fontSize).toBe(18);
+    const noOp = history.review(id, 'before', current, ['layout'], 'changed-fields');
+    if (!noOp.ok) throw Error(noOp.error);
+    expect(noOp.value.review.changes).toEqual([]);
+    expect(history.review(id, 'before', current, [], 'changed-fields').ok).toBe(false);
+  });
+  it('rejects widened targets, unknown scope and endpoint, and stale history', () => {
+    const history = createPreferenceHistory(defaults);
+    history.record(font(18), 100);
+    const id = history.getSnapshot().entries[0].id;
+    history.record({ ...font(20), editor: { ...font(20).editor, wordWrap: !defaults.editor.wordWrap } }, 1000);
+    const current = history.getSnapshot().current;
+    const result = history.review(id, 'before', current, ['editor'], 'changed-fields');
+    if (!result.ok) throw Error(result.error);
+    expect(history.canRestore({ ...result.value, review: { ...result.value.review, target: defaults } }, current)).toBe(false);
+    expect(history.canRestore({ ...result.value, scope: 'invalid' as never }, current)).toBe(false);
+    expect(history.canRestore({ ...result.value, endpoint: 'invalid' as never }, current)).toBe(false);
+    history.record(font(22), 2000);
+    expect(history.canRestore(result.value, current)).toBe(false);
+  });
+  it('uses the actual net change of a coalesced history entry', () => {
+    const history = createPreferenceHistory(defaults);
+    history.record(font(16), 100);
+    history.record(font(18), 200);
+    const state = history.getSnapshot();
+    const result = history.review(state.entries[0].id, 'before', state.current, ['editor'], 'changed-fields');
+    if (!result.ok) throw Error(result.error);
+    expect(result.value.review.changes).toMatchObject([{ key: 'fontSize', before: '18 px', after: '14 px' }]);
+  });
+});
