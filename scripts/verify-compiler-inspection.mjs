@@ -66,7 +66,7 @@ try {
   // UTF-16 conversion. The contract would fail at runtime, not in inspection.
   const source = '// café 🌍\r\nimport "lib.srp" as lib;\r\n' +
     'var x=1; {var x=x+1; x+=2; print(x);} x=3; print(x);\r\n' +
-    'print(lib.f(n: lib.value));\r\nassert(false);\r\n';
+    'print(lib.f(n: lib.value));\r\nprint(sum([1.0]));\r\nassert(false);\r\n';
   const library = 'pub bind value=2; pub pure funcra f(n: integer)->integer{return n;}\n';
   writeFileSync(main, source);
   writeFileSync(lib, library);
@@ -91,7 +91,7 @@ try {
   assert.ok(references(report, fn.id).some(r => r.kind === 'call' && textAt(report,r.location) === 'f'));
   assert.ok(references(report, parameter.id).some(r => r.kind === 'argument_label' && textAt(report,r.location) === 'n'));
   assert.ok(references(report, alias.id).some(r => r.kind === 'namespace' && textAt(report,r.location) === 'lib'));
-  assert.ok(report.symbols.some(s => s.kind === 'builtin' && s.name === 'print' && s.location === null));
+  assert.ok(report.symbols.some(s => s.kind === 'builtin' && s.name === 'sum' && s.location === null));
   assert.equal(readFileSync(main, 'utf8'), source);
   assert.equal(readFileSync(lib, 'utf8'), library);
   assert.equal(readFileSync(manifest, 'utf8'), manifestText);
