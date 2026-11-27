@@ -4,7 +4,7 @@ import type { SearchOptions } from '../model/openFileSearch';
 import type { ProjectSearchResult } from '../model/projectSearch';
 import {
   PROJECT_REPLACEMENT_PAGE,MAX_PROJECT_REPLACEMENT_HITS,MAX_PROJECT_REPLACEMENT_FILES,replacementTextError,
-  stagedProjectReplacementIsCurrent,visibleProjectReplacementText,
+  visibleProjectReplacementText,
   type ReplacementRequest,type ReplacementResult,type ProjectReplacementPlan,
 } from '../model/projectReplacement';
 interface Props{
@@ -28,7 +28,7 @@ export function ProjectReplacementPanel({result,query,options,editor,busy,onStag
   const [notice,setNotice]=useState('');
   const rows=result.hits.map((hit,index)=>({hit,index})).filter(row=>row.hit.name.toLowerCase().includes(filter.trim().toLowerCase()));
   const pages=Math.max(1,Math.ceil(rows.length/PROJECT_REPLACEMENT_PAGE)),shownPage=Math.min(page,pages);
-  const stale=!!plan&&!stagedProjectReplacementIsCurrent(plan,editor);
+  const stale=!!plan&&plan.sessionRevision!==editor.sessionRevision;
   const blocked=busy||pending;
   const validation=replacementTextError(query,replacement);
   function resetReview(){setPlan(null);setAck(false);setNotice('');}
