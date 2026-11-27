@@ -131,7 +131,7 @@ export async function prepareWorkspaceDiskReload(
   for(const row of selected){
     if(!isCurrent())return failed('Editor changed during reload verification.');
     try{
-      const content=await read(row.snapshot.path!,Math.min(MAX_SCARP_SOURCE_BYTES,MAX_DISK_REVIEW_BYTES-readBytes));
+      const content=await read(row.snapshot.path!,Math.max(1,Math.min(MAX_SCARP_SOURCE_BYTES,MAX_DISK_REVIEW_BYTES-readBytes)));
       if(!isCurrent())return failed('Editor changed during reload verification.');
       if(content!==row.diskContent)return failed(row.snapshot.name+' changed again on disk. Scan again; nothing was reloaded.');
       assertScarpSourceText(content);
