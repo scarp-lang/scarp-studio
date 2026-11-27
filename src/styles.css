@@ -1740,3 +1740,11 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .dependency-path-list li { display:grid;gap:4px;padding:5px;border:1px solid currentColor;overflow-wrap:anywhere; }
 .import-dependency-review details { overflow-wrap:anywhere; }
 .import-dependency-review textarea { resize:vertical; }
+
+
+.open-buffer-comparison .insights-body,.buffer-compare-side {display:grid;gap:6px;min-width:0;}
+.buffer-compare-side label {display:grid;gap:3px;}
+.buffer-compare-side select {width:100%;min-width:0;}
+.buffer-transfer-block {display:grid;gap:4px;border:1px solid currentColor;padding:6px;min-width:0;}
+.buffer-transfer-block code {white-space:pre-wrap;overflow-wrap:anywhere;unicode-bidi:isolate;max-height:14rem;overflow:auto;}
+.open-buffer-comparison button:focus-visible,.open-buffer-comparison select:focus-visible,.open-buffer-comparison input:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
