@@ -46,6 +46,7 @@ export type EditorAction =
   | { type: 'edit'; id: string; content: string }
   | { type: 'saved'; id: string; path: string; savedContent: string }
   | { type: 'reload'; id: string; snapshot: StudioDocument; content: string }
+  | { type: 'reconcile-disk-source'; snapshot: StudioDocument; diskContent: string; content: string; allSnapshots: readonly StudioDocument[] }
   | { type: 'reload-clean-files'; changes: readonly BufferReplacement[]; allSnapshots: readonly StudioDocument[] }
   | { type: 'replace-open-files'; changes: readonly BufferReplacement[]; allSnapshots: readonly StudioDocument[] }
   | { type: 'activate'; id: string }
@@ -213,6 +214,17 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
             : doc,
         ),
       };
+    }
+    case 'reconcile-disk-source': {
+      const current=state.documents.find(doc=>doc.id===action.snapshot.id);
+      if (!current?.path || state.activeId!==current.id || !isDirty(current) ||
+          !isUnchangedSnapshot(current,action.snapshot) ||
+          !sameOpenDocumentSnapshots(action.allSnapshots,state.documents) ||
+          action.diskContent===current.savedContent) return state;
+      try { assertScarpSourceText(action.diskContent); assertScarpSourceText(action.content); }
+      catch { return state; }
+      return {...state,documents:state.documents.map(doc=>doc.id===current.id?
+        {...doc,content:action.content,savedContent:action.diskContent,revision:doc.revision+1}:doc)};
     }
     case 'reload-clean-files': {
       if (!sameOpenDocumentSnapshots(action.allSnapshots, state.documents) ||

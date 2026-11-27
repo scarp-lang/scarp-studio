@@ -44,6 +44,8 @@ import { verifiedProblemMarker } from './model/problemMarkers';
 import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
+import { DiskReconciliationPanel } from './components/DiskReconciliationPanel';
+import { recheckDiskReconciliation,type DiskReconciliationPlan,type ReconciliationResult } from './model/diskReconciliation';
 import { WorkspaceDiskReviewPanel } from './components/WorkspaceDiskReviewPanel';
 import { diskOperationCurrent, inspectWorkspaceDisk, prepareWorkspaceDiskReload, type WorkspaceDiskReview, type WorkspaceDiskResult } from './model/workspaceDiskReview';
 import { OpenEditorManager } from './components/OpenEditorManager';
@@ -320,7 +322,7 @@ export default function App() {
     }
     // A successful Save or an explicitly confirmed discard must retire its
     // checkpoint immediately, rather than waiting for the next typing delay.
-    if (action.type === 'saved' || action.type === 'reload' || action.type === 'reload-clean-files' || action.type === 'close') {
+    if (action.type === 'saved' || action.type === 'reload' || action.type === 'reload-clean-files' || action.type === 'reconcile-disk-source' || action.type === 'close') {
       flushDraftRecovery(true);
     }
   }
@@ -374,10 +376,12 @@ export default function App() {
   const [diskReview, setDiskReview] = useState<{
     snapshot: StudioDocument;
     report: DiskReview;
+    diskContent: string|null;
   } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
+  const [diskReconciliationUndo,setDiskReconciliationUndo]=useState<OpenFileReplaceUndo|null>(null);
   const [projectReplacementUndo, setProjectReplacementUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [qualityUndo, setQualityUndo] = useState<OpenFileReplaceUndo | null>(null);
@@ -638,6 +642,7 @@ export default function App() {
     setReplaceUndo((previous) => previous && !canUndoOpenFileReplace(previous, liveEditor.current)
       ? null : previous);
     setProjectReplacementUndo(previous => previous && !canUndoOpenFileReplace(previous,liveEditor.current) ? null : previous);
+    setDiskReconciliationUndo(previous=>previous&&!canUndoOpenFileReplace(previous,liveEditor.current)?null:previous);
   }, [documents]);
 
   useEffect(() => {
@@ -1630,6 +1635,37 @@ export default function App() {
     }
   }
 
+  async function applyDiskReconciliation(plan:DiskReconciliationPlan):Promise<ReconciliationResult<boolean>>{
+    if(!isTauri()||recoveryOperationsBlocked()||compilerScanning||!diskReview||
+      diskReview.diskContent!==plan.diskContent||!isUnchangedSnapshot(diskReview.snapshot,plan.review.snapshot))
+      return {ok:false,error:'The reviewed disk source or editor changed.'};
+    const start=liveEditor.current;
+    filePickerInProgress.current=true;setBusy(true);
+    try{
+      const result=await recheckDiskReconciliation(plan,start,readScarpSource,()=>hasUnchangedEditorSession(start,liveEditor.current));
+      if(!result.ok)return result;
+      if(!hasUnchangedEditorSession(start,liveEditor.current))return {ok:false,error:'Editor changed. No source was reconciled.'};
+      dispatch({type:'reconcile-disk-source',snapshot:plan.review.snapshot,content:plan.content,
+        diskContent:plan.diskContent,allSnapshots:start.documents});
+      const after=liveEditor.current;
+      if(after===start)return {ok:false,error:'Editor rejected the reconciliation.'};
+      const current=after.documents.find(doc=>doc.id===plan.review.snapshot.id)!;
+      autoSaveReview.current.holdReplacements(after.documents,[current.id]);
+      setDiskReconciliationUndo(current.content===plan.review.snapshot.content?null:{
+        after:after.documents.slice(),changes:[{id:current.id,snapshot:current,content:plan.review.snapshot.content}],
+      });
+      setNotice('Reconciled working text against the verified disk baseline. No disk write. Review or Save manually.');
+      return {ok:true,value:true};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+  function undoDiskReconciliation(){
+    const undo=diskReconciliationUndo;
+    if(!undo||recoveryOperationsBlocked()||!canUndoOpenFileReplace(undo,liveEditor.current))return;
+    dispatch({type:'replace-open-files',changes:undo.changes,allSnapshots:undo.after});
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents,undo.changes.map(change=>change.id));
+    setDiskReconciliationUndo(null);setNotice('Restored previous working text; the independently verified disk baseline is retained.');
+  }
+
   async function compareActiveSourceWithDisk(): Promise<void> {
     const snapshot = liveEditor.current;
     const selected = currentActiveDocument(snapshot);
@@ -1660,7 +1696,7 @@ export default function App() {
         return;
       }
       const report = inspectDiskSnapshot(selected, diskContent);
-      setDiskReview({ snapshot: selected, report });
+      setDiskReview({ snapshot: selected, report, diskContent: diskContent.length<=512*1024 ? diskContent : null });
       setNotice(report.status === 'unchanged'
         ? 'The saved disk source is unchanged since its last read/save.'
         : report.status === 'disk-matches-editor'
@@ -3549,6 +3585,8 @@ export default function App() {
               )}
             </section>
           )}
+          {diskReconciliationUndo && <button type="button" disabled={busy||compilerBusy||!canUndoOpenFileReplace(diskReconciliationUndo,editorState)}
+            onClick={undoDiskReconciliation}>Undo reconciliation working-text change (keep verified disk baseline)</button>}
           {diskReview && isCurrentDiskReview(diskReview.snapshot, active) && (
             <section className="disk-review" aria-label="Read-only disk comparison">
               <div className="disk-review-heading">
@@ -3584,6 +3622,10 @@ export default function App() {
                   <div><strong>Current disk snapshot</strong><pre>{diskReview.report.diskExcerpt}</pre></div>
                 )}
               </div>
+              {isDirty(diskReview.snapshot) && diskReview.report.status !== 'unchanged' && (
+                <DiskReconciliationPanel editor={editorState} snapshot={diskReview.snapshot} diskContent={diskReview.diskContent}
+                  busy={busy || compilerBusy || compilerSelecting || compilerScanning} onApply={applyDiskReconciliation}/>
+              )}
               <p className="disk-review-hint">No file was written. Reload rereads disk independently and asks before discarding dirty edits; Save As uses the normal guarded destination picker. Disk files may change again after this comparison.</p>
             </section>
           )}
