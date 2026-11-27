@@ -427,9 +427,11 @@ fn project_action_args(action: &str, folder: &Path) -> Result<Vec<OsString>, Str
         "verify" => &["verify", "--diagnostic-format=json"],
         "list-tests" => &["test", "--list"],
         "run-tests" => &["test", "--require-tests"],
+        "inspect-symbols" => &["inspect", "symbols", "--json", "--diagnostic-format=json"],
+        "inspect-references" => &["inspect", "references", "--json", "--diagnostic-format=json"],
         _ => {
             return Err(
-                "Only Scarp project info, verify, list-tests and run-tests are allowed.".into(),
+                "Unsupported Scarp project action. Only the fixed Studio project commands are allowed.".into(),
             )
         }
     };
@@ -492,6 +494,11 @@ fn allowed_project_test_exit_code(action: &str, code: Option<i32>) -> bool {
 
 fn project_test_args(action: &str, folder: &Path, version: &str) -> Result<Vec<OsString>, String> {
     let mut args = project_action_args(action, folder)?;
+    // The static navigation schema was reviewed against the published alpha.3
+    // implementation. Do not guess compatibility from arbitrary version text.
+    if matches!(action, "inspect-symbols" | "inspect-references") && version != "0.0.7-alpha.3" {
+        return Err("Static project navigation currently requires Scarp 0.0.7-alpha.3.".into());
+    }
     if matches!(action, "list-tests" | "run-tests") && supports_structured_project_tests(version) {
         args.insert(1, OsString::from("--json=v2"));
     }
@@ -508,7 +515,7 @@ pub async fn scarp_project_action(
     stdin_text: Option<String>,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<(String, Option<String>, Option<i32>, NativeOutcome), String> {
+) -> Result<(String, Option<String>, Option<i32>, NativeOutcome, Option<String>), String> {
     let runtime = state.inner().clone();
     let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -570,6 +577,16 @@ pub async fn scarp_project_action(
                 if result.stderr.is_empty() { "" } else { "\nCompiler diagnostics:\n" },
                 result.stderr, cap_notice,
             );
+            let inspection_json = if matches!(action.as_str(), "inspect-symbols" | "inspect-references")
+                && exit_code == Some(0)
+                && !result.truncated
+                && !result.cancelled
+                && result.stderr.is_empty()
+            {
+                Some(result.stdout.clone())
+            } else {
+                None
+            };
             // The UI independently checks exit_code against the exact schema
             // counts. Do not infer success by regexing the display string.
             Ok((
@@ -577,6 +594,7 @@ pub async fn scarp_project_action(
                 report_json,
                 exit_code,
                 (exit_code, result.cancelled, result.truncated, false),
+                inspection_json,
             ))
         })();
         release_job(&runtime, reserved.id);
@@ -958,6 +976,26 @@ mod tests {
             assert!(!supports_prompt_input(version));
             assert!(!supports_structured_project_tests(version));
         }
+    }
+
+    #[test]
+    fn project_inspection_has_fixed_static_arguments_and_version_gate() {
+        let folder = Path::new("C:/Scarp workspace");
+        for (action, verb) in [
+            ("inspect-symbols", "symbols"),
+            ("inspect-references", "references"),
+        ] {
+            let args = project_test_args(action, folder, "0.0.7-alpha.3").unwrap();
+            assert_eq!(args[0], "inspect");
+            assert_eq!(args[1], verb);
+            assert_eq!(args[2], "--json");
+            assert_eq!(args[3], "--diagnostic-format=json");
+            assert_eq!(args[4], "--");
+            assert_eq!(args[5], folder.as_os_str());
+            assert!(project_test_args(action, folder, "0.0.6-alpha.20").is_err());
+            assert!(project_test_args(action, folder, "0.0.7-alpha.4").is_err());
+        }
+        assert!(project_test_args("inspect tokens", folder, "0.0.7-alpha.3").is_err());
     }
 
     #[test]

@@ -9,7 +9,7 @@ export const MAX_ACTIVITY_TOTAL_OUTPUT_UNITS = 256 * 1024;
 export const MAX_ACTIVITY_TARGET_UNITS = 120;
 export const MAX_ACTIVITY_FILTER_UNITS = 120;
 export const SOURCE_ACTIVITY_COMMANDS = ['exec', 'verify'] as const;
-export const PROJECT_ACTIVITY_COMMANDS = ['info', 'verify', 'list-tests', 'run-tests', 'run'] as const;
+export const PROJECT_ACTIVITY_COMMANDS = ['info', 'verify', 'list-tests', 'run-tests', 'run', 'inspect-symbols', 'inspect-references'] as const;
 export type ActivityMode = 'off' | 'metadata' | 'output';
 export type ActivityCommand =
   | { readonly scope: 'source'; readonly action: ScarpMode }
@@ -128,6 +128,7 @@ export function activityCommandLabel(command: ActivityCommand): string {
   const labels: Record<ScarpProjectAction, string> = {
     info: 'Project info', verify: 'Verify project', 'list-tests': 'List project tests',
     'run-tests': 'Run project tests', run: 'Run project',
+    'inspect-symbols': 'Inspect project symbols', 'inspect-references': 'Inspect project references',
   };
   return labels[command.action];
 }
