@@ -385,7 +385,8 @@ fn supports_prompt_input(version: &str) -> bool {
     version
         .strip_prefix("0.0.6-alpha.")
         .and_then(|suffix| suffix.parse::<u16>().ok())
-        .is_some_and(|alpha| alpha >= 10) || supports_audited_alpha7(version)
+        .is_some_and(|alpha| alpha >= 10)
+        || supports_audited_alpha7(version)
 }
 
 /// Project actions never write source and only accept a selected manifest root.
@@ -467,7 +468,8 @@ fn supports_structured_project_tests(version: &str) -> bool {
     version
         .strip_prefix("0.0.6-alpha.")
         .and_then(|suffix| suffix.parse::<u16>().ok())
-        .is_some_and(|alpha| alpha >= 9) || supports_audited_alpha7(version)
+        .is_some_and(|alpha| alpha >= 9)
+        || supports_audited_alpha7(version)
 }
 
 /// Only an ordinary CLI exit can support a trusted structured test report.
@@ -927,7 +929,12 @@ mod tests {
             assert!(supports_prompt_input(version));
             assert!(supports_structured_project_tests(version));
         }
-        for version in ["0.0.7-alpha.0", "0.0.7-alpha.4", "0.0.7-beta.1", "0.0.8-alpha.1"] {
+        for version in [
+            "0.0.7-alpha.0",
+            "0.0.7-alpha.4",
+            "0.0.7-beta.1",
+            "0.0.8-alpha.1",
+        ] {
             assert!(!supports_prompt_input(version));
             assert!(!supports_structured_project_tests(version));
         }
