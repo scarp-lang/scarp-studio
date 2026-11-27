@@ -1,3 +1,5 @@
+import { ProjectSearchScopeControls, ProjectSearchCoverage } from './components/ProjectSearchScopeControls';
+import { DEFAULT_PROJECT_SEARCH_SCOPE, buildProjectScopeInventory, planScopedProjectSearch, summarizeScopedSearch, type ProjectSearchScope, type ScopedSearchSummary } from './model/projectSearchScope';
 import { CommandLibrarySettings } from './components/CommandLibrarySettings';
 import { COMMAND_GROUPS,EMPTY_COMMAND_LIBRARY,commandGroup,collectionLabel,isCommandCollection,isLibraryCommand,searchCommandCollection,recordCommandSelection,togglePinnedCommand,movePinnedCommand,confirmLibraryClear,type CommandCollection,type LibraryClearReview } from './model/commandPaletteLibrary';
 import { TestFixturesPanel } from './components/TestFixturesPanel';
@@ -290,10 +292,12 @@ export default function App() {
   // Completed searches survive safe navigation but never selected-project
   // source mutations, listing replacement or changed search options.
   const projectSearchEpoch = useRef(0);
+  const [projectSearchScope,setProjectSearchScope]=useState<ProjectSearchScope>(DEFAULT_PROJECT_SEARCH_SCOPE);
   const [projectSearchResult, setProjectSearchResult] = useState<{
     selection: { path: string; files: FolderEntry[] };
     query: string;
     result: ProjectSearchResult;
+    coverage: ScopedSearchSummary;
   } | null>(null);
   function invalidateProjectSearch(): void {
     projectSearchEpoch.current++;
@@ -2619,6 +2623,9 @@ export default function App() {
       setError('Finish the current file or compiler operation before project search.');
       return;
     }
+    const scoped=planScopedProjectSearch(buildProjectScopeInventory(selection.files),projectSearchScope);
+    if(!scoped.ok){setError(scoped.error);return;}
+    if(!scoped.value.sources.length){setError('No eligible listed sources match the project search scope.');return;}
     const snapshot = liveEditor.current;
     const ticket = ++projectSearchEpoch.current;
     const current = () => ticket === projectSearchEpoch.current &&
@@ -2631,7 +2638,7 @@ export default function App() {
     setError(null);
     try {
       const result = await searchListedProjectSources(
-        selection.files, snapshot.documents, searchQuery, options,
+        scoped.value.sources, snapshot.documents, searchQuery, options,
         (path, maxBytes) => readScarpSource(path, maxBytes), current,
       );
       if (!result || !current()) return;
@@ -2639,7 +2646,9 @@ export default function App() {
         setError('Could not search the project: ' + result.error);
         return;
       }
-      setProjectSearchResult({ selection, query: searchQuery, result });
+      const coverage=summarizeScopedSearch(scoped.value,result);
+      if(!coverage.ok){setError(coverage.error);return;}
+      setProjectSearchResult({ selection, query: searchQuery, result, coverage:coverage.value });
       setNotice('Project search: ' + result.hits.length + ' match(es) in ' +
         result.searchedFiles + ' fully scanned source(s)' +
         (result.truncated ? ' (incomplete)' : ''));
@@ -3601,6 +3610,10 @@ export default function App() {
                   setSearchOpen(false);
                 }} aria-label="Close open-file search">Close</button>
               </div>
+              {folderPath&&<ProjectSearchScopeControls listed={selectedFolderRef.current?.files??[]} scope={projectSearchScope}
+                busy={busy||compilerBusy||compilerSelecting||compilerScanning} onChange={scope=>{
+                  invalidateProjectSearch();setProjectSearchScope(scope);
+                }}/>}
               <div className="open-file-search-toolbar" aria-label="Literal replacement in open files">
                 <label htmlFor="open-file-replacement">Replace with</label>
                 <input id="open-file-replacement" type="text" maxLength={256}
@@ -3689,6 +3702,7 @@ export default function App() {
                     )}
                     {' '}No files changed.
                   </div>
+                  <ProjectSearchCoverage key={'coverage-'+projectSearchEpoch.current} summary={projectSearchResult.coverage}/>
                   <ProjectReplacementPanel key={projectSearchEpoch.current} result={projectSearchResult.result} query={searchQuery}
                     options={{caseSensitive:searchCaseSensitive,wholeWord:searchWholeWord}} editor={editorState}
                     busy={busy || compilerBusy || compilerSelecting || compilerScanning}
