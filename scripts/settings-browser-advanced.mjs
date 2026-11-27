@@ -119,6 +119,40 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.doesNotMatch(report, /browser_helper|Disposable smoke fixture|print\(name\)/);
   });
 
+  await step('history field restore preserves subsequent edits in the same category', async () => {
+    await category('Code editor');
+    const initialFont = await textValue('#editor-font-size');
+    const changedFont = initialFont === '18' ? '20' : '18';
+    await change('#editor-font-size', changedFont);
+    if (!await evaluate(() => !document.querySelector('#editor-experience-content').hidden)) {
+      await button('Configure advanced editor experience');
+    }
+    await change('#editor-experience-lineHeight', 28);
+    await category('Studio preference transfer');
+    if (await evaluate(() => document.querySelector('#preference-history-content').hidden)) {
+      await button('Browse preference history');
+    }
+    await wait(() => Array.from(document.querySelectorAll('.history-entries button')).some(
+      b => b.querySelector('strong')?.textContent === 'Font size'), 'font-size history entry');
+    await evaluate(() => Array.from(document.querySelectorAll('.history-entries button')).find(
+      b => b.querySelector('strong')?.textContent === 'Font size').click());
+    await change('#history-endpoint', 'before');
+    await button('Review recorded fields only');
+    const review = '[aria-label="Confirm historical preference restore"]';
+    await visible(review);
+    const changes = await evaluate(s => Array.from(document.querySelectorAll(s + ' li')).map(node => node.textContent), review);
+    assert.equal(changes.length, 1);
+    assert.match(changes[0], /Font size/);
+    assert.doesNotMatch(changes[0], /Line height/);
+    await button('Confirm historical restore');
+    await category('Code editor');
+    assert.equal(await textValue('#editor-font-size'), initialFont);
+    if (!await evaluate(() => !document.querySelector('#editor-experience-content').hidden)) {
+      await button('Configure advanced editor experience');
+    }
+    assert.equal(await textValue('#editor-experience-lineHeight'), '28');
+  });
+
   await step('explicit snippet insertion edits the active buffer and can be undone', async () => {
     await click('.settings-toggle');
     await visible('.monaco-editor .view-lines');
