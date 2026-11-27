@@ -375,11 +375,17 @@ fn parse_version(output: &str) -> Option<String> {
 }
 
 // Prompt mode is deliberately limited to versions with audited flag semantics.
+// Published v0.0.7 releases retain the legacy run prompt flag and the
+// structured project-test JSON v2 contract. Future series require review.
+fn supports_audited_alpha7(version: &str) -> bool {
+    matches!(version, "0.0.7-alpha.1" | "0.0.7-alpha.2" | "0.0.7-alpha.3")
+}
+
 fn supports_prompt_input(version: &str) -> bool {
     version
         .strip_prefix("0.0.6-alpha.")
         .and_then(|suffix| suffix.parse::<u16>().ok())
-        .is_some_and(|alpha| alpha >= 10)
+        .is_some_and(|alpha| alpha >= 10) || supports_audited_alpha7(version)
 }
 
 /// Project actions never write source and only accept a selected manifest root.
@@ -461,7 +467,7 @@ fn supports_structured_project_tests(version: &str) -> bool {
     version
         .strip_prefix("0.0.6-alpha.")
         .and_then(|suffix| suffix.parse::<u16>().ok())
-        .is_some_and(|alpha| alpha >= 9)
+        .is_some_and(|alpha| alpha >= 9) || supports_audited_alpha7(version)
 }
 
 /// Only an ordinary CLI exit can support a trusted structured test report.
@@ -917,6 +923,14 @@ mod tests {
         assert!(supports_prompt_input("0.0.6-alpha.11"));
         assert!(!supports_prompt_input("0.0.6-beta.1"));
         assert!(!supports_prompt_input("unknown"));
+        for version in ["0.0.7-alpha.1", "0.0.7-alpha.2", "0.0.7-alpha.3"] {
+            assert!(supports_prompt_input(version));
+            assert!(supports_structured_project_tests(version));
+        }
+        for version in ["0.0.7-alpha.0", "0.0.7-alpha.4", "0.0.7-beta.1", "0.0.8-alpha.1"] {
+            assert!(!supports_prompt_input(version));
+            assert!(!supports_structured_project_tests(version));
+        }
     }
 
     #[test]
@@ -1350,7 +1364,7 @@ mod tests {
         // and bounded process runner used by Studio for both manifest formats.
         if matches!(
             expected_version.as_str(),
-            "0.0.6-alpha.20" | "0.0.7-alpha.1" | "0.0.7-alpha.2"
+            "0.0.6-alpha.20" | "0.0.7-alpha.1" | "0.0.7-alpha.2" | "0.0.7-alpha.3"
         ) {
             let workspace = std::env::temp_dir().join(format!(
                 "studio-project-compat-{}-{unique}",

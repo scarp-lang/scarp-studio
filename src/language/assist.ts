@@ -1,6 +1,7 @@
 /** Editor-only Scarp assistance, including published alpha.20 features.
  * These templates do not replace parser/compiler validation.
  */
+import { scanScarpLiteral, scanScarpSource, tokenAtOffset } from './sourceLex';
 import { lineBreakWidth, nextLineBreak } from '../model/sourceLines';
 
 export interface ScarpCompletion {
@@ -433,19 +434,30 @@ export function isScarpCodePosition(line: string, zeroBasedOffset: number): bool
       zeroBasedOffset > line.length || zeroBasedOffset > MAX_ASSIST_SCAN_UNITS) {
     return false;
   }
-  let insideString = false;
-  let escaped = false;
-  const end = zeroBasedOffset;
-  for (let index = 0; index < end; index += 1) {
-    const char = line[index];
-    if (insideString) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === '"') insideString = false;
-    } else if (char === '"') insideString = true;
-    else if (char === '/' && line[index + 1] === '/') return false;
+  return isScarpPrefixCodePosition(line, zeroBasedOffset);
+}
+
+/** Scan the prefix from a known code boundary, including multiline literals.
+ * Unlike line-local scanning this also handles a caret on a continuation line. */
+export function isScarpPrefixCodePosition(source: string, offset: number): boolean {
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > source.length || offset > 512 * 1024) return false;
+  for (let i = 0; i < offset;) {
+    if (source[i] === '/' && source[i + 1] === '/') {
+      while (i < offset && source[i] !== '\r' && source[i] !== '\n') i++;
+      if (i === offset) return false;
+      continue;
+    }
+    const literal = scanScarpLiteral(source, i, offset);
+    if (literal) {
+      if (!literal.closed) return false;
+      i = literal.end;
+      continue;
+    }
+    if (/[A-Za-z_0-9]/.test(source[i])) {
+      do { i++; } while (i < offset && /[A-Za-z_0-9]/.test(source[i]));
+    } else i++;
   }
-  return !insideString;
+  return true;
 }
 
 /** Locate a complete decimal token for hover; bounded and code-only.
@@ -492,6 +504,8 @@ function scanDeclarations(
   includeNominalTypes: boolean,
 ): ScarpOutlineSymbol[] {
   const results: ScarpOutlineSymbol[] = [];
+  const lexical = content.includes('"""') ? scanScarpSource(content) : null;
+  if (lexical && (!lexical.complete || lexical.issues.length)) return results;
   let start = 0;
   let lineNumber = 1;
   while (start <= content.length) {
@@ -508,10 +522,12 @@ function scanDeclarations(
       const match = fn ?? nominal!;
       const name = fn ? fn[1] : nominal![2];
       const startColumn = match[0].lastIndexOf(name) + 1;
+      if (!lexical || tokenAtOffset(lexical.tokens, start + startColumn - 1)?.kind === 'identifier') {
       results.push({
         kind, name, line: lineNumber,
         startColumn, endColumn: startColumn + name.length,
       });
+      }
       if (results.length >= MAX_SCARP_OUTLINE_SYMBOLS) break;
     }
     if (end < 0) break;

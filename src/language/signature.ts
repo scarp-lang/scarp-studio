@@ -1,7 +1,7 @@
 import { MAX_ASSIST_SCAN_UNITS } from './assist';
 import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS, type LocalFunctionHeader } from './definition';
 import { blocksIndirectCall, blocksLocalFunctionName } from './localCallContext';
-import { MAX_INSIGHT_TOKENS, scarpInsightIdentifier } from './sourceLex';
+import { MAX_INSIGHT_TOKENS, scarpInsightIdentifier, scanScarpLiteral } from './sourceLex';
 
 export const MAX_SIGNATURE_HEADER_UNITS = 2048;
 export const MAX_SIGNATURE_PARAMETERS = 64;
@@ -47,19 +47,10 @@ export function activeLocalCall(source: string, offset: number): { name: string;
       if (i === offset) return null;
       continue;
     }
-    if (char === '"') {
-      i++;
-      let closed = false;
-      while (i < offset) {
-        const next = source[i++];
-        if (next === '\r' || next === '\n') return null;
-        if (next === '"') { closed = true; break; }
-        if (next === '\\') {
-          if (i >= offset || /[\r\n]/.test(source[i])) return null;
-          i++;
-        }
-      }
-      if (!closed) return null;
+    const literal = scanScarpLiteral(source, i, offset);
+    if (literal) {
+      if (!literal.closed) return null;
+      i = literal.end;
       remember('"');
       continue;
     }
