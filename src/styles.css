@@ -1656,3 +1656,13 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .input-presets button:focus-visible, .input-presets input:focus-visible, .input-presets textarea:focus-visible {
   outline: 2px solid currentColor; outline-offset: 2px;
 }
+
+
+.trail-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.trail-list { list-style: none; padding: 0; margin: 4px 0; display: grid; gap: 4px; }
+.trail-list li { min-width: 0; }
+.trail-list button { display: flex; flex-direction: column; align-items: flex-start; text-align: left; width: 100%; gap: 3px; overflow-wrap: anywhere; }
+.trail-list button[aria-current="location"] { border-color: var(--accent); }
+.trail-list button span { font-size: 11px; }
+.trail-confirm { display: grid; gap: 6px; }
+.trail-confirm p { margin: 0; }

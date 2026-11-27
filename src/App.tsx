@@ -54,6 +54,8 @@ import { SourceQualityPanel } from './components/SourceQualityPanel';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
 import { CompilerActivityPanel } from './components/CompilerActivityPanel';
+import { NavigationTrailPanel } from './components/NavigationTrailPanel';
+import { captureTrailLocation, createNavigationTrailStore, type TrailMove, type TrailReason } from './model/navigationTrail';
 import { ProgramInputPresetsPanel } from './components/ProgramInputPresetsPanel';
 import { createProgramInputPresetStore, inputPresetApplyIsCurrent, inputPresetUndoIsCurrent, type ProgramInputSnapshot, type InputPresetCaptureReview, type InputPresetApplyReview, type InputPresetRemovalReview, type InputPresetUndo } from './model/programInputPresets';
 import { createCompilerActivityStore, type ActivityToken } from './model/compilerActivity';
@@ -233,6 +235,7 @@ export default function App() {
   const [workspaceSessions] = useState(createWorkspaceSessionStore);
   const [sourceCheckpoints] = useState(createSourceCheckpointStore);
   const [compilerActivity] = useState(createCompilerActivityStore);
+  const [navigationTrail] = useState(createNavigationTrailStore);
   const currentActivityToken = useRef<ActivityToken | null>(null);
   const [workspaceSessionView, setWorkspaceSessionView] = useState(() => workspaceSessions.view());
   const [recoveryView, setRecoveryView] = useState(() => draftRecovery.view());
@@ -604,7 +607,36 @@ export default function App() {
     };
   }, [activeId, active?.content, problemMarker]);
 
-  function jumpToSourceInsight(target: InsightNavigation): void {
+  function currentTrailCursor(reason: TrailReason) {
+    const state = liveEditor.current;
+    const document = state.documents.find(item => item.id === state.activeId);
+    const editor = mountedEditor.current;
+    const position = editor?.getPosition();
+    if (!document || !position || mountedEditorDocumentId.current !== document.id ||
+        editor?.getModel()?.getValue() !== document.content) return null;
+    return captureTrailLocation(document, position.lineNumber, position.column, reason);
+  }
+
+  function recordTrailJump(document: StudioDocument, line: number, column: number, reason: TrailReason): void {
+    const target = captureTrailLocation(document, line, column, reason);
+    if (target) navigationTrail.record(currentTrailCursor('origin'), target, liveEditor.current.documents);
+  }
+
+  function markTrailCursor(): boolean {
+    if (recoveryOperationsBlocked()) return false;
+    const location = currentTrailCursor('marked');
+    return !!location && navigationTrail.record(null, location, liveEditor.current.documents);
+  }
+
+  function replayTrailMove(move: TrailMove): boolean {
+    if (recoveryOperationsBlocked()) return false;
+    const target = navigationTrail.move(move, liveEditor.current.documents);
+    if (!target) return false;
+    jumpToSourceInsight(target, false);
+    return true;
+  }
+
+  function jumpToSourceInsight(target: InsightNavigation, record = true): void {
     const current = liveEditor.current.documents.find(
       document => document.id === target.documentId,
     );
@@ -612,6 +644,11 @@ export default function App() {
         current.revision !== target.revision || current.content !== target.source) return;
     if (!Number.isSafeInteger(target.line) || !Number.isSafeInteger(target.column) ||
         target.line < 1 || target.column < 1) return;
+    if (record) recordTrailJump(current, target.line, target.column, 'insight');
+    // A newly requested insight supersedes pending navigation from other panels.
+    pendingInsightJump.current = null;
+    pendingSearchLocation.current = null;
+    pendingProblem.current = null;
     const editor = editorHandle.current;
     if (current.id !== liveEditor.current.activeId) {
       pendingInsightJump.current = target;
@@ -661,6 +698,8 @@ export default function App() {
     const editor = editorHandle.current;
     if (!editor) return;
     const position = { lineNumber: symbol.line, column: symbol.startColumn };
+    const current = liveEditor.current.documents.find(item => item.id === liveEditor.current.activeId);
+    if (current) recordTrailJump(current, position.lineNumber, position.column, 'declaration');
     editor.setPosition(position);
     editor.revealPositionInCenter(position);
     editor.focus();
@@ -733,6 +772,8 @@ export default function App() {
     if (!location || !editor || !model) return;
     const position = clampLineLocation(location, model.getLineCount(), (line) => model.getLineMaxColumn(line));
     const monacoPosition = { lineNumber: position.line, column: position.column };
+    const current = liveEditor.current.documents.find(item => item.id === liveEditor.current.activeId);
+    if (current) recordTrailJump(current, position.line, position.column, 'line');
     editor.setPosition(monacoPosition);
     editor.revealPositionInCenter(monacoPosition);
     hidePalette(false);
@@ -2020,6 +2061,9 @@ export default function App() {
     }
     const current = currentDiagnosticTarget(diagnostic, compilerOutputSource, liveEditor.current.documents);
     if (!current || !sameDiagnosticTarget(current, target)) return;
+    const document = liveEditor.current.documents.find(item => item.id === current.snapshot.documentId);
+    if (document) recordTrailJump(document, current.lineNumber, current.column, 'diagnostic');
+    pendingInsightJump.current = null;
     pendingSearchLocation.current = null;
     const editor = mountedEditor.current;
     if (liveEditor.current.activeId === current.snapshot.documentId && mountedEditorDocumentId.current === current.snapshot.documentId && editor && editor.getModel()?.getValue() === current.snapshot.content) {
@@ -2497,6 +2541,9 @@ export default function App() {
       setError('Search results changed. Review the updated matches and try again.');
       return;
     }
+    recordTrailJump(document, match.line, match.column, 'search');
+    pendingInsightJump.current = null;
+    pendingProblem.current = null;
     pendingSearchLocation.current = match;
     if (current.activeId === document.id && mountedEditor.current &&
         mountedEditorDocumentId.current === document.id) {
@@ -2908,6 +2955,9 @@ export default function App() {
           <WorkspaceSymbolsPanel documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             onNavigate={jumpToSourceInsight} />
+          <NavigationTrailPanel store={navigationTrail} documents={documents} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onMark={markTrailCursor} onMove={replayTrailMove} />
           <CodeReferencesPanel documents={documents} activeId={activeId}
             cursor={cursor} busy={busy || compilerBusy || compilerSelecting}
             onNavigate={jumpToSourceInsight} />

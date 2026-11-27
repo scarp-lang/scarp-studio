@@ -299,4 +299,29 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.equal(await textValue('#scarp-stdin'), 'new reply');
   });
 
+  await step('navigation trail replays requested symbol jumps and clears only after review', async () => {
+    await visible('.monaco-editor .view-lines');
+    await evaluate(() => document.querySelector('.monaco-editor textarea').focus());
+    await cdp.send('Input.insertText', { text: 'bind first = 1;\nbind second = 2;\nbind third = 3;\n' });
+    if (await evaluate(() => document.querySelector('#scarp-explorer').classList.contains('sidebar-hidden'))) {
+      await click('button[aria-controls="scarp-explorer"]');
+    }
+    await click('.workspace-symbols .insights-toggle');
+    await wait(() => document.querySelectorAll('.workspace-symbols .symbol-entry').length === 3, 'three indexed declarations');
+    await click('.workspace-symbols .symbol-entry:nth-child(1)');
+    await click('.workspace-symbols .symbol-entry:nth-child(2)');
+    const panel = '.navigation-trail';
+    await click(panel + ' .insights-toggle');
+    await wait(() => document.querySelector('.trail-list button[aria-current="location"] strong')?.textContent.includes(':2:'), 'second declaration recorded');
+    await button('Back in navigation trail', panel);
+    await wait(() => document.querySelector('.trail-list button[aria-current="location"] strong')?.textContent.includes(':1:'), 'back selects first declaration');
+    await button('Forward in navigation trail', panel);
+    await wait(() => document.querySelector('.trail-list button[aria-current="location"] strong')?.textContent.includes(':2:'), 'forward selects second declaration');
+    await button('Review clear navigation trail', panel);
+    await visible('[aria-label="Confirm clear navigation trail"]');
+    await button('Confirm clear navigation trail', panel);
+    await wait(() => document.querySelector('.navigation-trail-current')?.textContent === 'No recorded location', 'trail cleared');
+    assert.match(await evaluate(() => document.querySelector('.monaco-editor .view-lines').textContent), /third/);
+  });
+
 }
