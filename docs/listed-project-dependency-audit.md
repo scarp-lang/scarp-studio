@@ -1,0 +1,7 @@
+# Listed project dependency audit
+
+Choose a discovered manifest project and explicitly scan its already-listed Scarp files. The audit reads up to 24 files, 512 KiB per file and 2 MiB in total. It uses working editor buffers in working mode, and rereads disk sources in saved mode. It never searches outside the selected project listing, executes code or writes sources.
+
+A simple literal import label may include parent segments that remain inside the project (for example tests/check.srp importing ../src/lib.srp). Only display-relative labels are normalized; native file paths come from exact existing Explorer entries. Ambiguous names/paths, unsupported or outside labels, missing listed targets, listed but unscanned frontier targets, incomplete lexical inventories and read failures are distinct.
+
+Observed scanned links are analyzed using the existing strongly connected component and shortest-path algorithms. Results include coverage, cyclic groups, reverse dependencies and filtered import headers. They are lexical hints, not authoritative compiler module resolution or build order. A missing path or unobserved cycle is not conclusive under bounded coverage. The report retains metadata rather than source text and omits file labels by default. It cannot authorize navigation to old coordinates or editing. Opening a listed file rechecks current membership and uses the existing guarded Explorer opener.

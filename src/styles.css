@@ -1852,3 +1852,9 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .navigation-comparison-columns {display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;}
 .navigation-comparison-columns > div {min-width:0;border:1px solid var(--border);padding:7px;}
 .navigation-comparison textarea {width:100%;box-sizing:border-box;resize:vertical;}
+
+.project-dependency-audit {display:grid;gap:6px;padding:7px;border:1px solid var(--border);min-width:0;}
+.project-dependency-audit p,.project-dependency-audit li,.project-dependency-audit code {overflow-wrap:anywhere;margin:0;}
+.project-dependency-audit select,.project-dependency-audit input:not([type="checkbox"]),.project-dependency-audit textarea {max-width:100%;width:100%;box-sizing:border-box;min-width:0;}
+.audit-file-list {list-style:none;display:grid;gap:6px;padding:0;margin:0;}
+.audit-file-list li {display:grid;gap:4px;padding:6px;border:1px solid var(--border);min-width:0;}
