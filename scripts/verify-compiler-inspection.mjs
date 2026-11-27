@@ -6,6 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'nod
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseCompilerNavigation, referencesToSymbol } from '../src/model/compilerNavigation.ts';
+import { PROJECT_SCAFFOLD_TEMPLATES, scaffoldManifest } from '../src/model/projectScaffoldTemplates.ts';
 
 const binary = resolve(process.argv[2] ?? '');
 assert.ok(process.argv[2], 'Pass the already SHA-256 validated compiler executable');
@@ -125,6 +126,28 @@ try {
   assert.equal(use.location.line, 2);
   assert.equal(use.location.column, 16);
   console.log('PASS: exact published byte and Unicode-scalar coordinates');
+  // Qualify every exact starter recipe with the same published CLI. Test
+  // sources are executable only in this disposable CI fixture, never on creation.
+  for (const template of PROJECT_SCAFFOLD_TEMPLATES) {
+    const destination = join(stage, 'scaffold-' + template.id);
+    mkdirSync(join(destination,'src'),{recursive:true});
+    mkdirSync(join(destination,'tests'),{recursive:true});
+    writeFileSync(join(destination,'scarp.project'),scaffoldManifest('QA "project" हिंदी','1.2.3-rc.1'));
+    for (const file of [...template.sourceFiles,...template.testFiles]) {
+      writeFileSync(join(destination,...file.path.split('/')),file.content);
+    }
+    const info = invoke(['project','info','--json','--',destination]);
+    assert.equal(info.status,0,info.stderr);
+    assert.equal(JSON.parse(info.stdout).name,'QA "project" हिंदी');
+    const checked = invoke(['verify','--diagnostic-format=json','--',destination]);
+    assert.equal(checked.status,0,checked.stderr);
+    const tested = invoke(['test','--json=v2','--require-tests','--',destination]);
+    assert.equal(tested.status,0,tested.stderr);
+    const report = JSON.parse(tested.stdout);
+    assert.equal(report.discovered,template.testFiles.length);
+    assert.equal(report.passed,template.testFiles.length);
+    console.log('PASS: exact project wizard recipe ' + template.id);
+  }
 } finally {
   rmSync(stage, {recursive: true, force: true});
 }
