@@ -425,12 +425,16 @@ fn project_action_args(action: &str, folder: &Path) -> Result<Vec<OsString>, Str
         "list-tests" => &["test", "--list"],
         "run-tests" => &["test", "--require-tests"],
         "inspect-symbols" => &["inspect", "symbols", "--json", "--diagnostic-format=json"],
-        "inspect-references" => &["inspect", "references", "--json", "--diagnostic-format=json"],
-        _ => {
-            return Err(
-                "Unsupported Scarp project action. Only the fixed Studio project commands are allowed.".into(),
-            )
-        }
+        "inspect-references" => &[
+            "inspect",
+            "references",
+            "--json",
+            "--diagnostic-format=json",
+        ],
+        _ => return Err(
+            "Unsupported Scarp project action. Only the fixed Studio project commands are allowed."
+                .into(),
+        ),
     };
     let mut args: Vec<OsString> = verbs.iter().map(|verb| OsString::from(*verb)).collect();
     args.push(OsString::from("--"));
@@ -512,7 +516,16 @@ pub async fn scarp_project_action(
     stdin_text: Option<String>,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<(String, Option<String>, Option<i32>, NativeOutcome, Option<String>), String> {
+) -> Result<
+    (
+        String,
+        Option<String>,
+        Option<i32>,
+        NativeOutcome,
+        Option<String>,
+    ),
+    String,
+> {
     let runtime = state.inner().clone();
     let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
