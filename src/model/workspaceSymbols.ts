@@ -1,4 +1,5 @@
 import { scanScarpSource, scarpInsightIdentifier, MAX_INSIGHT_SOURCE_UNITS, type InsightToken } from '../language/sourceLex';
+import { functionHeaderOpenIndex,functionCallOpenIndex } from '../language/genericSyntax';
 import { scarpTokenHelp } from '../language/assist';
 import { blocksLocalFunctionName } from '../language/localCallContext';
 import type { StudioDocument } from './documents';
@@ -169,11 +170,12 @@ export function indexSymbolFile(input: StudioDocument): SymbolFileIndex {
     if (statementContext && token.kind === 'identifier' && !qualified(previous)) {
       const kind = Object.hasOwn(declarationKinds, token.text) ? declarationKinds[token.text] : undefined;
       if (kind && identifier(source, next)) {
-        const validTail = kind === 'function' ? after?.kind === 'delimiter' && after.text === '('
+        const functionOpen = kind === 'function' ? functionHeaderOpenIndex(tokens,i+1) : null;
+        const validTail = kind === 'function' ? functionOpen !== null
           : kind === 'record' || kind === 'variant' ? after?.kind === 'delimiter' && after.text === '{'
           : after?.kind === 'operator' && (after.text === ':' || after.text === '=');
         if (validTail) {
-          const item = addSymbol(kind, i, i + 1, after.end);
+          const item = addSymbol(kind, i, i + 1, functionOpen !== null ? tokens[functionOpen].end : after.end);
           if (kind === 'function' && item) pendingFunctions.set(frameDepth, item.id);
         }
       }
@@ -183,7 +185,7 @@ export function indexSymbolFile(input: StudioDocument): SymbolFileIndex {
         addSymbol('import-alias', i, i + 3, tokens[i + 4].end);
       }
     }
-    if (identifier(source, token) && next?.kind === 'delimiter' && next.text === '(' &&
+    if (identifier(source, token) && functionCallOpenIndex(tokens,i) !== null &&
         !declarationOffsets.has(token.start) && !qualified(previous) &&
         !(previous && blocksLocalFunctionName(previous.text))) {
       if (calls.length >= MAX_SYMBOL_CALLS_PER_FILE) reasons.add('call-limit');

@@ -1,6 +1,7 @@
 /** Editor-only Scarp assistance, including published alpha.20 features.
  * These templates do not replace parser/compiler validation.
  */
+import { genericParameterHeader } from './genericSyntax';
 import { scanScarpLiteral, scanScarpSource, tokenAtOffset } from './sourceLex';
 import { lineBreakWidth, nextLineBreak } from '../model/sourceLines';
 
@@ -513,7 +514,16 @@ function scanDeclarations(
     const lineEnd = end < 0 ? content.length : end;
     // Avoid allocating or running declaration regexes over giant lines.
     const line = content.slice(start, Math.min(lineEnd, start + MAX_SCARP_OUTLINE_HEADER_UNITS));
-    const fn = /^\s*(?:(?:pub|pure)\s+){0,2}funcra\s+([A-Za-z_][A-Za-z_0-9]*)\s*\(/.exec(line);
+    let fn = /^\s*(?:(?:pub|pure)\s+){0,2}funcra\s+([A-Za-z_][A-Za-z_0-9]*)\s*\(/.exec(line);
+    // A line-oriented outline accepts only complete same-line generic
+    // parameter headers; the full lexical definition index supports multiline.
+    if (!fn) {
+      const candidate = /^\s*(?:(?:pub|pure)\s+){0,2}funcra\s+([A-Za-z_][A-Za-z_0-9]*)\s*(?=<)/.exec(line);
+      if (candidate) {
+        const tokens = scanScarpSource(line.slice(candidate[0].length)).tokens.filter(token => token.kind !== 'comment');
+        if (genericParameterHeader(tokens,0)) fn=candidate;
+      }
+    }
     const nominal = !fn && includeNominalTypes
       ? /^\s*(?:pub\s+)?(record|variant)\s+([A-Za-z_][A-Za-z_0-9]*)\s*\{/.exec(line)
       : null;

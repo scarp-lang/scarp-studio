@@ -1,3 +1,4 @@
+import { formatLocalFunctionName } from './genericSyntax';
 import { scanScarpOutlineSymbols, type ScarpFunctionSymbol, type ScarpOutlineSymbol } from './assist';
 import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS, scarpCallNameFromLexical, type LocalFunctionHeader } from './definition';
 import { canCompleteLocalFunctionAtOffset, completeLocalFunctions, type LocalFunctionCompletion } from './localCompletion';
@@ -49,7 +50,7 @@ export class LocalSourceAnalysis {
   definition(offset: number): ScarpFunctionSymbol | null {
     const header = this.headerAt(offset);
     if (!header) return null;
-    const { openOffset: _openOffset, ...symbol } = header;
+    const { openOffset: _openOffset, typeParameters: _typeParameters, ...symbol } = header;
     return symbol;
   }
   hover(offset: number): { label: string; line: number } | null {
@@ -57,7 +58,7 @@ export class LocalSourceAnalysis {
     if (!header) return null;
     const labels = this.parameters(header.openOffset);
     if (!labels) return null;
-    return { label: header.name + '(' + labels.join(', ') + ')', line: header.line };
+    return { label: formatLocalFunctionName(header.name,header.typeParameters) + '(' + labels.join(', ') + ')', line: header.line };
   }
   signature(offset: number): LocalSignature | null {
     return localSignatureAt(this.source, offset, this.index, this.parameters);

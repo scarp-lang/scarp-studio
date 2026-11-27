@@ -1,3 +1,4 @@
+import { formatLocalFunctionName } from './genericSyntax';
 import { MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS, isScarpCodePosition } from './assist';
 import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS, type LocalFunctionHeader } from './definition';
 import { readLocalParameters } from './signature';
@@ -78,7 +79,7 @@ export function completeLocalFunctions(
   for (const header of candidates) {
     const parameters = readParameters(header.openOffset);
     if (!parameters) continue;
-    results.push({ name: header.name, detail: header.name + '(' + parameters.join(', ') + ')' });
+    results.push({ name: header.name, detail: formatLocalFunctionName(header.name,header.typeParameters) + '(' + parameters.join(', ') + ')' });
     if (results.length >= MAX_LOCAL_COMPLETIONS) break;
   }
   return results;
