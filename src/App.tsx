@@ -111,6 +111,8 @@ import {
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReportForAction, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource, isSelectedProjectTestReport } from './model/projectTestNavigation';
+import { ProjectInfoPanel } from './components/ProjectInfoPanel';
+import { parseProjectInfo, projectInfoEntry, type ProjectInfoSnapshot } from './model/projectInfo';
 import { CompilerNavigationPanel } from './components/CompilerNavigationPanel';
 import { parseCompilerNavigation, type CompilerNavigationReport } from './model/compilerNavigation';
 import { ProjectTestWorkbench } from './components/ProjectTestWorkbench';
@@ -285,6 +287,7 @@ export default function App() {
       projectResultEpoch.current++;
       setProjectTestResult(null);
       setCompilerNavigation(null);
+      setProjectInfo(null);
     }
     // Keep a valid previous Verify result through tab switches and unrelated
     // edits, but invalidate it on any change to the actual verified source.
@@ -418,6 +421,8 @@ export default function App() {
   const focusProblemsTab = useRef(false);
   const outputToggle = useRef<HTMLButtonElement | null>(null);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
+  const [projectInfo, setProjectInfo] = useState<ProjectInfoSnapshot | null>(null);
+  const [projectInfoBaseline, setProjectInfoBaseline] = useState<ProjectInfoSnapshot | null>(null);
   const [compilerNavigation, setCompilerNavigation] = useState<CompilerNavigationReport | null>(null);
   const [testBaseline, setTestBaseline] = useState<TestBaseline | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
@@ -1219,6 +1224,7 @@ export default function App() {
       projectResultEpoch.current++;
       setProjectTestResult(null);
       setCompilerNavigation(null);
+      setProjectInfo(null);
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
       setProjectRoots(result.projectRoots);
@@ -1264,6 +1270,7 @@ export default function App() {
       projectResultEpoch.current++;
       setProjectTestResult(null);
       setCompilerNavigation(null);
+      setProjectInfo(null);
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
       setProjectRoots(result.projectRoots);
@@ -1572,6 +1579,7 @@ export default function App() {
       projectResultEpoch.current++;
       setProjectTestResult(null);
       setCompilerNavigation(null);
+      setProjectInfo(null);
       invalidateProjectSearch();
       selectedFolderRef.current = {
         path: result.path, files: result.files, projectRoots: result.projectRoots,
@@ -1813,6 +1821,7 @@ export default function App() {
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
     setCompilerNavigation(null);
+    setProjectInfo(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2014,6 +2023,7 @@ export default function App() {
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
     setCompilerNavigation(null);
+    setProjectInfo(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2131,6 +2141,7 @@ export default function App() {
     projectResultEpoch.current++;
     setProjectTestResult(null);
     setCompilerNavigation(null);
+    setProjectInfo(null);
     setNotice(directory ? 'Selected Scarp project: ' + directory
       : 'Selected workspace root for project commands');
   }
@@ -2190,6 +2201,7 @@ export default function App() {
     setCompilerOutputSource(null);
     setProjectTestResult(null);
     setCompilerNavigation(null);
+    setProjectInfo(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2227,6 +2239,11 @@ export default function App() {
         : null;
       if (structured) {
         setProjectTestResult({ folder: selectedProjectPath, report: structured });
+      }
+      if (!freshness.stale && action === 'info' && output.projectInfoJson !== undefined) {
+        const parsed = parseProjectInfo(output.projectInfoJson);
+        if (parsed.ok) setProjectInfo({ folder: selectedProjectPath, info: parsed.info });
+        else setError(parsed.reason + ' Raw project output remains available.');
       }
       if (!freshness.stale && (action === 'inspect-symbols' || action === 'inspect-references')) {
         if (output.inspectionJson !== undefined) {
@@ -3647,6 +3664,16 @@ export default function App() {
               busy={busy || compilerBusy || compilerSelecting || compilerScanning} activity={compilerActivity} /> : resultsView === 'history' ? <CompilerActivityPanel store={compilerActivity} native={isTauri()} /> : resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
               busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
 
+            {projectInfo && !outputFreshnessWarning && selectedProjectPath && sameFilePath(projectInfo.folder, selectedProjectPath) && (
+              <ProjectInfoPanel snapshot={projectInfo} entry={projectInfoEntry(projectInfo, selectedFolderRef.current, documents)}
+                baseline={projectInfoBaseline} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+                onBaseline={setProjectInfoBaseline} onHide={() => setProjectInfo(null)} onOpen={snapshot => {
+                  if (snapshot !== projectInfo || recoveryOperationsBlocked() ||
+                    !selectedProjectPath || !sameFilePath(snapshot.folder, selectedProjectPath)) return;
+                  const current = projectInfoEntry(snapshot, selectedFolderRef.current, liveEditor.current.documents);
+                  if (current.kind === 'listed') void openFolderFile(current.path);
+                }} />
+            )}
             {compilerNavigation && !outputFreshnessWarning && (
               <CompilerNavigationPanel report={compilerNavigation} onHide={() => setCompilerNavigation(null)} />
             )}
