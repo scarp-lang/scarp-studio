@@ -23,6 +23,7 @@ interface Props {
   intelliSense: ReactNode;
   portability?: ReactNode;
   shortcuts?: ReactNode;
+  commandLibrary?: ReactNode;
   recoveryNeedsReview: boolean;
   onTheme: (theme: ThemeMode) => void;
   onEditorChange: (patch: Partial<EditorPreferences>) => void;
@@ -208,6 +209,7 @@ export function StudioSettingsPanel(props: Props) {
         <fieldset className="settings-group settings-shortcuts" id="settings-category-shortcuts" tabIndex={-1} hidden={hidden('shortcuts')}>
           <legend>Keyboard shortcuts</legend>
           {props.shortcuts ?? <p>Shortcut configuration is unavailable.</p>}
+          {props.commandLibrary}
         </fieldset>
         <fieldset className="settings-group settings-portability" id="settings-category-portability" tabIndex={-1} hidden={hidden('portability')}>
           <legend>Studio preference transfer</legend>
