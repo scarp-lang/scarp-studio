@@ -1575,3 +1575,29 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .quality-panel button:focus-visible, .quality-panel input:focus-visible, .quality-panel select:focus-visible,
 .quality-panel textarea:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .quality-panel .transfer-review { min-width: 0; overflow-wrap: anywhere; }
+
+/* Workspace lexical symbol inventory: bounded pages, compact controls,
+   overflow-safe identifiers and visible keyboard focus. */
+.workspace-symbols .insights-body { display: grid; gap: 8px; min-width: 0; }
+.workspace-symbols label { display: grid; gap: 4px; min-width: 0; }
+.workspace-symbols label:has(input[type="checkbox"]) { display: flex; gap: 6px; align-items: center; }
+.workspace-symbols select, .workspace-symbols input[type="search"], .workspace-symbols textarea {
+  width: 100%; min-width: 0; box-sizing: border-box;
+}
+.workspace-symbols textarea { resize: vertical; max-height: 24rem; overflow: auto; white-space: pre; }
+.symbol-view-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+.symbol-view-buttons button[aria-pressed="true"], .symbol-list button[aria-pressed="true"] {
+  outline: 1px solid currentColor; outline-offset: -1px;
+}
+.symbol-list, .symbol-detail { display: grid; gap: 6px; min-width: 0; }
+.symbol-detail { border-block-start: 1px solid currentColor; padding-top: 8px; }
+.symbol-entry, .symbol-list .insights-task, .symbol-detail .insights-task {
+  width: 100%; min-width: 0; overflow-wrap: anywhere; text-align: left;
+}
+.symbol-title { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px; }
+.symbol-entry code { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-symbols .outline-line { white-space: normal; overflow-wrap: anywhere; }
+.workspace-symbols button:focus-visible, .workspace-symbols input:focus-visible,
+.workspace-symbols select:focus-visible, .workspace-symbols textarea:focus-visible {
+  outline: 2px solid currentColor; outline-offset: 2px;
+}
