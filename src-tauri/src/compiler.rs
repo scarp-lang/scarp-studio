@@ -1494,6 +1494,31 @@ mod tests {
                 assert!(!verify.truncated && !verify.cancelled);
                 assert!(verify.stdout.is_empty());
 
+                if expected_version == "0.0.7-alpha.3" {
+                    // The same bounded native process runner and fixed command
+                    // builder used by the project inspection bridge.
+                    for action in ["inspect-symbols", "inspect-references"] {
+                        let inspection = process(
+                            &binary,
+                            &project_test_args(action, &selected_root, &expected_version).unwrap(),
+                            Some(&selected_root),
+                            EXEC_TIMEOUT,
+                            EXEC_OUTPUT_LIMIT,
+                            Some(&runtime),
+                        )
+                        .expect("native static project inspection");
+                        assert!(inspection.status.success(), "{}", inspection.stderr);
+                        assert!(!inspection.truncated && !inspection.cancelled);
+                        assert!(inspection.stderr.is_empty());
+                        assert!(inspection.stdout.contains("\"schema_version\":1"));
+                        assert!(inspection.stdout.contains("\"span_encoding\":\"utf-8-bytes\""));
+                        assert_eq!(
+                            inspection.stdout.contains("\"references\":["),
+                            action == "inspect-references"
+                        );
+                    }
+                }
+
                 fs::write(&main, "print(\"STUDIO_PROJECT_ALPHA20_OK\");\n").unwrap();
                 let run = process(
                     &binary,
