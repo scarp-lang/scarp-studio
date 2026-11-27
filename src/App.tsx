@@ -104,6 +104,8 @@ import {
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReportForAction, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource, isSelectedProjectTestReport } from './model/projectTestNavigation';
+import { ProjectTestWorkbench } from './components/ProjectTestWorkbench';
+import type { TestBaseline } from './model/projectTestWorkbench';
 import {
   dirtyProjectSourceNames, projectActionRequiresSavedSources,
   projectSourceBuffersChanged,
@@ -403,6 +405,7 @@ export default function App() {
   const focusProblemsTab = useRef(false);
   const outputToggle = useRef<HTMLButtonElement | null>(null);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
+  const [testBaseline, setTestBaseline] = useState<TestBaseline | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
   const [compilerOutputSource, setCompilerOutputSource] = useState<VerifiedSourceSnapshot | null>(null);
   // This input is session-local, not persisted or stored in source files.
@@ -2083,6 +2086,9 @@ export default function App() {
   }
 
   function openProjectTestSource(testPath: string, reportFolder: string): void {
+    if (recoveryOperationsBlocked() || outputFreshnessWarning || !projectTestResult ||
+        !sameFilePath(projectTestResult.folder, reportFolder) ||
+        !projectTestResult.report.tests.some(test => test.path === testPath)) return;
     // Re-resolve on click: the report may outlive an Explorer refresh or
     // project change. The shared openFolderFile path also rejects stale
     // async reads and preserves existing dirty editor buffers.
@@ -3478,43 +3484,11 @@ export default function App() {
               busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
 
             {projectTestResult && isSelectedProjectTestReport(projectTestResult.folder, selectedProjectPath) && (
-              <section className="project-test-report" aria-label="Scarp project test results">
-                <div className="project-test-heading">
-                  <strong>{projectTestResult.report.mode === 'list' ? 'DISCOVERED TESTS' : 'PROJECT TEST RESULTS'}</strong>
-                  <span>{projectTestResult.report.discovered} total ·
-                    {projectTestResult.report.passed} passed ·
-                    {projectTestResult.report.failed} failed</span>
-                  <button type="button" onClick={() => setProjectTestResult(null)}
-                    title="Hide the structured project test summary">Hide</button>
-                </div>
-                <ul className="project-test-list">
-                  {projectTestResult.report.tests.map((test) => (
-                    <li key={test.path} className={'project-test-' + test.status}>
-                      <strong>{test.status === 'passed' ? 'PASS' :
-                        test.status === 'failed' ? 'FAIL' : 'TEST'}</strong>
-                      <span>{test.path}</span>
-                      <button type="button" className="project-test-open"
-                        disabled={busy || compilerBusy || compilerSelecting ||
-                          !resolveListedTestSource(
-                            test.path, projectTestResult.folder, selectedFolderRef.current,
-                          )}
-                        onClick={() => openProjectTestSource(test.path, projectTestResult.folder)}
-                        title="Open only if this test is in the current Scarp Explorer listing">
-                        Open Source
-                      </button>
-                      {test.message && (
-                        <div className="project-test-error">
-                          <strong>{test.code || test.phase || 'Scarp test failure'}</strong>
-                          {' — ' + test.message}
-                          {test.help && <div>{test.help}</div>}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                  {!projectTestResult.report.tests.length &&
-                    <li>No project tests were discovered.</li>}
-                </ul>
-              </section>
+              <ProjectTestWorkbench result={projectTestResult} selection={selectedFolderRef.current}
+                historical={Boolean(outputFreshnessWarning)}
+                busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+                baseline={testBaseline} onBaseline={setTestBaseline}
+                onOpenSource={openProjectTestSource} onHide={() => setProjectTestResult(null)} />
             )}
             {diagnostic && (
               <div className="compiler-diagnostic" role="status">
