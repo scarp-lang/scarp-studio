@@ -85,12 +85,18 @@ function makePreview(
   if (text === null) return { preview:'', previewStartColumn:1 };
   const from = Math.max(0,column-1-70);
   const to = Math.min(text.length,column-1+tokenLength+90);
-  const safe = unicodeSafePreviewBounds(text,from,to);
-  const boundedTo = Math.min(safe.end,safe.start+MAX_REFERENCE_PREVIEW_UNITS);
+  const safe = unicodeSafePreviewBounds(text,from,Math.min(to,from+MAX_REFERENCE_PREVIEW_UNITS-2));
+  const boundedTo = safe.end;
   return {
     preview: text.slice(safe.start,boundedTo),
     previewStartColumn: safe.start+1,
   };
+}
+
+function standaloneIdentifier(source: string, token: InsightToken): boolean {
+  return !token.previewTruncated &&
+    !(token.start > 0 && /[^\x00-\x7f]/.test(source[token.start-1])) &&
+    !(token.end < source.length && /[^\x00-\x7f]/.test(source[token.end]));
 }
 
 function lexicalRole(tokens: readonly InsightToken[], index: number): ReferenceRole {
@@ -116,7 +122,7 @@ export function scarpIdentifierAtCursor(
   if (row === null || column > row.length+1) return null;
   const offset = starts[line-1]+column-1;
   const lex = scanScarpSource(source);
-  if (!lex.complete) return null;
+  if (!lex.complete || lex.issues.length) return null;
   let token = tokenAtOffset(lex.tokens,offset);
   // Monaco often places the caret just after an identifier, directly
   // before an opening parenthesis or operator. Prefer the immediately
@@ -129,7 +135,7 @@ export function scarpIdentifierAtCursor(
     }
   }
   if (!token || token.kind !== 'identifier' ||
-      !validIdentifier(token.text) || token.line !== line) return null;
+      !validIdentifier(token.text) || token.line !== line || !standaloneIdentifier(source,token)) return null;
   return token.text;
 }
 
@@ -159,11 +165,6 @@ export function findOpenCodeReferences(
   let complete = skipped === 0;
   const normalizedQuery = options.caseSensitive ? identifier : identifier.toLowerCase();
   for (const document of bounded) {
-    if (hits.length >= MAX_REFERENCE_HITS) {
-      complete = false;
-      skipped += bounded.length-searched;
-      break;
-    }
     if (document.content.length > 512*1024 ||
         totalUnits+document.content.length > MAX_REFERENCE_TOTAL_UNITS) {
       skipped++;
@@ -171,20 +172,21 @@ export function findOpenCodeReferences(
       continue;
     }
     totalUnits += document.content.length;
-    searched++;
     const lexical = scanScarpSource(document.content);
     const starts = lineStarts(document.content);
-    if (!lexical.complete || !starts) {
+    if (!lexical.complete || lexical.issues.length || !starts) {
       skipped++;
       complete = false;
       continue;
     }
+    searched++;
     const tokens = lexical.tokens;
     for (let index = 0; index < tokens.length; index++) {
       const token = tokens[index];
       if (token.kind !== 'identifier') continue;
       const candidate = options.caseSensitive ? token.text : token.text.toLowerCase();
       if (candidate !== normalizedQuery) continue;
+      if (!standaloneIdentifier(document.content,token)) { complete = false; continue; }
       if (hits.length >= MAX_REFERENCE_HITS) {
         complete = false;
         break;

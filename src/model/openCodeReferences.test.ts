@@ -138,3 +138,41 @@ describe('read-only lexical code references across open files',()=>{
     expect(source.content).toBe('name();');
   });
 });
+
+
+describe('reference coverage accounting and lexical boundaries',()=>{
+  it('counts skipped and scanned buffers exactly when result limits and malformed files coexist',()=>{
+    const list=[docs('bad.srp','"unclosed'),docs('many.srp','name '.repeat(MAX_REFERENCE_HITS+1)),docs('last.srp','other;')];
+    const report=findOpenCodeReferences(list,'name',options);
+    expect(report.matches).toBe(MAX_REFERENCE_HITS);
+    expect(report.searchedDocuments).toBe(2);
+    expect(report.skippedDocuments).toBe(1);
+    expect(report.complete).toBe(false);
+  });
+  it('does not call exactly full results incomplete when the remaining buffers contain no matches',()=>{
+    const report=findOpenCodeReferences([docs('a.srp','name '.repeat(MAX_REFERENCE_HITS)),docs('b.srp','other;')],'name',options);
+    expect(report.matches).toBe(MAX_REFERENCE_HITS);
+    expect(report.complete).toBe(true);
+    expect(report.searchedDocuments).toBe(2);
+  });
+  it('skips malformed lexical sources and marks coverage incomplete',()=>{
+    const report=findOpenCodeReferences([docs('bad.srp','name; "unfinished')],'name',options);
+    expect(report).toMatchObject({complete:false,searchedDocuments:0,skippedDocuments:1,matches:0});
+    expect(scarpIdentifierAtCursor('name; "unfinished',1,1)).toBeNull();
+  });
+  it('does not match unsupported non-ASCII-adjacent identifier fragments',()=>{
+    const report=findOpenCodeReferences([docs('a.srp','अname nameअ name;')],'name',options);
+    expect(report.matches).toBe(1);
+    expect(report.complete).toBe(false);
+    expect(scarpIdentifierAtCursor('अname',1,2)).toBeNull();
+  });
+  it('never splits supplementary scalars when bounding a long context preview',()=>{
+    const name='x'.repeat(128);
+    const source='print("'+ '😀'.repeat(50)+'"); '+name+'(); print("'+ '😀'.repeat(80)+'");';
+    const report=findOpenCodeReferences([docs('a.srp',source)],name,options);
+    const preview=report.hits[0].preview;
+    expect(preview).toContain(name);
+    expect(preview.length).toBeLessThanOrEqual(200);
+    expect(new TextDecoder().decode(new TextEncoder().encode(preview))).toBe(preview);
+  });
+});
