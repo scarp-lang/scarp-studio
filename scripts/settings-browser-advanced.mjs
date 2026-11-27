@@ -188,8 +188,8 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     await button('Review selected cleanup', panel);
     const confirmation = '[aria-label="Confirm source quality cleanup"]';
     await visible(confirmation);
-    await wait(() => document.querySelector(confirmation)?.textContent.includes('2 cleanup finding(s)'),
-      'two reviewed changes');
+    await wait(selector => document.querySelector(selector)?.textContent.includes('2 cleanup finding(s)'),
+      'two reviewed changes', confirmation);
     await button('Confirm cleanup', panel);
     await wait(() => document.querySelector('.quality-findings')?.textContent.includes('No matching observations'),
       'cleaned editor source');
