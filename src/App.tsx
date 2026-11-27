@@ -51,6 +51,8 @@ import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/w
 import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { SourceQualityPanel } from './components/SourceQualityPanel';
+import { LineRangeToolsPanel } from './components/LineRangeToolsPanel';
+import { lineRangePlanIsCurrent, type LineRangePlan } from './model/lineRangeTools';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
 import { OutputInspectionPanel } from './components/OutputInspectionPanel';
@@ -350,6 +352,7 @@ export default function App() {
   const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
   const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [qualityUndo, setQualityUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [lineRangeUndo, setLineRangeUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [checkpointUndo, setCheckpointUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
@@ -2413,6 +2416,32 @@ export default function App() {
     setCheckpointUndo(null); setError(null); setNotice('Undid checkpoint restore in memory.');
   }
 
+  function applyLineRange(plan: LineRangePlan): boolean {
+    const current = liveEditor.current;
+    if (recoveryOperationsBlocked() || !lineRangePlanIsCurrent(plan, current)) {
+      setError('Line transformation review is stale or a native operation is active. No source changed.');
+      return false;
+    }
+    const before = current.documents;
+    dispatch({ type: 'replace-open-files', changes: [plan.change], allSnapshots: before });
+    const after = liveEditor.current.documents;
+    if (before === after) return false;
+    autoSaveReview.current.holdReplacements(after, [plan.change.id]);
+    setLineRangeUndo(createOpenFileReplaceUndo(before, after));
+    setError(null); setNotice('Applied reviewed line transformation in memory. Review or Undo, then Save manually.');
+    return true;
+  }
+
+  function undoLineRange(): void {
+    if (recoveryOperationsBlocked() || !lineRangeUndo || !canUndoOpenFileReplace(lineRangeUndo, liveEditor.current)) {
+      setError('Line transformation undo is stale or a native operation is active. No source changed.');
+      return;
+    }
+    dispatch({ type: 'replace-open-files', changes: lineRangeUndo.changes, allSnapshots: lineRangeUndo.after });
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents, lineRangeUndo.changes.map(change => change.id));
+    setLineRangeUndo(null); setError(null); setNotice('Undid line transformation in the editor buffer.');
+  }
+
   function applyQualityCleanup(plan: QualityCleanupPlan): boolean {
     if (recoveryOperationsBlocked() || !qualityPlanIsCurrent(plan, liveEditor.current)) {
       setError('Source quality preview is stale or a native operation is active. Nothing changed.');
@@ -2940,6 +2969,10 @@ export default function App() {
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!qualityUndo && canUndoOpenFileReplace(qualityUndo, editorState)}
             onNavigate={jumpToSourceInsight} onApply={applyQualityCleanup} onUndo={undoQualityCleanup} />
+          <LineRangeToolsPanel editor={editorState} cursorLine={cursor.line}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            undoAvailable={!!lineRangeUndo && canUndoOpenFileReplace(lineRangeUndo, editorState)}
+            onApply={applyLineRange} onUndo={undoLineRange} />
           <WorkingChangesPanel document={active} onNavigate={jumpToSourceInsight} />
           <SourceCheckpointsPanel editor={editorState} store={sourceCheckpoints}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
