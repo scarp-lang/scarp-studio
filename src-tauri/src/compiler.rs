@@ -381,10 +381,7 @@ fn parse_version(output: &str) -> Option<String> {
 // Published v0.0.7 releases retain the legacy run prompt flag and the
 // structured project-test JSON v2 contract. Future series require review.
 fn supports_audited_alpha7(version: &str) -> bool {
-    matches!(
-        version,
-        "0.0.7-alpha.1" | "0.0.7-alpha.2" | "0.0.7-alpha.3"
-    )
+    matches!(version, "0.0.7-alpha.1" | "0.0.7-alpha.2" | "0.0.7-alpha.3")
 }
 
 fn supports_prompt_input(version: &str) -> bool {
