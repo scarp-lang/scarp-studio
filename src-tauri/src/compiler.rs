@@ -1089,6 +1089,30 @@ mod tests {
     }
 
     #[test]
+    fn literal_project_test_filter_is_a_separate_bounded_argument() {
+        let root = Path::new("C:/Scarp Project");
+        for action in ["list-tests", "run-tests"] {
+            let mut args = project_test_args(action, root, "0.0.7-alpha.3").unwrap();
+            apply_project_test_filter(&mut args, action, "0.0.7-alpha.3", Some("हिंदी math"))
+                .unwrap();
+            assert_eq!(args[args.len() - 4], "--filter");
+            assert_eq!(args[args.len() - 3], "हिंदी math");
+            assert_eq!(args[args.len() - 2], "--");
+            assert_eq!(args.last().unwrap(), root.as_os_str());
+        }
+        for value in ["", "-help", "a/b", "a\\b", "C:test", "a\nb", "a\u{202e}b"] {
+            let mut args = project_test_args("run-tests", root, "0.0.7-alpha.3").unwrap();
+            let before = args.clone();
+            assert!(apply_project_test_filter(&mut args, "run-tests", "0.0.7-alpha.3", Some(value)).is_err());
+            assert_eq!(args, before);
+        }
+        let mut args = project_test_args("run-tests", root, "0.0.7-alpha.3").unwrap();
+        assert!(apply_project_test_filter(&mut args, "run-tests", "0.0.7-alpha.3", Some(&"é".repeat(65))).is_err());
+        assert!(apply_project_test_filter(&mut args, "run-tests", "0.0.6-alpha.20", Some("math")).is_err());
+        assert!(apply_project_test_filter(&mut args, "verify", "0.0.7-alpha.3", Some("math")).is_err());
+    }
+
+    #[test]
     fn structured_project_test_reports_require_expected_native_exit_codes() {
         assert!(allowed_project_test_exit_code("list-tests", Some(0)));
         assert!(!allowed_project_test_exit_code("list-tests", Some(1)));

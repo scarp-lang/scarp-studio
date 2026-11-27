@@ -126,6 +126,22 @@ try {
   assert.equal(use.location.line, 2);
   assert.equal(use.location.column, 16);
   console.log('PASS: exact published byte and Unicode-scalar coordinates');
+  // Published filename-filter semantics, including strict empty execution.
+  const testDir=join(project,'tests');
+  mkdirSync(testDir);
+  writeFileSync(join(testDir,'Math-pass.srp'),'assert(true);');
+  writeFileSync(join(testDir,'other.srp'),'assert(false);');
+  const filtered=invoke(['test','--json=v2','--require-tests','--filter','Math','--',project]);
+  assert.equal(filtered.status,0,filtered.stderr);
+  assert.equal(JSON.parse(filtered.stdout).passed,1);
+  assert.deepEqual(JSON.parse(filtered.stdout).tests.map(test=>test.path),['tests/Math-pass.srp']);
+  const empty=invoke(['test','--json=v2','--require-tests','--filter','math','--',project]);
+  assert.equal(empty.status,1);
+  assert.equal(JSON.parse(empty.stdout).discovered,0);
+  const listed=invoke(['test','--json=v2','--list','--filter','other','--',project]);
+  assert.equal(listed.status,0,listed.stderr);
+  assert.equal(JSON.parse(listed.stdout).tests[0].status,'discovered');
+  console.log('PASS: literal test filename filtering and strict empty runs');
   // Qualify every exact starter recipe with the same published CLI. Test
   // sources are executable only in this disposable CI fixture, never on creation.
   for (const template of PROJECT_SCAFFOLD_TEMPLATES) {
