@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { StudioDocument } from '../model/documents';
+import { ImportDependencyPanel } from './ImportDependencyPanel';
 import {
-  buildScarpImportGraph, listedImportNavigationTarget,
+  buildScarpImportGraph, listedImportNavigationTarget, currentImportNavigationTarget,
   type ListedImportSource, type ImportStatus,
 } from '../model/sourceImports';
 
@@ -55,6 +56,7 @@ export function SourceImportsPanel({
           In-memory, editor-only navigation. Only current Explorer-listed
           sources can be opened. Not compiler module resolution.
         </p>
+        <ImportDependencyPanel graph={graph} activeId={activeId} />
         {graph.limited && <p role="status" className="sidebar-note">
           Import graph is limited; some links or cycles may be omitted.
         </p>}
@@ -98,7 +100,7 @@ export function SourceImportsPanel({
                 {edge.note && <span className="imports-note">{edge.note}</span>}
                 {target && <button type="button" disabled={busy}
                   onClick={() => {
-                    const currentTarget = listedImportNavigationTarget(edge, listed);
+                    const currentTarget = currentImportNavigationTarget(edge, documents, listed);
                     if (!busy && currentTarget) onOpen(currentTarget);
                   }} title={'Open already-listed Scarp source ' + edge.targetRelativeName}>
                   Open Source
