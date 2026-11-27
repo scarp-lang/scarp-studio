@@ -141,6 +141,7 @@ function transform(before:string,request:SelectionRequest):SelectionResult<{text
       text=before.slice(request.prefix.length,before.length-request.suffix.length);
       break;
     case 'duplicate':
+      if(before.endsWith('\r')&&before.startsWith('\n'))return failed('Duplication would fuse independent CR and LF separators.');
       if(before.length*request.copies>MAX_SELECTION_PREVIEW)return failed('Duplicated text exceeds the preview budget.');
       text=before.repeat(request.copies);break;
     case 'uppercase':text=before.toUpperCase();break;

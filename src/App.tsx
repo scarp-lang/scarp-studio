@@ -2821,7 +2821,7 @@ export default function App() {
     const current=liveEditor.current;
     const editor=mountedEditor.current;
     const model=editor?.getModel();
-    if(recoveryOperationsBlocked()||!model||mountedEditorDocumentId.current!==current.activeId)
+    if(recoveryOperationsBlocked()||!editor||!model||mountedEditorDocumentId.current!==current.activeId)
       return {ok:false,error:'The current editor is not ready for selection capture.'};
     const spans=(editor.getSelections()??[]).map(range=>({
       start:model.getOffsetAt(range.getStartPosition()),end:model.getOffsetAt(range.getEndPosition()),
