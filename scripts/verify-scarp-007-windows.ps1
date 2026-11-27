@@ -15,7 +15,8 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $pins = @(
   @{ Version = '0.0.7-alpha.1'; Sha256 = '371eeabd1b35e9e3530ce44f13d90f376972b0650df9d41ce79a41c814875924' },
-  @{ Version = '0.0.7-alpha.2'; Sha256 = '5cddf9d831d6eb487b2142755b36b48f1cc598d8f6cfbca39332219fd2567849' }
+  @{ Version = '0.0.7-alpha.2'; Sha256 = '5cddf9d831d6eb487b2142755b36b48f1cc598d8f6cfbca39332219fd2567849' },
+  @{ Version = '0.0.7-alpha.3'; Sha256 = 'b92da1ab3f2c0e57daee46b494c66f67165843e8b4040aad02262062a2bbe310' }
 )
 $repo = Split-Path -Parent $PSScriptRoot
 $stage = Join-Path ([System.IO.Path]::GetTempPath()) ('scarp-studio-007-' + [Guid]::NewGuid().ToString('N'))
@@ -57,6 +58,10 @@ try {
     )) {
       cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --ignored --exact $test --nocapture
       if ($LASTEXITCODE -ne 0) { throw "Scarp $version failed $test" }
+    }
+    if ($version -ceq '0.0.7-alpha.3') {
+      node --experimental-strip-types ./scripts/verify-compiler-inspection.mjs $binary
+      if ($LASTEXITCODE -ne 0) { throw "Scarp alpha.3 inspection schema qualification failed" }
     }
     Write-Host "PASS: Scarp $version interpreter and native Studio compatibility"
   }
