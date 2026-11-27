@@ -52,6 +52,8 @@ import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { SourceQualityPanel } from './components/SourceQualityPanel';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
+import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
+import { createSourceCheckpointStore, checkpointRestoreIsCurrent, type CheckpointCaptureReview, type CheckpointRestoreReview, type CheckpointRemovalReview } from './model/sourceCheckpoints';
 import { qualityPlanIsCurrent, type QualityCleanupPlan } from './model/sourceQuality';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
@@ -225,6 +227,7 @@ export default function App() {
   const recentlyClosedRef = useRef(recentlyClosed);
   const [draftRecovery] = useState(createDraftRecoveryJournal);
   const [workspaceSessions] = useState(createWorkspaceSessionStore);
+  const [sourceCheckpoints] = useState(createSourceCheckpointStore);
   const [workspaceSessionView, setWorkspaceSessionView] = useState(() => workspaceSessions.view());
   const [recoveryView, setRecoveryView] = useState(() => draftRecovery.view());
   const lastRecoveryAttempt = useRef<readonly StudioDocument[] | null>(null);
@@ -267,6 +270,7 @@ export default function App() {
     setCompilerOutputSource((previous) =>
       retainVerifiedSourceSnapshot(previous, next.documents));
     liveEditor.current = next;
+    sourceCheckpoints.reconcile(next.documents);
     setEditorState(next);
     if (before.documents.length !== next.documents.length || action.type === 'saved') {
       publishRecentlyClosed(reconcileRecentlyClosed(recentlyClosedRef.current,
@@ -334,6 +338,7 @@ export default function App() {
   const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
   const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [qualityUndo, setQualityUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [checkpointUndo, setCheckpointUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
   const searchInput = useRef<HTMLInputElement | null>(null);
@@ -2258,6 +2263,48 @@ export default function App() {
     }
   }
 
+  function captureSourceCheckpoint(review: CheckpointCaptureReview): boolean {
+    if (recoveryOperationsBlocked()) return false;
+    const result = sourceCheckpoints.capture(review, liveEditor.current, Date.now());
+    if (!result.ok) { setError(result.error); return false; }
+    setError(null);
+    setNotice('Captured a session-only checkpoint for ' + result.value.documentName + '.');
+    return true;
+  }
+
+  function removeSourceCheckpoints(review: CheckpointRemovalReview): boolean {
+    if (recoveryOperationsBlocked() || !sourceCheckpoints.remove(review)) return false;
+    setNotice('Removed reviewed session checkpoints. Source buffers are unchanged.');
+    setError(null);
+    return true;
+  }
+
+  function restoreSourceCheckpoint(review: CheckpointRestoreReview): boolean {
+    const current = liveEditor.current;
+    if (recoveryOperationsBlocked() || !checkpointRestoreIsCurrent(review, sourceCheckpoints.getSnapshot(), current)) {
+      setError('Checkpoint review is stale or a native operation is active. No source changed.');
+      return false;
+    }
+    const before = current.documents;
+    dispatch({ type: 'replace-open-files', changes: [review.change], allSnapshots: before });
+    const after = liveEditor.current.documents;
+    if (before === after) return false;
+    autoSaveReview.current.holdReplacements(after, [review.change.id]);
+    setCheckpointUndo(createOpenFileReplaceUndo(before, after));
+    setError(null); setNotice('Restored checkpoint text in memory. Review, Undo or Save manually.');
+    return true;
+  }
+
+  function undoSourceCheckpointRestore(): void {
+    if (recoveryOperationsBlocked() || !checkpointUndo || !canUndoOpenFileReplace(checkpointUndo, liveEditor.current)) {
+      setError('Checkpoint undo is stale or a native operation is active. No source changed.');
+      return;
+    }
+    dispatch({ type: 'replace-open-files', changes: checkpointUndo.changes, allSnapshots: checkpointUndo.after });
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents, checkpointUndo.changes.map(change => change.id));
+    setCheckpointUndo(null); setError(null); setNotice('Undid checkpoint restore in memory.');
+  }
+
   function applyQualityCleanup(plan: QualityCleanupPlan): boolean {
     if (recoveryOperationsBlocked() || !qualityPlanIsCurrent(plan, liveEditor.current)) {
       setError('Source quality preview is stale or a native operation is active. Nothing changed.');
@@ -2783,6 +2830,11 @@ export default function App() {
             undoAvailable={!!qualityUndo && canUndoOpenFileReplace(qualityUndo, editorState)}
             onNavigate={jumpToSourceInsight} onApply={applyQualityCleanup} onUndo={undoQualityCleanup} />
           <WorkingChangesPanel document={active} onNavigate={jumpToSourceInsight} />
+          <SourceCheckpointsPanel editor={editorState} store={sourceCheckpoints}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            undoAvailable={!!checkpointUndo && canUndoOpenFileReplace(checkpointUndo, editorState)}
+            onCapture={captureSourceCheckpoint} onRestore={restoreSourceCheckpoint}
+            onRemove={removeSourceCheckpoints} onUndo={undoSourceCheckpointRestore} />
           <SourceImportsPanel documents={documents} listed={folderEntries}
             activeId={activeId} busy={busy || compilerBusy || compilerSelecting}
             onOpen={path => void openFolderFile(path)} />
