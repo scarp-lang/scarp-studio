@@ -111,6 +111,8 @@ import {
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReportForAction, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource, isSelectedProjectTestReport } from './model/projectTestNavigation';
+import { CompilerNavigationPanel } from './components/CompilerNavigationPanel';
+import { parseCompilerNavigation, type CompilerNavigationReport } from './model/compilerNavigation';
 import { ProjectTestWorkbench } from './components/ProjectTestWorkbench';
 import type { TestBaseline } from './model/projectTestWorkbench';
 import {
@@ -282,6 +284,7 @@ export default function App() {
     if (project && projectSourceBuffersChanged(before.documents, next.documents, project)) {
       projectResultEpoch.current++;
       setProjectTestResult(null);
+      setCompilerNavigation(null);
     }
     // Keep a valid previous Verify result through tab switches and unrelated
     // edits, but invalidate it on any change to the actual verified source.
@@ -415,6 +418,7 @@ export default function App() {
   const focusProblemsTab = useRef(false);
   const outputToggle = useRef<HTMLButtonElement | null>(null);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
+  const [compilerNavigation, setCompilerNavigation] = useState<CompilerNavigationReport | null>(null);
   const [testBaseline, setTestBaseline] = useState<TestBaseline | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
   const [compilerOutputSource, setCompilerOutputSource] = useState<VerifiedSourceSnapshot | null>(null);
@@ -1214,6 +1218,7 @@ export default function App() {
       // test passes must not reappear after folder A→B→A selection cycles.
       projectResultEpoch.current++;
       setProjectTestResult(null);
+      setCompilerNavigation(null);
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
       setProjectRoots(result.projectRoots);
@@ -1258,6 +1263,7 @@ export default function App() {
       // A refresh can observe on-disk changes the editor did not make.
       projectResultEpoch.current++;
       setProjectTestResult(null);
+      setCompilerNavigation(null);
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
       setProjectRoots(result.projectRoots);
@@ -1565,6 +1571,7 @@ export default function App() {
       if (selectedFolderRef.current !== previous) return false;
       projectResultEpoch.current++;
       setProjectTestResult(null);
+      setCompilerNavigation(null);
       invalidateProjectSearch();
       selectedFolderRef.current = {
         path: result.path, files: result.files, projectRoots: result.projectRoots,
@@ -1805,6 +1812,7 @@ export default function App() {
     setResultsView('output');
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
+    setCompilerNavigation(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2005,6 +2013,7 @@ export default function App() {
     setCompilerOutputSource(verifiedSnapshot);
     setCompilerDiagnosticStderr(null);
     setProjectTestResult(null);
+    setCompilerNavigation(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2121,6 +2130,7 @@ export default function App() {
     setProjectDirectory(directory);
     projectResultEpoch.current++;
     setProjectTestResult(null);
+    setCompilerNavigation(null);
     setNotice(directory ? 'Selected Scarp project: ' + directory
       : 'Selected workspace root for project commands');
   }
@@ -2179,6 +2189,7 @@ export default function App() {
     setCompilerDiagnosticStderr(null);
     setCompilerOutputSource(null);
     setProjectTestResult(null);
+    setCompilerNavigation(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2216,6 +2227,15 @@ export default function App() {
         : null;
       if (structured) {
         setProjectTestResult({ folder: selectedProjectPath, report: structured });
+      }
+      if (!freshness.stale && (action === 'inspect-symbols' || action === 'inspect-references')) {
+        if (output.inspectionJson !== undefined) {
+          const parsed = parseCompilerNavigation(output.inspectionJson, action);
+          if (parsed.ok) setCompilerNavigation(parsed.report);
+          else setError(parsed.reason + ' Raw output remains available.');
+        } else if (output.exitCode === 0) {
+          setError('No complete trusted static inspection report was returned. Raw output remains available.');
+        }
       }
       setNotice(freshness.stale
         ? 'Scarp project ' + action + ' result is stale; save changed sources and rerun'
@@ -3550,6 +3570,14 @@ export default function App() {
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
                   dirtySelectedProjectSources.length > 0}
                 title="Explicitly execute saved project tests; save edited project sources first">Run Tests</button>
+              <button type="button" onClick={() => void runProjectAction('inspect-symbols')}
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
+                  dirtySelectedProjectSources.length > 0}
+                title="Inspect saved project symbols using Scarp 0.0.7-alpha.3 without executing code">Inspect Symbols</button>
+              <button type="button" onClick={() => void runProjectAction('inspect-references')}
+                disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
+                  dirtySelectedProjectSources.length > 0}
+                title="Inspect saved project references using Scarp 0.0.7-alpha.3 without executing code">Inspect References</button>
               <span>{selectedProjectPath ? fileName(selectedProjectPath) : 'Choose a Scarp project folder'}</span>
               {folderPath && !selectedProjectHasManifest && (
                 <span className="project-dirty-warning" role="status">
@@ -3561,7 +3589,7 @@ export default function App() {
               {dirtySelectedProjectSources.length > 0 && (
                 <span className="project-dirty-warning" role="status">
                   Save {dirtySelectedProjectSources.length} modified project source(s) before
-                  Verify, Run, List Tests or Run Tests. Project Info stays available.
+                  Verify, Run, Test or Inspect. Project Info stays available.
                 </span>
               )}
             </div>
@@ -3619,6 +3647,9 @@ export default function App() {
               busy={busy || compilerBusy || compilerSelecting || compilerScanning} activity={compilerActivity} /> : resultsView === 'history' ? <CompilerActivityPanel store={compilerActivity} native={isTauri()} /> : resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
               busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
 
+            {compilerNavigation && !outputFreshnessWarning && (
+              <CompilerNavigationPanel report={compilerNavigation} onHide={() => setCompilerNavigation(null)} />
+            )}
             {projectTestResult && isSelectedProjectTestReport(projectTestResult.folder, selectedProjectPath) && (
               <ProjectTestWorkbench result={projectTestResult} selection={selectedFolderRef.current}
                 historical={Boolean(outputFreshnessWarning)}

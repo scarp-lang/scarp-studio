@@ -69,3 +69,17 @@ describe('native project outcome', () => {
     }
   });
 });
+
+describe('native inspection provenance', () => {
+  it('accepts separate inspection JSON only from the fixed static command', async () => {
+    vi.mocked(invoke).mockResolvedValue(['display', null, 0, [0, false, false, false], '{}']);
+    expect((await scarpProjectAction('C:/scarp.exe', 'C:/project', 'inspect-references')).inspectionJson).toBe('{}');
+    expect((await scarpProjectAction('C:/scarp.exe', 'C:/project', 'run')).inspectionJson).toBeUndefined();
+  });
+  it('rejects cancelled, truncated and conflicting native results', async () => {
+    for (const metadata of [[0, true, false, false], [0, false, true, false], [1, false, false, false], null]) {
+      vi.mocked(invoke).mockResolvedValue(['display', null, 0, metadata, '{}']);
+      expect((await scarpProjectAction('C:/scarp.exe', 'C:/project', 'inspect-symbols')).inspectionJson).toBeUndefined();
+    }
+  });
+});
