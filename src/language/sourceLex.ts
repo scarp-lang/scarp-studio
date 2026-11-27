@@ -161,10 +161,14 @@ export function scanScarpSource(source: string): SourceLexResult {
       return false;
     }
     const end = cursor.offset;
+    let previewEnd = Math.min(end, start.offset + preview);
+    // Keep preview text valid UTF-16 without changing authoritative offsets.
+    if (previewEnd < end && /[\uD800-\uDBFF]/.test(source[previewEnd - 1]) &&
+        /[\uDC00-\uDFFF]/.test(source[previewEnd])) previewEnd--;
     result.tokens.push({
       kind, start: start.offset, end, line: start.line, column: start.column,
-      text: source.slice(start.offset, Math.min(end, start.offset + preview)),
-      previewTruncated: end - start.offset > preview,
+      text: source.slice(start.offset, previewEnd),
+      previewTruncated: previewEnd < end,
     });
     if (kind === 'comment') result.commentCount++;
     if (kind === 'string') result.stringCount++;

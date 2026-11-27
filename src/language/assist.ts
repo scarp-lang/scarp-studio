@@ -523,10 +523,10 @@ function scanDeclarations(
       const name = fn ? fn[1] : nominal![2];
       const startColumn = match[0].lastIndexOf(name) + 1;
       if (!lexical || tokenAtOffset(lexical.tokens, start + startColumn - 1)?.kind === 'identifier') {
-      results.push({
-        kind, name, line: lineNumber,
-        startColumn, endColumn: startColumn + name.length,
-      });
+        results.push({
+          kind, name, line: lineNumber,
+          startColumn, endColumn: startColumn + name.length,
+        });
       }
       if (results.length >= MAX_SCARP_OUTLINE_SYMBOLS) break;
     }

@@ -247,3 +247,13 @@ describe('quality workbench adversarial text', () => {
     expect(exported).toContain('\\u202e');
   });
 });
+
+
+describe('alpha.3 multiline literal whitespace protection', () => {
+  it('does not offer destructive cleanup inside literal payloads', () => {
+    const source = 'bind value = """\n  payload   \n""";  \n';
+    const findings = byRule(source, 'trailing-whitespace');
+    expect(findings.filter(f => f.edit).map(f => f.line)).toEqual([3]);
+    expect(rules(source)).not.toContain('unmatched-delimiter');
+  });
+});

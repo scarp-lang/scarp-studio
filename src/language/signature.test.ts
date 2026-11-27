@@ -83,3 +83,19 @@ describe('conservative signature context', () => {
     expect(activeLocalCall('x;add(', 6)).toEqual({ name: 'add', argument: 0 });
   });
 });
+
+
+describe('alpha.3 literal-aware signatures', () => {
+  it('ignores punctuation and comments inside multiline arguments', () => {
+    const source = 'call("""a, )\n// fake(,\n""", ';
+    expect(activeLocalCall(source, source.length)).toEqual({ name: 'call', argument: 1 });
+  });
+  it('treats a raw backslash before the closing quote literally', () => {
+    const source = 'call(r"a\\", ';
+    expect(activeLocalCall(source, source.length)).toEqual({ name: 'call', argument: 1 });
+  });
+  it('suppresses signature assistance within multiline text', () => {
+    const source = 'call("""x\nother(';
+    expect(activeLocalCall(source, source.length)).toBeNull();
+  });
+});
