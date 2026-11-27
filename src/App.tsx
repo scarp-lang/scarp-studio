@@ -51,6 +51,7 @@ import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/w
 import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { SourceQualityPanel } from './components/SourceQualityPanel';
+import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { qualityPlanIsCurrent, type QualityCleanupPlan } from './model/sourceQuality';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
@@ -2795,6 +2796,9 @@ export default function App() {
             roots={projectRoots} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting}
             onActivate={id => dispatch({ type: 'activate', id })} />
+          <WorkspaceSymbolsPanel documents={documents} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onNavigate={jumpToSourceInsight} />
           <CodeReferencesPanel documents={documents} activeId={activeId}
             cursor={cursor} busy={busy || compilerBusy || compilerSelecting}
             onNavigate={jumpToSourceInsight} />

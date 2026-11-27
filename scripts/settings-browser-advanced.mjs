@@ -202,4 +202,32 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.doesNotMatch(report, /print\(7\)/);
   });
 
+  await step('workspace symbol explorer indexes declarations and call-like sites without editing source', async () => {
+    // Reuse the existing open buffer after the quality test. Navigate to
+    // the editor and replace its disposable text using real input events.
+    await evaluate(() => document.querySelector('.monaco-editor textarea').focus());
+    const selectAll = { key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 };
+    await cdp.send('Input.dispatchKeyEvent', { ...selectAll, type: 'keyDown' });
+    await cdp.send('Input.dispatchKeyEvent', { ...selectAll, type: 'keyUp' });
+    await cdp.send('Input.insertText', { text: 'funcra helper() { print(1); }\nhelper();\nbind count = 1;\n' });
+    const scope = '.workspace-symbols';
+    await click(scope + ' .insights-toggle');
+    await wait(() => document.querySelector('.symbol-list')?.textContent.includes('helper'), 'helper declaration indexed');
+    await change('input[aria-label="Search workspace symbols"]', 'count');
+    await wait(() => document.querySelector('.symbol-list')?.textContent.includes('count') &&
+      !document.querySelector('.symbol-list')?.textContent.includes('helper'), 'symbol search filters declaration list');
+    await change('input[aria-label="Search workspace symbols"]', '');
+    await button('Call sites', scope);
+    await change('input[aria-label="Search workspace symbols"]', 'helper');
+    await wait(() => document.querySelector('.symbol-list')?.textContent.includes('One matching function name'), 'call name candidate');
+    await click('.symbol-list button');
+    await visible('[aria-label="Selected symbol name details"]');
+    assert.match(await evaluate(() => document.querySelector('.symbol-detail').textContent), /Outside indexed function body/);
+    await button('Declarations', scope);
+    await button('Show copyable symbol report', scope);
+    const exported = await textValue('textarea[aria-label="Workspace symbol report"]');
+    assert.match(exported, /Function helper/);
+    assert.doesNotMatch(exported, /print\(1\)/);
+  });
+
 }
