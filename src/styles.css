@@ -1818,3 +1818,24 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .project-scaffold textarea {width:100%;box-sizing:border-box;resize:vertical;white-space:pre;font-family:monospace;}
 .project-scaffold details,.project-scaffold li {overflow-wrap:anywhere;}
 .project-scaffold p {margin:3px 0;overflow-wrap:anywhere;}
+
+/* Open-editor external change inspection */
+.workspace-disk-review #workspace-disk-review {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.workspace-disk-review p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.workspace-disk-review .disk-review-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 0;
+  gap: 4px 10px;
+}
+.workspace-disk-review .disk-review-summary dd { margin: 0; font-variant-numeric: tabular-nums; }
+.workspace-disk-review .disk-review-results { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+.workspace-disk-review .disk-review-results li { display: grid; gap: 4px; padding: 7px; border: 1px solid currentColor; border-radius: 4px; min-width: 0; }
+.workspace-disk-review .disk-review-results small { overflow-wrap: anywhere; opacity: .85; }
+.workspace-disk-review pre { margin: 3px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspace-disk-review label { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
+.workspace-disk-review select { max-width: 100%; }

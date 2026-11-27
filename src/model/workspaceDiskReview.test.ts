@@ -44,7 +44,7 @@ describe('read-only multi-file disk review',()=>{
   });
   it('never reads untitled or non-source tabs',async()=>{
     const editor=open(open(initialEditorState,'/work/not-source.txt','text'),'/work/source.srp','');
-    const read=vi.fn(async()=> '');
+    const read=vi.fn(async(_path:string,_max:number)=> '');
     const result=await inspectWorkspaceDisk(editor,read,()=>true);
     expect(result.ok).toBe(true);
     expect(read).toHaveBeenCalledTimes(1);
