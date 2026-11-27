@@ -69,6 +69,46 @@ function allowedControl(n: number): boolean {
   return n >= 32 || n === 9 || n === 10 || n === 13 || n === 12;
 }
 
+
+export interface ScarpLiteralSpan {
+  end: number;
+  closed: boolean;
+  kind: 'ordinary' | 'raw' | 'multiline';
+  brokenEscape: boolean;
+}
+
+/** Recognize published alpha.3 literal delimiters at a token boundary.
+ * The limit is an exclusive caret/scan boundary; never consume text after it.
+ * Escape validity and decoded values belong to the official compiler. */
+export function scanScarpLiteral(source: string, start: number, limit = source.length): ScarpLiteralSpan | null {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(limit) ||
+      start < 0 || start >= limit || limit > source.length) return null;
+  const raw = source.startsWith('r"', start);
+  if (!raw && source[start] !== '"') return null;
+  const multiline = !raw && source.startsWith('"""', start);
+  const kind = raw ? 'raw' : multiline ? 'multiline' : 'ordinary';
+  const delimiter = multiline ? '"""' : '"';
+  const opening = raw ? 2 : multiline ? 3 : 1;
+  let end = Math.min(start + opening, limit);
+  let brokenEscape = false;
+  while (end < limit) {
+    if (end + delimiter.length <= limit && source.startsWith(delimiter, end)) {
+      return { end: end + delimiter.length, closed: true, kind, brokenEscape };
+    }
+    const unit = source.charCodeAt(end);
+    if (!multiline && (unit === 10 || unit === 13)) break;
+    if (kind === 'ordinary' && unit === 92) {
+      end++;
+      if (end >= limit || source.charCodeAt(end) === 10 || source.charCodeAt(end) === 13) {
+        brokenEscape = true;
+        break;
+      }
+    }
+    end++;
+  }
+  return { end, closed: false, kind, brokenEscape };
+}
+
 /** Scan a snapshot without any IO or side effects. Long text and too many
  * tokens produce incomplete results; consumers must not treat them as
  * exhaustive. CRLF is one line ending; CR and LF are also recognized.
@@ -121,10 +161,14 @@ export function scanScarpSource(source: string): SourceLexResult {
       return false;
     }
     const end = cursor.offset;
+    let previewEnd = Math.min(end, start.offset + preview);
+    // Keep preview text valid UTF-16 without changing authoritative offsets.
+    if (previewEnd < end && /[\uD800-\uDBFF]/.test(source[previewEnd - 1]) &&
+        /[\uDC00-\uDFFF]/.test(source[previewEnd])) previewEnd--;
     result.tokens.push({
       kind, start: start.offset, end, line: start.line, column: start.column,
-      text: source.slice(start.offset, Math.min(end, start.offset + preview)),
-      previewTruncated: end - start.offset > preview,
+      text: source.slice(start.offset, previewEnd),
+      previewTruncated: previewEnd < end,
     });
     if (kind === 'comment') result.commentCount++;
     if (kind === 'string') result.stringCount++;
@@ -158,37 +202,18 @@ export function scanScarpSource(source: string): SourceLexResult {
       if (!emit('comment', start, MAX_COMMENT_PREVIEW_UNITS)) break;
       continue;
     }
-    if (unit === 34) {
-      advance();
-      let closed = false;
-      let brokenEscape = false;
-      while (cursor.offset < source.length) {
-        const current = source.charCodeAt(cursor.offset);
-        if (current === 10 || current === 13) break;
-        if (current === 34) {
-          advance();
-          closed = true;
-          break;
-        }
-        if (current === 92) {
-          advance();
-          if (cursor.offset >= source.length ||
-              source.charCodeAt(cursor.offset) === 10 ||
-              source.charCodeAt(cursor.offset) === 13) {
-            brokenEscape = true;
-            break;
-          }
-          advance();
-          continue;
-        }
-        if (!allowedControl(current)) {
+    const literal = scanScarpLiteral(source, cursor.offset);
+    if (literal) {
+      while (cursor.offset < literal.end) {
+        if (!allowedControl(source.charCodeAt(cursor.offset))) {
           issue('invalid-control', 'Control code inside string.', { ...cursor });
         }
         advance();
       }
-      if (!closed) {
-        issue('unterminated-string', brokenEscape
+      if (!literal.closed) {
+        issue('unterminated-string', literal.brokenEscape
           ? 'String ends with an incomplete escape.'
+          : literal.kind === 'multiline' ? 'Multiline string is not closed.'
           : 'String literal is not closed on this line.', start);
       }
       if (!emit('string', start, MAX_TOKEN_PREVIEW_UNITS)) break;

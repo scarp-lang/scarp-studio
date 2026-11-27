@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import recordVariantFixture from '../../qa/windows/08-declaration-outline.srp?raw';
 import {
-  isScarpCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS,
+  isScarpCodePosition, isScarpPrefixCodePosition, MAX_ASSIST_SCAN_UNITS, MAX_COMPLETION_PREFIX_UNITS,
   MAX_SCARP_OUTLINE_HEADER_UNITS, MAX_SCARP_OUTLINE_SYMBOLS,
   scanScarpFunctions, scanScarpOutlineSymbols,
   scarpCompletions, scarpTokenHelp, scarpDecimalLiteralAt,
@@ -350,5 +350,23 @@ describe('catalog completion category filtering', () => {
     expect(functions.every(entry => entry.kind === 'function')).toBe(true);
     expect(scarpCompletions('funcra', entry => entry.kind !== 'snippet')).toEqual([]);
     expect(scarpCompletions('', () => false)).toEqual([]);
+  });
+});
+
+
+describe('alpha.3 literal-aware assistance', () => {
+  it('suppresses completion inside raw text and resumes after its closing quote', () => {
+    const source = 'r"folder\\" print';
+    expect(isScarpCodePosition(source, 5)).toBe(false);
+    expect(isScarpCodePosition(source, source.length)).toBe(true);
+  });
+  it('suppresses help on multiline continuation lines and resumes after the delimiter', () => {
+    const source = 'bind s = """\nprint(fake)\n"""; print(real)';
+    expect(isScarpPrefixCodePosition(source, source.indexOf('fake'))).toBe(false);
+    expect(isScarpPrefixCodePosition(source, source.indexOf('real'))).toBe(true);
+  });
+  it('never outlines declarations embedded in multiline text', () => {
+    const source = 'bind s = """\nfuncra fake() -> integer {}\nrecord Fake {}\n""";\nfuncra real() -> integer {}';
+    expect(scanScarpOutlineSymbols(source).map(x => x.name)).toEqual(['real']);
   });
 });

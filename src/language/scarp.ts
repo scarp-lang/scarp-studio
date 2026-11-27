@@ -7,7 +7,7 @@ import { collectScarpSuggestions, scarpCompletionEnabled } from './suggestionPip
 import { boundedCompletionContext, completionMatchRank } from './completionMatching';
 import { MAX_DEFINITION_SOURCE_UNITS } from './definition';
 import {
-  isScarpCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scarpTokenHelp,
+  isScarpCodePosition, isScarpPrefixCodePosition, scarpDecimalLiteralAt, MAX_ASSIST_SCAN_UNITS, scarpTokenHelp,
   type ScarpCompletion,
 } from './assist';
 
@@ -19,7 +19,22 @@ function canAssistAtColumn(column: number): boolean {
     column <= MAX_ASSIST_SCAN_UNITS + 1;
 }
 
-/** Conservative, editor-only highlighting aligned to published Scarp v0.0.6-alpha.20.
+/** A real Monaco model can provide a bounded prefix. Never guess code
+ * context on a multiline continuation when that prefix exceeds the budget. */
+function modelCodePosition(model: Monaco.editor.ITextModel, position: Monaco.Position, line: string): boolean {
+  if (position.lineNumber === 1 || typeof model.getValueInRange !== 'function') {
+    return isScarpCodePosition(line, position.column - 1);
+  }
+  const offset = model.getOffsetAt(position);
+  if (offset > MAX_DEFINITION_SOURCE_UNITS) return false;
+  const prefix = model.getValueInRange({
+    startLineNumber: 1, startColumn: 1,
+    endLineNumber: position.lineNumber, endColumn: position.column,
+  });
+  return isScarpPrefixCodePosition(prefix, prefix.length);
+}
+
+/** Conservative, editor-only highlighting aligned to published Scarp v0.0.7-alpha.3.
  * Highlighting is not parsing or a guarantee of compatibility with any installed compiler.
  */
 export function registerScarpLanguage(monaco: typeof Monaco,
@@ -64,6 +79,9 @@ export function registerScarpLanguage(monaco: typeof Monaco,
     tokenizer: {
       root: [
         [/\/\/.*$/, 'comment'],
+        [/"""/, { token: 'string.quote', next: '@multilineString' }],
+        [/r"[^"]*"/, 'string'],
+        [/r"[^"]*$/, 'string.invalid'],
         [/"([^"\\]|\\.)*$/, 'string.invalid'],
         [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],
         [/\b(?:true|false)\b/, 'constant'],
@@ -87,6 +105,11 @@ export function registerScarpLanguage(monaco: typeof Monaco,
         [/[{}()[\]]/, '@brackets'],
         [/[+\-*\/%&|^~!=<>?:;,.]+/, 'operator'],
         [/\s+/, 'white'],
+      ],
+      multilineString: [
+        [/"""/, { token: 'string.quote', next: '@pop' }],
+        [/[^"]+/, 'string'],
+        [/"/, 'string'],
       ],
       string: [
         [/[^\\"]+/, 'string'],
@@ -115,7 +138,7 @@ export function registerScarpLanguage(monaco: typeof Monaco,
           !canAssistAtColumn(position.column)) return { suggestions: [] };
       if (model.getLineMaxColumn?.(position.lineNumber) > MAX_ASSIST_SCAN_UNITS + 1) return { suggestions: [] };
       const line = model.getLineContent(position.lineNumber);
-      if (line.length > MAX_ASSIST_SCAN_UNITS || !isScarpCodePosition(line, position.column - 1)) return { suggestions: [] };
+      if (line.length > MAX_ASSIST_SCAN_UNITS || !modelCodePosition(model, position, line)) return { suggestions: [] };
       const word = model.getWordUntilPosition(position);
       const completeWord = model.getWordAtPosition(position);
       // Completing inside an identifier must replace its existing suffix:
@@ -166,7 +189,7 @@ export function registerScarpLanguage(monaco: typeof Monaco,
       if (!settings.hover || token?.isCancellationRequested || !canAssistAtColumn(position.column)) return null;
       if (model.getLineMaxColumn?.(position.lineNumber) > MAX_ASSIST_SCAN_UNITS + 1) return null;
       const line = model.getLineContent(position.lineNumber);
-      if (line.length > MAX_ASSIST_SCAN_UNITS || !isScarpCodePosition(line, position.column - 1)) return null;
+      if (line.length > MAX_ASSIST_SCAN_UNITS || !modelCodePosition(model, position, line)) return null;
       const literal = scarpDecimalLiteralAt(line, position.column - 1);
       if (literal) {
         return {

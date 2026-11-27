@@ -159,3 +159,44 @@ describe('bounded Scarp source lexical index', () => {
     expect(source).toBe('funcra main() { print("done"); }');
   });
 });
+
+
+describe('published alpha.3 string boundaries', () => {
+  it('does not interpret a backslash in raw text as an escape', () => {
+    const text = 'bind path = r"C:\\tmp\\"; print(path);';
+    const scan = scanScarpSource(text);
+    expect(scan.issues).toEqual([]);
+    expect(scan.tokens.filter(t => t.kind === 'string').map(t => t.text)).toEqual(['r"C:\\tmp\\"']);
+    expect(codeTokens(scan.tokens).filter(t => t.kind === 'identifier').map(t => t.text))
+      .toEqual(['bind', 'path', 'print', 'path']);
+  });
+
+  it('consumes triple-quoted text including embedded quotes, comments and mixed line endings', () => {
+    const source = 'bind text = """first\r\n// not a comment\r"quote" { fake }\nlast""";\nprint(text);';
+    const scan = scanScarpSource(source);
+    expect(scan.issues).toEqual([]);
+    expect(scan.lines).toBe(5);
+    expect(scan.lineEnding).toBe('mixed');
+    expect(scan.stringCount).toBe(1);
+    expect(scan.commentCount).toBe(0);
+    expect(scan.tokens.find(t => t.text === 'print')).toMatchObject({ line: 5, column: 1 });
+    expect(tokenAtOffset(scan.tokens, source.indexOf('fake'))?.kind).toBe('string');
+  });
+
+  it.each(['r"open\nx', '"""open\nx', '"""open""'])('marks unclosed literals: %s', source => {
+    expect(scanScarpSource(source).issues.some(issue => issue.kind === 'unterminated-string')).toBe(true);
+  });
+
+  it('does not split a supplementary character at the preview cap', () => {
+    const source = '"' + 'a'.repeat(238) + '😀"';
+    const token = scanScarpSource(source).tokens[0];
+    expect(token.text).toBe('"' + 'a'.repeat(238));
+    expect(token.end).toBe(source.length);
+    expect(token.previewTruncated).toBe(true);
+  });
+
+  it('does not turn an identifier suffix into a raw string prefix', () => {
+    expect(scanScarpSource('car"x"').tokens.map(t => [t.kind, t.text]))
+      .toEqual([['identifier', 'car'], ['string', '"x"']]);
+  });
+});

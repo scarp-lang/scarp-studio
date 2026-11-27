@@ -146,3 +146,12 @@ describe('reviewed identifier edits', () => {
     expect(restored.documents.map(doc=>doc.content)).toEqual(editor.documents.map(doc=>doc.content));
   });
 });
+
+
+describe('alpha.3 literal safety', () => {
+  it('never edits identifier-shaped raw or multiline text', () => {
+    const source = 'bind old_counter = 1;\nprint(r"old_counter\\");\nprint("""\nold_counter\n""");\nprint(old_counter);';
+    expect(plan(state(source)).changes[0].content).toBe(
+      'bind new_counter = 1;\nprint(r"old_counter\\");\nprint("""\nold_counter\n""");\nprint(new_counter);');
+  });
+});
