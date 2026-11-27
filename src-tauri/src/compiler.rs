@@ -523,6 +523,7 @@ pub async fn scarp_project_action(
         Option<i32>,
         NativeOutcome,
         Option<String>,
+        Option<String>,
     ),
     String,
 > {
@@ -600,6 +601,21 @@ pub async fn scarp_project_action(
             } else {
                 None
             };
+            // Diagnostics from explicitly non-executing compiler commands
+            // use stderr only. Never interpret program/test output as errors.
+            let diagnostic_json = if matches!(
+                action.as_str(),
+                "verify" | "inspect-symbols" | "inspect-references"
+            ) && exit_code == Some(1)
+                && !result.truncated
+                && !result.cancelled
+                && result.stdout.is_empty()
+                && !result.stderr.is_empty()
+            {
+                Some(result.stderr.clone())
+            } else {
+                None
+            };
             // The UI independently checks exit_code against the exact schema
             // counts. Do not infer success by regexing the display string.
             Ok((
@@ -608,6 +624,7 @@ pub async fn scarp_project_action(
                 exit_code,
                 (exit_code, result.cancelled, result.truncated, false),
                 inspection_json,
+                diagnostic_json,
             ))
         })();
         release_job(&runtime, reserved.id);
