@@ -279,4 +279,65 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.match(await evaluate(() => document.querySelector('.compiler-activity-panel').textContent), /No matching recorded invocations/);
   });
 
+  await step('session input presets review apply and undo without starting a compiler', async () => {
+    await change('#scarp-stdin', '42\nfirst reply\n');
+    await button('Manage input presets', '.input-presets');
+    const scope = '.input-presets';
+    await change('input[aria-label="Input preset label"]', 'Practice fixture');
+    await button('Review save input preset', scope);
+    await button('Confirm input preset capture', scope);
+    await wait(() => document.querySelector('.input-preset-list')?.textContent.includes('Practice fixture'), 'input preset saved');
+    await change('#scarp-stdin', 'new reply');
+    await button('Review apply input preset', scope);
+    await button('Confirm apply input preset', scope);
+    await wait(() => document.querySelector('#scarp-stdin')?.value === '42\nfirst reply\n', 'preset applied');
+    await button('Undo last preset apply', scope);
+    await wait(() => document.querySelector('#scarp-stdin')?.value === 'new reply', 'input undo');
+    await button('Review remove input preset', scope);
+    await button('Confirm remove input presets', scope);
+    await wait(() => document.querySelector('.input-preset-list')?.textContent.includes('No matching session presets'), 'input preset removed');
+    assert.equal(await textValue('#scarp-stdin'), 'new reply');
+  });
+
+  await step('navigation trail replays requested symbol jumps and clears only after review', async () => {
+    await visible('.monaco-editor .view-lines');
+    await evaluate(() => document.querySelector('.monaco-editor textarea').focus());
+    await cdp.send('Input.insertText', { text: 'bind first = 1;\nbind second = 2;\nbind third = 3;\n' });
+    if (await evaluate(() => document.querySelector('#scarp-explorer').classList.contains('sidebar-hidden'))) {
+      await click('button[aria-controls="scarp-explorer"]');
+    }
+    await click('.workspace-symbols .insights-toggle');
+    await wait(() => document.querySelectorAll('.workspace-symbols .symbol-entry').length === 3, 'three indexed declarations');
+    await click('.workspace-symbols .symbol-entry:nth-child(1)');
+    await click('.workspace-symbols .symbol-entry:nth-child(2)');
+    const panel = '.navigation-trail';
+    await click(panel + ' .insights-toggle');
+    await wait(() => document.querySelector('.trail-list button[aria-current="location"] strong')?.textContent.includes(':2:'), 'second declaration recorded');
+    await button('Back in navigation trail', panel);
+    await wait(() => document.querySelector('.trail-list button[aria-current="location"] strong')?.textContent.includes(':1:'), 'back selects first declaration');
+    await button('Forward in navigation trail', panel);
+    await wait(() => document.querySelector('.trail-list button[aria-current="location"] strong')?.textContent.includes(':2:'), 'forward selects second declaration');
+    await button('Review clear navigation trail', panel);
+    await visible('[aria-label="Confirm clear navigation trail"]');
+    await button('Confirm clear navigation trail', panel);
+    await wait(() => document.querySelector('.navigation-trail-current')?.textContent === 'No recorded location', 'trail cleared');
+    assert.match(await evaluate(() => document.querySelector('.monaco-editor .view-lines').textContent), /third/);
+  });
+
+  await step('output inspection searches displayed output without creating diagnostics', async () => {
+    await button('Output', '.results-view-switch');
+    const before = await evaluate(() => document.querySelector('.compiler-output')?.textContent);
+    await button('Inspect', '.results-view-switch');
+    await visible('.output-inspection-panel');
+    await change('input[aria-label="Find compiler output text"]', 'zz-no-such-output-match-zz');
+    await wait(() => document.querySelector('.output-search-summary')?.textContent.includes('0 occurrence(s)'), 'literal output search');
+    await button('Clear output search', '.output-inspection-panel');
+    await button('Review copyable output excerpt', '.output-inspection-panel');
+    await visible('textarea[aria-label="Selected compiler output excerpt"]');
+    const excerpt = await textValue('textarea[aria-label="Selected compiler output excerpt"]');
+    assert.ok(before.includes(excerpt));
+    await button('Output', '.results-view-switch');
+    assert.equal(await evaluate(() => document.querySelector('.compiler-output')?.textContent), before);
+  });
+
 }

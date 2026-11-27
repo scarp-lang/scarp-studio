@@ -53,7 +53,12 @@ import { SourceInsightsPanel, type InsightNavigation } from './components/Source
 import { SourceQualityPanel } from './components/SourceQualityPanel';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
+import { OutputInspectionPanel } from './components/OutputInspectionPanel';
 import { CompilerActivityPanel } from './components/CompilerActivityPanel';
+import { NavigationTrailPanel } from './components/NavigationTrailPanel';
+import { captureTrailLocation, createNavigationTrailStore, type TrailMove, type TrailReason } from './model/navigationTrail';
+import { ProgramInputPresetsPanel } from './components/ProgramInputPresetsPanel';
+import { createProgramInputPresetStore, inputPresetApplyIsCurrent, inputPresetUndoIsCurrent, type ProgramInputSnapshot, type InputPresetCaptureReview, type InputPresetApplyReview, type InputPresetRemovalReview, type InputPresetUndo } from './model/programInputPresets';
 import { createCompilerActivityStore, type ActivityToken } from './model/compilerActivity';
 import { createSourceCheckpointStore, checkpointRestoreIsCurrent, type CheckpointCaptureReview, type CheckpointRestoreReview, type CheckpointRemovalReview } from './model/sourceCheckpoints';
 import { qualityPlanIsCurrent, type QualityCleanupPlan } from './model/sourceQuality';
@@ -231,6 +236,7 @@ export default function App() {
   const [workspaceSessions] = useState(createWorkspaceSessionStore);
   const [sourceCheckpoints] = useState(createSourceCheckpointStore);
   const [compilerActivity] = useState(createCompilerActivityStore);
+  const [navigationTrail] = useState(createNavigationTrailStore);
   const currentActivityToken = useRef<ActivityToken | null>(null);
   const [workspaceSessionView, setWorkspaceSessionView] = useState(() => workspaceSessions.view());
   const [recoveryView, setRecoveryView] = useState(() => draftRecovery.view());
@@ -391,7 +397,7 @@ export default function App() {
   const [preferredOutputMode, setOutputPanelMode] = useState<OutputPanelMode>('normal');
   const { explorerVisible, outputPanelMode } = effectiveWorkspaceVisibility({ explorerVisible: preferredExplorerVisible, outputPanelMode: preferredOutputMode }, focusMode);
   const [compilerControlsOpen, setCompilerControlsOpen] = useState(true);
-  const [resultsView, setResultsView] = useState<'output' | 'problems' | 'history'>('output');
+  const [resultsView, setResultsView] = useState<'output' | 'problems' | 'history' | 'inspection'>('output');
   const pendingProblem = useRef<Extract<ProblemTarget, { kind: 'source' }> | null>(null);
   const problemsTab = useRef<HTMLButtonElement | null>(null);
   const focusProblemsTab = useRef(false);
@@ -405,6 +411,34 @@ export default function App() {
   // Increment synchronously in input handlers; an async first-Run trust
   // dialog must never launch a CLI with an older preloaded input snapshot.
   const inputRevision = useRef(0);
+  const [inputPresets] = useState(createProgramInputPresetStore);
+  const liveProgramInput = useRef<ProgramInputSnapshot>({ text: '', interactive: false, revision: 0 });
+  function changeProgramInput(text: string, interactive: boolean): ProgramInputSnapshot {
+    const before = liveProgramInput.current;
+    if (before.text === text && before.interactive === interactive) return before;
+    const next = { text, interactive, revision: ++inputRevision.current };
+    liveProgramInput.current = next;
+    setStdinText(text);
+    setPromptInputMode(interactive);
+    return next;
+  }
+  function captureProgramInputPreset(review: InputPresetCaptureReview): number | null {
+    if (recoveryOperationsBlocked()) return null;
+    const result = inputPresets.capture(review, liveProgramInput.current);
+    return result.ok ? result.value.id : null;
+  }
+  function applyProgramInputPreset(review: InputPresetApplyReview): ProgramInputSnapshot | null {
+    if (recoveryOperationsBlocked() || !inputPresetApplyIsCurrent(review, inputPresets.getSnapshot(), liveProgramInput.current)) return null;
+    return changeProgramInput(review.targetText, review.targetInteractive);
+  }
+  function removeProgramInputPresets(review: InputPresetRemovalReview): boolean {
+    return !recoveryOperationsBlocked() && inputPresets.remove(review);
+  }
+  function undoProgramInputPreset(undo: InputPresetUndo): boolean {
+    if (recoveryOperationsBlocked() || !inputPresetUndoIsCurrent(undo, liveProgramInput.current)) return false;
+    changeProgramInput(undo.before.text, undo.before.interactive);
+    return true;
+  }
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -574,7 +608,36 @@ export default function App() {
     };
   }, [activeId, active?.content, problemMarker]);
 
-  function jumpToSourceInsight(target: InsightNavigation): void {
+  function currentTrailCursor(reason: TrailReason) {
+    const state = liveEditor.current;
+    const document = state.documents.find(item => item.id === state.activeId);
+    const editor = mountedEditor.current;
+    const position = editor?.getPosition();
+    if (!document || !position || mountedEditorDocumentId.current !== document.id ||
+        editor?.getModel()?.getValue() !== document.content) return null;
+    return captureTrailLocation(document, position.lineNumber, position.column, reason);
+  }
+
+  function recordTrailJump(document: StudioDocument, line: number, column: number, reason: TrailReason): void {
+    const target = captureTrailLocation(document, line, column, reason);
+    if (target) navigationTrail.record(currentTrailCursor('origin'), target, liveEditor.current.documents);
+  }
+
+  function markTrailCursor(): boolean {
+    if (recoveryOperationsBlocked()) return false;
+    const location = currentTrailCursor('marked');
+    return !!location && navigationTrail.record(null, location, liveEditor.current.documents);
+  }
+
+  function replayTrailMove(move: TrailMove): boolean {
+    if (recoveryOperationsBlocked()) return false;
+    const target = navigationTrail.move(move, liveEditor.current.documents);
+    if (!target) return false;
+    jumpToSourceInsight(target, false);
+    return true;
+  }
+
+  function jumpToSourceInsight(target: InsightNavigation, record = true): void {
     const current = liveEditor.current.documents.find(
       document => document.id === target.documentId,
     );
@@ -582,6 +645,11 @@ export default function App() {
         current.revision !== target.revision || current.content !== target.source) return;
     if (!Number.isSafeInteger(target.line) || !Number.isSafeInteger(target.column) ||
         target.line < 1 || target.column < 1) return;
+    if (record) recordTrailJump(current, target.line, target.column, 'insight');
+    // A newly requested insight supersedes pending navigation from other panels.
+    pendingInsightJump.current = null;
+    pendingSearchLocation.current = null;
+    pendingProblem.current = null;
     const editor = editorHandle.current;
     if (current.id !== liveEditor.current.activeId) {
       pendingInsightJump.current = target;
@@ -631,6 +699,8 @@ export default function App() {
     const editor = editorHandle.current;
     if (!editor) return;
     const position = { lineNumber: symbol.line, column: symbol.startColumn };
+    const current = liveEditor.current.documents.find(item => item.id === liveEditor.current.activeId);
+    if (current) recordTrailJump(current, position.lineNumber, position.column, 'declaration');
     editor.setPosition(position);
     editor.revealPositionInCenter(position);
     editor.focus();
@@ -703,6 +773,8 @@ export default function App() {
     if (!location || !editor || !model) return;
     const position = clampLineLocation(location, model.getLineCount(), (line) => model.getLineMaxColumn(line));
     const monacoPosition = { lineNumber: position.line, column: position.column };
+    const current = liveEditor.current.documents.find(item => item.id === liveEditor.current.activeId);
+    if (current) recordTrailJump(current, position.line, position.column, 'line');
     editor.setPosition(monacoPosition);
     editor.revealPositionInCenter(monacoPosition);
     hidePalette(false);
@@ -1990,6 +2062,9 @@ export default function App() {
     }
     const current = currentDiagnosticTarget(diagnostic, compilerOutputSource, liveEditor.current.documents);
     if (!current || !sameDiagnosticTarget(current, target)) return;
+    const document = liveEditor.current.documents.find(item => item.id === current.snapshot.documentId);
+    if (document) recordTrailJump(document, current.lineNumber, current.column, 'diagnostic');
+    pendingInsightJump.current = null;
     pendingSearchLocation.current = null;
     const editor = mountedEditor.current;
     if (liveEditor.current.activeId === current.snapshot.documentId && mountedEditorDocumentId.current === current.snapshot.documentId && editor && editor.getModel()?.getValue() === current.snapshot.content) {
@@ -2467,6 +2542,9 @@ export default function App() {
       setError('Search results changed. Review the updated matches and try again.');
       return;
     }
+    recordTrailJump(document, match.line, match.column, 'search');
+    pendingInsightJump.current = null;
+    pendingProblem.current = null;
     pendingSearchLocation.current = match;
     if (current.activeId === document.id && mountedEditor.current &&
         mountedEditorDocumentId.current === document.id) {
@@ -2878,6 +2956,9 @@ export default function App() {
           <WorkspaceSymbolsPanel documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             onNavigate={jumpToSourceInsight} />
+          <NavigationTrailPanel store={navigationTrail} documents={documents} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onMark={markTrailCursor} onMove={replayTrailMove} />
           <CodeReferencesPanel documents={documents} activeId={activeId}
             cursor={cursor} busy={busy || compilerBusy || compilerSelecting}
             onNavigate={jumpToSourceInsight} />
@@ -3347,8 +3428,7 @@ export default function App() {
               <label className="compiler-input-mode">
                 <input type="checkbox" checked={promptInputMode} disabled={compilerBusy}
                   onChange={(event) => {
-                    inputRevision.current++;
-                    setPromptInputMode(event.target.checked);
+                    changeProgramInput(liveProgramInput.current.text, event.target.checked);
                   }} />
                 Enable alpha.10 prompt functions (input/ask)
               </label>
@@ -3362,8 +3442,7 @@ export default function App() {
                 value={stdinText}
                 aria-invalid={stdinValidationError !== null}
                 onChange={(event) => {
-                  inputRevision.current++;
-                  setStdinText(event.target.value);
+                  changeProgramInput(event.target.value, liveProgramInput.current.interactive);
                 }}
                 disabled={compilerBusy}
                 maxLength={MAX_INPUT_BYTES}
@@ -3380,15 +3459,22 @@ export default function App() {
                   <div role="status"><strong>{stdinValidationError}</strong> — edit Program Input before Run.</div>
                 )}
               </div>
+              <ProgramInputPresetsPanel store={inputPresets}
+                current={{ text: stdinText, interactive: promptInputMode, revision: inputRevision.current }}
+                busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+                onCapture={captureProgramInputPreset} onApply={applyProgramInputPreset}
+                onRemove={removeProgramInputPresets} onUndo={undoProgramInputPreset} />
             </div>
             </div>
             <div className="results-view-switch" role="group" aria-label="Compiler result view">
               <button type="button" aria-pressed={resultsView === 'output'} onClick={() => setResultsView('output')}>Output</button>
+              <button type="button" aria-pressed={resultsView === 'inspection'} onClick={() => setResultsView('inspection')}>Inspect</button>
               <button type="button" aria-pressed={resultsView === 'history'} onClick={() => setResultsView('history')}>History</button>
               <button type="button" ref={problemsTab} aria-pressed={resultsView === 'problems'} onClick={showProblems} title={"Show Problems (" + shortcut('show-problems') + ')'}>Problems ({problems.length})</button>
             </div>
             <div className="compiler-results" tabIndex={0} aria-label="Compiler results and diagnostics">
-            {resultsView === 'history' ? <CompilerActivityPanel store={compilerActivity} native={isTauri()} /> : resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
+            {resultsView === 'inspection' ? <OutputInspectionPanel output={compilerOutput} freshnessWarning={outputFreshnessWarning}
+              busy={busy || compilerBusy || compilerSelecting || compilerScanning} activity={compilerActivity} /> : resultsView === 'history' ? <CompilerActivityPanel store={compilerActivity} native={isTauri()} /> : resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
               busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
 
             {projectTestResult && isSelectedProjectTestReport(projectTestResult.folder, selectedProjectPath) && (
