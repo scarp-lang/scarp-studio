@@ -164,9 +164,16 @@ export async function launchBrowser(url) {
       const value = Number(file.split(/\r?\n/)[0]);
       return Number.isInteger(value) && value > 0 ? value : false;
     }, 'browser debugging port', 20000);
-    const pages = await (await fetch('http://127.0.0.1:' + port + '/json/list', { signal: AbortSignal.timeout(5000) })).json();
-    const page = pages.find(item => item.type === 'page' && item.webSocketDebuggerUrl);
-    if (!page) throw new Error('No browser page target');
+    const page = await eventually(async () => {
+      if (startupError) throw startupError;
+      if (child.exitCode !== null) throw new Error('Browser exited: ' + stderr);
+      const response = await fetch('http://127.0.0.1:' + port + '/json/list', { signal: AbortSignal.timeout(2500) });
+      if (!response.ok) throw new Error('DevTools page list HTTP ' + response.status);
+      const pages = await response.json();
+      if (!Array.isArray(pages)) throw new Error('Unexpected DevTools page list');
+      return pages.find(item => item.type === 'page' && typeof item.webSocketDebuggerUrl === 'string' &&
+        item.webSocketDebuggerUrl.startsWith('ws://127.0.0.1:' + port + '/')) || false;
+    }, 'browser page target', 25000);
     cdp = await DevTools.connect(page.webSocketDebuggerUrl);
     await cdp.send('Runtime.enable');
     await cdp.send('Page.enable');

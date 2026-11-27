@@ -1615,3 +1615,27 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .source-checkpoints button:focus-visible, .source-checkpoints input:focus-visible, .source-checkpoints textarea:focus-visible {
   outline: 2px solid currentColor; outline-offset: 2px;
 }
+
+/* Session compiler activity. Raw historical output is inspected explicitly,
+   never rendered as the current diagnostic log. */
+.compiler-activity-panel { display: grid; gap: 10px; padding: 10px; min-width: 0; }
+.activity-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 8px; }
+.activity-header p { margin: 4px 0 0; }
+.activity-mode, .activity-actions, .activity-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.activity-mode .transfer-review { flex: 1 1 100%; }
+.activity-filters label { display: inline-flex; align-items: center; gap: 4px; }
+.activity-filters input[type="search"] { flex: 1 1 160px; min-width: 0; }
+.activity-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 6px; margin: 0; }
+.activity-metrics div { border: 1px solid currentColor; border-radius: 4px; padding: 6px; min-width: 0; }
+.activity-metrics dt { font-size: .8em; }
+.activity-metrics dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.activity-records { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 6px; }
+.activity-record { display: grid; gap: 3px; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+.activity-record[aria-pressed="true"] { outline: 1px solid currentColor; outline-offset: -1px; }
+.activity-detail { display: grid; gap: 8px; border-block-start: 1px solid currentColor; padding-top: 8px; min-width: 0; }
+.compiler-activity-panel textarea { width: 100%; box-sizing: border-box; min-width: 0; resize: vertical; white-space: pre; overflow: auto; }
+.activity-pagination { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.compiler-activity-panel button:focus-visible, .compiler-activity-panel input:focus-visible,
+.compiler-activity-panel select:focus-visible, .compiler-activity-panel textarea:focus-visible {
+  outline: 2px solid currentColor; outline-offset: 2px;
+}
