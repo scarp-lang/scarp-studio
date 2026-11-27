@@ -169,7 +169,7 @@ export function compareNavigationSnapshots(baseline:NavigationBaseline|null,curr
   const ambiguity:boolean[]=[];
   const rows=groups.map(group=>{
     const old=before[group.id],next=after[group.id];
-    const ambiguousAncestor=group.owner!==null&&ambiguity[group.owner];
+    const ambiguousAncestor=group.owner!==null&&ambiguity[group.owner]===true;
     const ambiguous=ambiguousAncestor||old.length>1||next.length>1;
     ambiguity.push(ambiguous);
     let metadataChanged=false,referencesChanged=false,positionChanged=false;
