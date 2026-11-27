@@ -120,6 +120,8 @@ import { DiagnosticReportPanel } from './components/DiagnosticReportPanel';
 import { parseDiagnosticReport, type DiagnosticReport } from './model/diagnosticReport';
 import { ProjectInfoPanel } from './components/ProjectInfoPanel';
 import { parseProjectInfo, projectInfoEntry, type ProjectInfoSnapshot } from './model/projectInfo';
+import { CompilerNavigationComparison } from './components/CompilerNavigationComparison';
+import type { NavigationBaseline,NavigationSnapshot } from './model/compilerNavigationComparison';
 import { CompilerNavigationPanel } from './components/CompilerNavigationPanel';
 import { parseCompilerNavigation, type CompilerNavigationReport } from './model/compilerNavigation';
 import { ProjectTestSelectionPanel } from './components/ProjectTestSelectionPanel';
@@ -439,6 +441,7 @@ export default function App() {
   const [projectInfo, setProjectInfo] = useState<ProjectInfoSnapshot | null>(null);
   const [projectInfoBaseline, setProjectInfoBaseline] = useState<ProjectInfoSnapshot | null>(null);
   const [compilerNavigation, setCompilerNavigation] = useState<CompilerNavigationReport | null>(null);
+  const [navigationBaseline,setNavigationBaseline]=useState<NavigationBaseline|null>(null);
   const [testBaseline, setTestBaseline] = useState<TestBaseline | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
   const [compilerOutputSource, setCompilerOutputSource] = useState<VerifiedSourceSnapshot | null>(null);
@@ -561,6 +564,7 @@ export default function App() {
   // a chosen manifest directory, which may be nested several levels down.
   // null means no project is selected; '' is a real root manifest.
   const selectedProjectPath = selectedManifestPath(projectDirectory, projectRoots);
+  const navigationSnapshot=useMemo<NavigationSnapshot|null>(()=>compilerNavigation&&selectedProjectPath?{folder:selectedProjectPath,report:compilerNavigation}:null,[compilerNavigation,selectedProjectPath]);
   const selectedProjectHasManifest = selectedProjectPath !== null;
   // A file is never allowed to redirect project execution automatically.
   // Offer an explicit switch to its closest discovered manifest root instead.
@@ -3848,6 +3852,7 @@ export default function App() {
                   if (current.kind === 'listed') void openFolderFile(current.path);
                 }} />
             )}
+            {navigationSnapshot && !outputFreshnessWarning && <CompilerNavigationComparison snapshot={navigationSnapshot} baseline={navigationBaseline} onBaseline={setNavigationBaseline}/>}
             {compilerNavigation && !outputFreshnessWarning && (
               <CompilerNavigationPanel report={compilerNavigation} onHide={() => setCompilerNavigation(null)} />
             )}
