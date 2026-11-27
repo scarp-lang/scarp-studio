@@ -3,7 +3,7 @@ import { editorReducer, initialEditorState, type EditorState } from './editorSta
 import { createOpenFileReplaceUndo, canUndoOpenFileReplace } from './openFileReplaceUndo';
 import { AutoSaveReviewGate } from './autoSaveReviewGate';
 import { DEFAULT_RANGE_REQUEST, MAX_RANGE_LINES, MAX_RANGE_LINE_UNITS, MAX_RANGE_SOURCE_UNITS,
-  MAX_RANGE_AFFIX_UNITS, lineRangePlanIsCurrent, parseRangeLine, planLineRange, rangeEndingLabel,
+  MAX_RANGE_AFFIX_UNITS, lineRangePlanIsCurrent, parseRangeLine, planLineRange, rangeEndingLabel, visibleRangeText,
   type RangeRequest } from './lineRangeTools';
 
 function editor(content: string): EditorState {
@@ -143,5 +143,41 @@ describe('exact line transformation commit and undo', () => {
     expect(canUndoOpenFileReplace(undo, applied)).toBe(true);
     const undone = editorReducer(applied, { type: 'replace-open-files', changes: undo.changes, allSnapshots: undo.after });
     expect(undone.documents.find(item => item.id === doc.id)?.content).toBe('b\na');
+  });
+});
+
+
+describe('separator fusion and exact preview safety', () => {
+  it('refuses to fuse an interior CR and LF when an empty line is moved between them', () => {
+    const result = planLineRange(editor('z\ra\n\rx'), {
+      ...DEFAULT_RANGE_REQUEST, first: 1, last: 3, operation: 'sort-descending',
+    });
+    // Sorting puts the empty line last, not between CR and LF.
+    expect(result.ok).toBe(true);
+    const unsafe = planLineRange(editor('z\ra\n\rx'), {
+      ...DEFAULT_RANGE_REQUEST, first: 1, last: 3, operation: 'reverse',
+    });
+    expect(unsafe.ok).toBe(true);
+    const trim = planLineRange(editor('a\r \nb'), {
+      ...DEFAULT_RANGE_REQUEST, first: 2, last: 2, operation: 'trim-horizontal',
+    });
+    expect(trim).toMatchObject({ ok: false, error: expect.stringContaining('merge adjacent CR and LF') });
+  });
+  it('refuses a transformed blank interior row that merges line-ending slots', () => {
+    const result = planLineRange(editor('a\r \nb'), {
+      ...DEFAULT_RANGE_REQUEST, first: 1, last: 3, operation: 'trim-horizontal',
+    });
+    expect(result.ok).toBe(false);
+  });
+  it('can inspect a distant line without building an inventory of preceding lines', () => {
+    const content = '\n'.repeat(100000) + 'a\nb';
+    expect(plan(content, { first: 100001, last: 100002, operation: 'reverse' }).change.content)
+      .toBe('\n'.repeat(100000) + 'b\na');
+  });
+  it('distinguishes empty, whitespace, literal marker text and directional controls', () => {
+    expect(visibleRangeText('')).toBe('""');
+    expect(visibleRangeText('(empty)')).toBe('"(empty)"');
+    expect(visibleRangeText(' \t')).toBe('" \\t"');
+    expect(visibleRangeText('a\u202eb')).toBe('"a\\u202eb"');
   });
 });

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { currentActiveDocument, type EditorState } from '../model/editorState';
 import { DEFAULT_RANGE_REQUEST, lineRangePlanIsCurrent, MAX_RANGE_AFFIX_UNITS, MAX_RANGE_LINES,
   parseRangeLine, planLineRange, rangeEndingLabel, RANGE_LABELS, RANGE_OPERATIONS,
-  type LineRangePlan, type RangeOperation, type RangePreviewLine } from '../model/lineRangeTools';
+  visibleRangeText, type LineRangePlan, type RangeOperation, type RangePreviewLine } from '../model/lineRangeTools';
 
 interface Props {
   editor: EditorState;
@@ -17,7 +17,7 @@ function Preview({ title, lines }: { title: string; lines: readonly RangePreview
   return <section className="range-preview-side" aria-label={title}>
     <h4>{title}</h4>
     <ol>{lines.map(line => <li key={line.number}>
-      <span>{line.number}</span><code dir="auto">{line.text || '(empty)'}</code><small>{rangeEndingLabel(line.ending)}</small>
+      <span>{line.number}</span><code dir="auto">{visibleRangeText(line.text)}</code><small>{rangeEndingLabel(line.ending)}</small>
     </li>)}</ol>
   </section>;
 }
@@ -85,7 +85,7 @@ export function LineRangeToolsPanel({ editor, cursorLine, busy, undoAvailable, o
         {plan && <section className="transfer-review line-range-review" role="group" aria-label="Confirm line transformation">
           <strong>{RANGE_LABELS[plan.request.operation]} · {plan.document.name}</strong>
           <p>Lines {plan.request.first}–{plan.request.last} · {plan.changedRows} changed result row(s) · {plan.removedRows} removed row(s)</p>
-          <p>Line-ending slots stay in position; the selected final boundary separator is preserved. No source outside the range changes.</p>
+          <p>Quoted previews show empty rows and escaped control characters explicitly. Line-ending slots stay in position; the selected final boundary separator is preserved. No source outside the range changes.</p>
           <div className="range-preview-pair">
             <Preview title="Before transformation" lines={plan.before} />
             <Preview title="After transformation" lines={plan.after} />

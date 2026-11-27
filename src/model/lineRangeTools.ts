@@ -1,5 +1,6 @@
 import { currentActiveDocument, isUnchangedSnapshot, type EditorState, type BufferReplacement } from './editorState';
-import { splitSnapshotLines, type DiffLineEnding } from './sourceDiff';
+import { splitSnapshotLines, type DiffLineEnding, type SnapshotLine } from './sourceDiff';
+import { nextLineBreak, lineBreakWidth } from './sourceLines';
 import { assertScarpSourceText } from './sourceLimits';
 import { assertWellFormedUtf16 } from './utf8Text';
 import type { StudioDocument } from './documents';
@@ -123,16 +124,26 @@ export function planLineRange(editor: EditorState, request: RangeRequest): Resul
   if (!normalized) return failed('Choose a valid range of up to 80 lines and valid operation options.');
   if (document.content.length > MAX_RANGE_SOURCE_UNITS) return failed('Source exceeds the line-tool inspection limit.');
   try { assertScarpSourceText(document.content); } catch { return failed('Source contains unsupported text.'); }
-  const lines = splitSnapshotLines(document.content);
-  if (normalized.last > lines.length) return failed('The selected range extends beyond the current buffer.');
-  // A final empty line following a separator is a real editor position,
-  // not another source line with content. Refuse including this sentinel
-  // so sorting cannot move a terminal newline into the body of a source.
-  const final = lines.at(-1)!;
-  if (normalized.last === lines.length && final.text === '' && lines.length > 1) {
-    return failed('Exclude the terminal empty editor line to preserve the existing final newline.');
+  // Walk preceding lines without allocating their text or objects. Even
+  // a half-megabyte file consisting only of line endings stays bounded.
+  const selected: SnapshotLine[] = [];
+  let start = 0;
+  for (let number = 1; number <= normalized.last; number++) {
+    const breakAt = nextLineBreak(document.content, start);
+    const end = breakAt < 0 ? document.content.length : breakAt;
+    const width = breakAt < 0 ? 0 : lineBreakWidth(document.content, breakAt);
+    if (number >= normalized.first) {
+      if (end - start > MAX_RANGE_LINE_UNITS) return failed('The selected lines exceed the complete preview limit. Choose a smaller range.');
+      if (start === document.content.length && number > 1) {
+        return failed('Exclude the terminal empty editor line to preserve the existing final newline.');
+      }
+      selected.push({ index: number, start, end: end + width,
+        text: document.content.slice(start, end),
+        ending: document.content.slice(end, end + width) as DiffLineEnding });
+    }
+    if (number < normalized.last && width === 0) return failed('The selected range extends beyond the current buffer.');
+    start = end + width;
   }
-  const selected = lines.slice(normalized.first - 1, normalized.last);
   const before = selected.map(line => Object.freeze({ number: line.index, text: line.text, ending: line.ending }));
   if (!exactPreviewAllowed(before)) return failed('The selected lines exceed the complete preview limit. Choose a smaller range.');
   const transformed = transform(before.map(line => line.text), normalized);
@@ -144,8 +155,20 @@ export function planLineRange(editor: EditorState, request: RangeRequest): Resul
   const replacement = rangeText(after);
   const oldRange = rangeText(before);
   if (replacement === oldRange) return failed('The requested transformation would not change the selected text.');
-  const content = document.content.slice(0, selected[0].start) + replacement +
-    document.content.slice(selected.at(-1)!.end);
+  const prefix = document.content.slice(0, selected[0].start);
+  const suffix = document.content.slice(selected.at(-1)!.end);
+  // Empty transformed lines between CR and LF slots could accidentally
+  // fuse two separators into one CRLF. Reparse the bounded replacement
+  // and refuse any result that disagrees with its complete reviewed rows.
+  const reparsed = splitSnapshotLines(replacement);
+  if (after.at(-1)!.ending !== '') reparsed.pop();
+  if (reparsed.length !== after.length || reparsed.some((line, i) =>
+      line.text !== after[i].text || line.ending !== after[i].ending) ||
+      (prefix.endsWith('\r') && replacement.startsWith('\n')) ||
+      (replacement.endsWith('\r') && suffix.startsWith('\n'))) {
+    return failed('Transformation would merge adjacent CR and LF separators. Choose a smaller range or normalize line endings first.');
+  }
+  const content = prefix + replacement + suffix;
   try { assertScarpSourceText(content); } catch { return failed('Transformed source exceeds Studio limits or contains unsupported text.'); }
   const snapshot = Object.freeze({ ...document });
   const change = Object.freeze({ id: document.id, snapshot, content });
@@ -173,4 +196,11 @@ export function lineRangePlanIsCurrent(plan: LineRangePlan, editor: EditorState)
 }
 export function rangeEndingLabel(ending: DiffLineEnding): string {
   return ending === '\r\n' ? 'CRLF' : ending === '\r' ? 'CR' : ending === '\n' ? 'LF' : 'EOF';
+}
+
+/** Quoted display text makes empty rows and literal "(empty)" distinct,
+ * preserves whitespace, and exposes control/directional characters. */
+export function visibleRangeText(text: string): string {
+  return JSON.stringify(text).replace(/[\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
+    char => '\\u' + char.charCodeAt(0).toString(16).padStart(4, '0'));
 }

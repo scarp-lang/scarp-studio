@@ -27,3 +27,7 @@ A changed editor session invalidates confirmation even after identical
 text is restored. Apply uses the existing atomic buffer replacement path
 and Auto Save review hold. Undo is guarded by exact current snapshots.
 No operation saves to disk or launches the compiler automatically.
+
+A transformation that would fuse adjacent CR and LF separator slots is
+rejected. Quoted preview strings show empty rows and escaped controls
+explicitly; the preview is not the literal replacement syntax.
