@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
+import { CompilerNavigationOverview } from './CompilerNavigationOverview';
 import {
-  DEFAULT_NAVIGATION_FILTER, MAX_NAVIGATION_QUERY, SYMBOL_KINDS, REFERENCE_KINDS,
+  DEFAULT_NAVIGATION_FILTER, MAX_NAVIGATION_QUERY, NAVIGATION_PAGE_SIZE, SYMBOL_KINDS, REFERENCE_KINDS,
   filterCompilerSymbols, formatCompilerLocation, navigationPage, referencesToSymbol,
   symbolKindCounts, referenceKindCounts, symbolOwnerLabel,
   type CompilerNavigationReport, type NavigationFilter, type ReferenceFilter,
@@ -56,6 +57,7 @@ export function CompilerNavigationPanel({ report, onHide }: Props) {
       <div><dt>References</dt><dd>{report.kind === 'references' ? report.references.length : 'Not requested'}</dd></div>
       <div><dt>Matching symbols</dt><dd>{matches.length}</dd></div>
     </dl>
+    <CompilerNavigationOverview report={report} onChoose={id=>{setFilter(DEFAULT_NAVIGATION_FILTER);setPage(Math.floor(id/NAVIGATION_PAGE_SIZE)+1);choose(id);}}/>
     <div className="activity-filters">
       <input type="search" aria-label="Search compiler symbols" placeholder="Name, owner, kind or file…" maxLength={MAX_NAVIGATION_QUERY}
         value={filter.query} onChange={event => changeFilter({query: event.target.value})}/>
