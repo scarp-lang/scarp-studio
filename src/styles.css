@@ -1558,3 +1558,20 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .preference-audit-table thead th { position: sticky; top: 0; background: var(--panel, var(--bg)); }
 .preference-audit-table small { display: block; opacity: 0.8; }
 .preference-audit textarea { width: 100%; box-sizing: border-box; resize: vertical; font-family: Consolas, monospace; }
+
+/* Source quality: compact sidebar controls, keyboard-visible actions and
+   independently scrollable report without forcing the Explorer wider. */
+.quality-panel .insights-body { display: grid; gap: 8px; min-width: 0; }
+.quality-panel label { display: grid; gap: 4px; min-width: 0; }
+.quality-panel label:has(input[type="checkbox"]) { display: flex; align-items: center; gap: 6px; }
+.quality-panel select, .quality-panel input[type="search"], .quality-panel textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.quality-panel textarea { resize: vertical; max-height: 24rem; white-space: pre; overflow: auto; font: inherit; }
+.quality-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.quality-findings { display: grid; gap: 4px; min-width: 0; }
+.quality-finding { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 4px; }
+.quality-finding input { margin: 9px 2px 0; }
+.quality-finding .insights-task { width: 100%; min-width: 0; overflow-wrap: anywhere; text-align: left; }
+.quality-finding .outline-line { white-space: normal; overflow-wrap: anywhere; }
+.quality-panel button:focus-visible, .quality-panel input:focus-visible, .quality-panel select:focus-visible,
+.quality-panel textarea:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.quality-panel .transfer-review { min-width: 0; overflow-wrap: anywhere; }

@@ -50,6 +50,8 @@ import { WorkspaceCreatePanel } from './components/WorkspaceCreatePanel';
 import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/workspaceCreate';
 import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
+import { SourceQualityPanel } from './components/SourceQualityPanel';
+import { qualityPlanIsCurrent, type QualityCleanupPlan } from './model/sourceQuality';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
 import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
@@ -330,6 +332,7 @@ export default function App() {
   const [replaceText, setReplaceText] = useState('');
   const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
   const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [qualityUndo, setQualityUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
   const searchInput = useRef<HTMLInputElement | null>(null);
@@ -2254,6 +2257,33 @@ export default function App() {
     }
   }
 
+  function applyQualityCleanup(plan: QualityCleanupPlan): boolean {
+    if (recoveryOperationsBlocked() || !qualityPlanIsCurrent(plan, liveEditor.current)) {
+      setError('Source quality preview is stale or a native operation is active. Nothing changed.');
+      return false;
+    }
+    const before = liveEditor.current.documents;
+    dispatch({ type: 'replace-open-files', changes: plan.changes, allSnapshots: plan.snapshots });
+    const after = liveEditor.current.documents;
+    if (before === after) { setError('Cleanup did not apply. Review again.'); return false; }
+    autoSaveReview.current.holdReplacements(after, plan.changes.map(change => change.id));
+    setQualityUndo(createOpenFileReplaceUndo(before, after));
+    setError(null);
+    setNotice('Source quality cleanup applied to editor buffers. Review or Undo, then Save manually.');
+    return true;
+  }
+
+  function undoQualityCleanup(): void {
+    if (recoveryOperationsBlocked() || !qualityUndo || !canUndoOpenFileReplace(qualityUndo, liveEditor.current)) {
+      setError('Quality cleanup undo is unavailable because a buffer changed or an operation is active.');
+      return;
+    }
+    dispatch({ type: 'replace-open-files', changes: qualityUndo.changes, allSnapshots: qualityUndo.after });
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents, qualityUndo.changes.map(change => change.id));
+    setQualityUndo(null); setError(null);
+    setNotice('Undid quality cleanup in editor buffers. No disk files changed.');
+  }
+
   function previewOpenFileReplacement(): void {
     setError(null);
     try {
@@ -2707,7 +2737,7 @@ export default function App() {
                 <span aria-hidden="true" className="file-glyph">S</span>
                 <span className="file-name">{documentLabels.get(document.id) ?? document.name}</span>
                 {autoSaveReview.current.isHeld(document) && (
-                  <span className="review-indicator" title="Review or Save these replacements; further editing resumes Auto Save">
+                  <span className="review-indicator" title="Review or Save these buffer changes; further editing resumes Auto Save">
                     Review
                   </span>
                 )}
@@ -2747,6 +2777,10 @@ export default function App() {
               <p className="sidebar-note" role="status">Declaration outline limited to 500 entries.</p>}
           </section>
           <SourceInsightsPanel document={active} onNavigate={jumpToSourceInsight} />
+          <SourceQualityPanel documents={documents} activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            undoAvailable={!!qualityUndo && canUndoOpenFileReplace(qualityUndo, editorState)}
+            onNavigate={jumpToSourceInsight} onApply={applyQualityCleanup} onUndo={undoQualityCleanup} />
           <WorkingChangesPanel document={active} onNavigate={jumpToSourceInsight} />
           <SourceImportsPanel documents={documents} listed={folderEntries}
             activeId={activeId} busy={busy || compilerBusy || compilerSelecting}
@@ -2808,8 +2842,8 @@ export default function App() {
               >
                 <span>{documentLabels.get(document.id) ?? document.name}</span>
                 {autoSaveReview.current.isHeld(document) && (
-                  <span className="review-indicator" aria-label="Manual Save required after Replace All"
-                    title="Replace All changes are held from Auto Save until manual Save, Undo or further editing">
+                  <span className="review-indicator" aria-label="Manual Save required after reviewed buffer changes"
+                    title="Reviewed buffer changes are held from Auto Save until manual Save, Undo or further editing">
                     Review
                   </span>
                 )}

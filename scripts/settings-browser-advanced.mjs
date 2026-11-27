@@ -173,4 +173,33 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     await wait(() => !document.querySelector('.monaco-editor .view-lines')?.textContent.includes('bind'),
       'editor undo');
   });
+  await step('source quality cleanup reviews selected changes and supports guarded undo', async () => {
+    // Use a real editor input event, not a synthetic internal App state write.
+    await cdp.send('Input.insertText', { text: 'print(7);  ' });
+    const panel = '.quality-panel';
+    // The disclosure includes a decorative arrow, so use its stable selector.
+    if (await evaluate(() => document.querySelector('#scarp-explorer').classList.contains('sidebar-hidden'))) {
+      await click('button[aria-controls="scarp-explorer"]');
+    }
+    await click(panel + ' .insights-toggle');
+    await wait(() => document.querySelector('.quality-findings')?.textContent.includes('Trailing whitespace'),
+      'source quality finds trailing spaces');
+    await button('Select matching cleanup', panel);
+    await button('Review selected cleanup', panel);
+    const confirmation = '[aria-label="Confirm source quality cleanup"]';
+    await visible(confirmation);
+    await wait(selector => document.querySelector(selector)?.textContent.includes('2 cleanup finding(s)'),
+      'two reviewed changes', confirmation);
+    await button('Confirm cleanup', panel);
+    await wait(() => document.querySelector('.quality-findings')?.textContent.includes('No matching observations'),
+      'cleaned editor source');
+    await button('Undo last quality cleanup', panel);
+    await wait(() => document.querySelector('.quality-findings')?.textContent.includes('Trailing whitespace'),
+      'cleanup restored');
+    await button('Show copyable quality report', panel);
+    const report = await textValue('textarea[aria-label="Source quality report"]');
+    assert.match(report, /Trailing whitespace/);
+    assert.doesNotMatch(report, /print\(7\)/);
+  });
+
 }
