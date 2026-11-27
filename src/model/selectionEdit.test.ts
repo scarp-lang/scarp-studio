@@ -38,14 +38,14 @@ describe('exact model selection capture',()=>{
     expect(captureSelections({...editor,activeId:null},'a\r\nb',[{start:0,end:1}]).ok).toBe(false);
     expect(captureSelections(editor,'a\r\nb',[{start:0,end:1}]).ok).toBe(true);
   });
-  it.each([
+  it('rejects invalid or overlapping selection spans',()=>{
+    const invalid:TextSpan[][]=[
     [],[{start:0,end:0}],[{start:-1,end:1}],[{start:0,end:10}],
     [{start:0.5,end:1}],[{start:2,end:1}],[{start:0,end:NaN}],
     [{start:0,end:3},{start:1,end:4}],[{start:0,end:2},{start:2,end:4}],
     [{start:0,end:1},{start:0,end:1}],
-  ])('rejects invalid or overlapping selection spans %#',(...spans)=>{
-    // Each data row is an array of arguments, including the empty case.
-    expect(canonicalSelectionSpans('abcd',spans).ok).toBe(false);
+    ];
+    for(const spans of invalid)expect(canonicalSelectionSpans('abcd',spans).ok).toBe(false);
   });
   it('rejects ranges that bisect surrogate pairs or CRLF',()=>{
     expect(canonicalSelectionSpans('😀a',[{start:1,end:3}]).ok).toBe(false);
