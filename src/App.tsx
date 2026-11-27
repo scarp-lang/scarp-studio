@@ -67,6 +67,8 @@ import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/w
 import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { SourceQualityPanel } from './components/SourceQualityPanel';
+import { SelectionEditPanel } from './components/SelectionEditPanel';
+import { captureSelections, selectionMatchesLive, selectionEditIsCurrent, type SelectionEditPlan, type SelectionCapture, type SelectionResult } from './model/selectionEdit';
 import { LineRangeToolsPanel } from './components/LineRangeToolsPanel';
 import { IdentifierEditPanel } from './components/IdentifierEditPanel';
 import { OpenBufferComparisonPanel } from './components/OpenBufferComparisonPanel';
@@ -394,6 +396,7 @@ export default function App() {
   const [projectReplacementUndo, setProjectReplacementUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [qualityUndo, setQualityUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [selectionEditUndo, setSelectionEditUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [lineRangeUndo, setLineRangeUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [identifierUndo, setIdentifierUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [bufferTransferUndo, setBufferTransferUndo] = useState<OpenFileReplaceUndo | null>(null);
@@ -2814,6 +2817,43 @@ export default function App() {
     setIdentifierUndo(null); setError(null); setNotice('Undid identifier edits in open buffers.');
   }
 
+  function captureEditorSelections(): SelectionResult<SelectionCapture> {
+    const current=liveEditor.current;
+    const editor=mountedEditor.current;
+    const model=editor?.getModel();
+    if(recoveryOperationsBlocked()||!model||mountedEditorDocumentId.current!==current.activeId)
+      return {ok:false,error:'The current editor is not ready for selection capture.'};
+    const spans=(editor.getSelections()??[]).map(range=>({
+      start:model.getOffsetAt(range.getStartPosition()),end:model.getOffsetAt(range.getEndPosition()),
+    }));
+    return captureSelections(current,model.getValue(),spans);
+  }
+  function applySelectionEdit(plan:SelectionEditPlan):boolean {
+    const current=liveEditor.current;
+    const fresh=captureEditorSelections();
+    if(!fresh.ok||!selectionEditIsCurrent(plan,current)||
+      !selectionMatchesLive(plan.capture,fresh.value.document.content,fresh.value.spans)){
+      setError('Selection review or current selected ranges changed. No source changed.');
+      return false;
+    }
+    const before=current.documents;
+    dispatch({type:'replace-open-files',changes:[plan.change],allSnapshots:before});
+    const after=liveEditor.current.documents;
+    if(before===after)return false;
+    autoSaveReview.current.holdReplacements(after,[plan.change.id]);
+    setSelectionEditUndo(createOpenFileReplaceUndo(before,after));
+    setError(null);setNotice('Applied reviewed selection transformation in memory. Review or Undo before saving.');
+    return true;
+  }
+  function undoSelectionEdit():void{
+    if(recoveryOperationsBlocked()||!selectionEditUndo||!canUndoOpenFileReplace(selectionEditUndo,liveEditor.current)){
+      setError('Selection undo is stale or another operation is active. No source changed.');return;
+    }
+    dispatch({type:'replace-open-files',changes:selectionEditUndo.changes,allSnapshots:selectionEditUndo.after});
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents,selectionEditUndo.changes.map(change=>change.id));
+    setSelectionEditUndo(null);setError(null);setNotice('Undid reviewed selection transformation.');
+  }
+
   function applyLineRange(plan: LineRangePlan): boolean {
     const current = liveEditor.current;
     if (recoveryOperationsBlocked() || !lineRangePlanIsCurrent(plan, current)) {
@@ -3403,6 +3443,11 @@ export default function App() {
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!lineRangeUndo && canUndoOpenFileReplace(lineRangeUndo, editorState)}
             onApply={applyLineRange} onUndo={undoLineRange} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="selection-edit">
+          <SelectionEditPanel editor={editorState} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            undoAvailable={!!selectionEditUndo && canUndoOpenFileReplace(selectionEditUndo, editorState)}
+            onCapture={captureEditorSelections} onApply={applySelectionEdit} onUndo={undoSelectionEdit} />
           </ExplorerToolSlot>
           <ExplorerToolSlot id="working-changes">
           <WorkingChangesPanel document={active} onNavigate={jumpToSourceInsight} />

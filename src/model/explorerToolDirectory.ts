@@ -21,6 +21,7 @@ export const EXPLORER_TOOLS=[
   {id:'tasks',category:'analysis',label:'Comment task board',description:'Review TODO and FIXME markers in open source',keywords:'todo fixme bug review comments'},
   {id:'identifier-edit',category:'editing',label:'Identifier edit',description:'Select literal code tokens for reviewed replacement',keywords:'rename replace identifier refactor'},
   {id:'line-tools',category:'editing',label:'Line tools',description:'Sort, reverse, indent or transform selected lines',keywords:'sort prefix suffix trim duplicate indentation'},
+  {id:'selection-edit',category:'editing',label:'Selection editing',description:'Review literal transformations across editor selections',keywords:'multi cursor surround unwrap duplicate replace case delete'},
   {id:'working-changes',category:'changes',label:'Working changes',description:'Compare working text to its last saved snapshot',keywords:'diff unsaved saved changes'},
   {id:'compare-buffers',category:'changes',label:'Compare buffers',description:'Compare two open snapshots and transfer reviewed blocks',keywords:'diff compare transfer patch'},
   {id:'checkpoints',category:'changes',label:'Source checkpoints',description:'Capture and restore named in-memory snapshots',keywords:'backup snapshot restore undo'},

@@ -1911,3 +1911,36 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .test-failure-details { display: grid; gap: 8px; min-width: 0; }
 .project-command-disk-rows { display: grid; gap: 4px; padding-inline-start: 16px; }
 .project-command-disk-rows li { display: flex; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
+
+
+/* Complete selection previews preserve literal whitespace and keep long
+   text inside the sidebar instead of expanding the workspace. */
+.selection-preview-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.selection-preview-list > li {
+  min-width: 0;
+  border: 1px solid var(--border);
+  padding: 7px;
+  border-radius: 4px;
+}
+.selection-preview-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin-top: 6px;
+}
+.selection-preview-row code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.selection-edit select,
+.selection-edit input {
+  max-width: 100%;
+}

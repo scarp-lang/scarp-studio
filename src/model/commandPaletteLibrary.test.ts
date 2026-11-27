@@ -7,7 +7,7 @@ const entries=[
   {id:'new',label:'New file',detail:'Ctrl+N'},{id:'save',label:'Save file',detail:'Ctrl+S'},
   {id:'verify-scarp',label:'Verify current source',detail:'Ctrl+F5'},
   {id:'run-scarp',label:'Run current source',detail:'F5'},{id:'go-to-line',label:'Go to line',detail:'Ctrl+G'},
-  {id:'template:hello',label:'Hello template'},{id:'snippet:private',label:'Private snippet'},
+  {id:'template:hello',label:'Hello template'},{id:'user-snippet:private',label:'Private snippet'},
   {id:'other',label:'Unexpected item'},
 ];
 function pin(library:CommandPaletteLibrary,id:string){
@@ -21,7 +21,7 @@ describe('command collection library',()=>{
     for(const group of COMMAND_GROUPS)expect(isCommandCollection(group)).toBe(true);
     expect(isCommandCollection('arbitrary')).toBe(false);
     expect(isLibraryCommand('template:hello')).toBe(false);
-    expect(isLibraryCommand('snippet:private')).toBe(false);
+    expect(isLibraryCommand('user-snippet:private')).toBe(false);
   });
   it('keeps pinned ordering and refuses unsupported IDs',()=>{
     let state=pin(pin(EMPTY_COMMAND_LIBRARY,'save'),'new');
@@ -30,7 +30,7 @@ describe('command collection library',()=>{
     expect(state.pinned).toEqual(['new','save']);
     expect(movePinnedCommand(state,'new',-1)).toBe(state);
     expect(pin(state,'new').pinned).toEqual(['save']);
-    expect(togglePinnedCommand(state,'snippet:private').ok).toBe(false);
+    expect(togglePinnedCommand(state,'user-snippet:private').ok).toBe(false);
     expect(togglePinnedCommand(state,'file:/private/path.srp').ok).toBe(false);
   });
   it('enforces the pin budget and keeps history distinct',()=>{
@@ -47,7 +47,7 @@ describe('command collection library',()=>{
     state=recordCommandSelection(state,'save');
     expect(state.recent).toEqual(['save','new']);
     expect(recordCommandSelection(state,'save')).toBe(state);
-    for(const id of ['template:hello','snippet:private','file:/private','unknown'])
+    for(const id of ['template:hello','user-snippet:private','file:/private','unknown'])
       expect(recordCommandSelection(state,id)).toBe(state);
     const ids=['new','open','folder','refresh-folder','save','save-all','save-as','reload','compare-disk','close','reopen-closed','find-open-files','find-project'];
     for(const id of ids)state=recordCommandSelection(state,id);
@@ -60,7 +60,7 @@ describe('command collection library',()=>{
     expect(commandCollectionEntries(entries,state,'pinned')).toEqual([entries[1],entries[0]]);
     expect(commandCollectionEntries(entries,state,'Compiler')).toEqual([entries[2],entries[3]]);
     expect(commandCollectionEntries(entries,state,'Snippets')).toEqual([entries[6]]);
-    expect(commandCollectionEntries(entries,{...state,pinned:['save','unavailable','snippet:private']},'pinned')).toEqual([entries[1]]);
+    expect(commandCollectionEntries(entries,{...state,pinned:['save','unavailable','user-snippet:private']},'pinned')).toEqual([entries[1]]);
     expect(searchCommandCollection(entries,state,'pinned','ctrl+s')).toEqual([entries[1]]);
     expect(searchCommandCollection(entries,state,'Compiler','current',1)).toEqual([entries[2]]);
   });
