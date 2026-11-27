@@ -1,3 +1,5 @@
+import { CommandLibrarySettings } from './components/CommandLibrarySettings';
+import { COMMAND_GROUPS,EMPTY_COMMAND_LIBRARY,commandGroup,collectionLabel,isCommandCollection,isLibraryCommand,searchCommandCollection,recordCommandSelection,togglePinnedCommand,movePinnedCommand,confirmLibraryClear,type CommandCollection,type LibraryClearReview } from './model/commandPaletteLibrary';
 import { TestFixturesPanel } from './components/TestFixturesPanel';
 import { fixtureProjectTarget,type FixtureStream,type FixtureCreatePlan,type FixtureResult,type FixtureInventory,type FixtureByteSummary } from './model/testFixtures';
 import { scanTestFixtures,inspectTestFixture,createTestFixture,type FixtureCreationOutcome } from './services/testFixtures';
@@ -492,6 +494,8 @@ export default function App() {
     changeProgramInput(undo.before.text, undo.before.interactive);
     return true;
   }
+  const [commandLibrary,setCommandLibrary]=useState(EMPTY_COMMAND_LIBRARY);
+  const [commandCollection,setCommandCollection]=useState<CommandCollection>('all');
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -767,16 +771,26 @@ export default function App() {
     setNotice('Scarp ' + symbol.kind + ': ' + symbol.name);
   }
 
+  const builtInPaletteCommands=studioCommands.map(entry=>({...entry,detail:studioCommandDetail(entry.id,entry.detail,shortcuts.bindings)}));
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
     ? buildQuickOpenEntries(documents, folderEntries)
-    : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : [...studioCommands.map(entry => ({ ...entry, detail: studioCommandDetail(entry.id, entry.detail, shortcuts.bindings) })),
+    : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : [...builtInPaletteCommands,
       ...buildSnippetPaletteEntries(userSnippets, active)];
   const paletteResults = paletteMode === 'line'
     ? []
-    : filterNavigationEntries(paletteEntries, paletteQuery);
+    : paletteMode==='commands'?searchCommandCollection(paletteEntries,commandLibrary,commandCollection,paletteQuery):filterNavigationEntries(paletteEntries, paletteQuery);
   const selectedPaletteIndex = clampPaletteIndex(paletteIndex, paletteResults.length);
   const selectedPaletteId = paletteResults[selectedPaletteIndex]?.id;
 
+  function toggleLibraryPin(id:string){
+    const next=togglePinnedCommand(commandLibrary,id);
+    if(next.ok){setCommandLibrary(next.value);setPaletteIndex(0);}
+    else setError(next.error);
+  }
+  function clearLibrary(review:LibraryClearReview){
+    const next=confirmLibraryClear(review,commandLibrary);
+    if(next.ok)setCommandLibrary(next.value);else setError(next.error);
+  }
   function showPalette(mode: PaletteMode): void {
     if (paletteMode === null) {
       paletteReturnFocus.current = document.activeElement instanceof HTMLElement
@@ -784,6 +798,7 @@ export default function App() {
     }
     paletteRestoreOnClose.current = false;
     setPaletteMode(mode);
+    setCommandCollection('all');
     setPaletteQuery('');
     setPaletteIndex(0);
   }
@@ -875,6 +890,7 @@ export default function App() {
       return;
     }
     if (mode !== 'commands') return;
+    if(isLibraryCommand(entry.id))setCommandLibrary(previous=>recordCommandSelection(previous,entry.id));
     if (isSnippetPaletteEntry(entry)) {
       const current = currentActiveDocument(liveEditor.current);
       const editor = editorHandle.current;
@@ -3183,6 +3199,9 @@ export default function App() {
             }}
             onChange={intelliSenseStore.update}
             onReset={intelliSenseStore.reset} />}
+          commandLibrary={<CommandLibrarySettings library={commandLibrary} commands={builtInPaletteCommands}
+            onTogglePin={toggleLibraryPin} onMovePin={(id,direction)=>setCommandLibrary(previous=>movePinnedCommand(previous,id,direction))}
+            onClear={clearLibrary}/>}
           shortcuts={<StudioShortcutSettings bindings={shortcuts.bindings} persistence={shortcuts.persistence}
             onChange={studioShortcutStore.setBinding} onReset={studioShortcutStore.reset}
             revision={shortcuts.revision} onApplyTransfer={studioShortcutStore.applyTransfer} />}
@@ -4036,11 +4055,17 @@ export default function App() {
           <section className="nav-dialog" role="dialog" aria-modal="true"
             onKeyDown={(event) => {
               if (event.key !== 'Tab' || event.ctrlKey || event.metaKey || event.altKey) return;
-              // The input owns listbox selection; only input and Close are
-              // in the modal tab order. Keep focus inside until dismissal.
+              // Palette result buttons stay outside tab order; collection
+              // controls participate in the dialog's real focus cycle.
+              const controls=Array.from(event.currentTarget.querySelectorAll<HTMLElement>(
+                'input:not([disabled]),select:not([disabled]),button:not([disabled]):not([tabindex="-1"])'))
+                .filter(element=>!element.closest('[hidden]'));
+              if(!controls.length)return;
               event.preventDefault();
-              if (document.activeElement === paletteDismiss.current) paletteInput.current?.focus();
-              else paletteDismiss.current?.focus();
+              const index=controls.indexOf(document.activeElement as HTMLElement);
+              const next=index<0?(event.shiftKey?controls.length-1:0):
+                (index+(event.shiftKey?-1:1)+controls.length)%controls.length;
+              controls[next].focus();
             }}
             aria-label={paletteMode === 'files' ? 'Quick Open Scarp tabs and project sources' : paletteMode === 'commands' ? 'Scarp Studio commands' : paletteMode === 'symbols' ? 'Go to Scarp declaration' : 'Go to line'}>
             <div className="nav-query-row">
@@ -4077,6 +4102,16 @@ export default function App() {
               />
               <button type="button" ref={paletteDismiss} className="nav-dismiss" onClick={() => hidePalette()} aria-label="Close navigation">×</button>
             </div>
+            {paletteMode==='commands'&&<div className="nav-collection-controls">
+              <label>Collection <select aria-label="Command palette collection" value={commandCollection} onChange={event=>{
+                if(isCommandCollection(event.target.value)){setCommandCollection(event.target.value);setPaletteIndex(0);paletteInput.current?.focus();}
+              }}>
+                {(['all','pinned','recent',...COMMAND_GROUPS] as const).map(collection=><option key={collection} value={collection}>{collectionLabel(collection)}</option>)}
+              </select></label>
+              <button type="button" disabled={!selectedPaletteId||!isLibraryCommand(selectedPaletteId)} onClick={()=>{
+                if(selectedPaletteId){toggleLibraryPin(selectedPaletteId);paletteInput.current?.focus();}
+              }}>{selectedPaletteId&&commandLibrary.pinned.includes(selectedPaletteId)?'Unpin selected':'Pin selected'}</button>
+            </div>}
             {paletteMode === 'line' ? (
               <div className="nav-hint">
                 {parseLineLocation(paletteQuery)
@@ -4094,7 +4129,8 @@ export default function App() {
                     onMouseEnter={() => setPaletteIndex(index)}
                     onClick={() => executePaletteEntry(item)}>
                     <span className="nav-result-name">{item.label}</span>
-                    <span className="nav-result-detail">{item.detail}</span>
+                    <span className="nav-result-detail">{paletteMode==='commands'&&commandLibrary.pinned.includes(item.id)?'Pinned · ':''}
+                      {paletteMode==='commands'&&commandGroup(item.id)?commandGroup(item.id)+' · ':''}{item.detail}</span>
                   </button>
                 ))}
                 {!paletteResults.length && <p className="nav-hint">{paletteMode === 'symbols'
