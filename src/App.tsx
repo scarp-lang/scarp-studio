@@ -53,6 +53,8 @@ import { SourceInsightsPanel, type InsightNavigation } from './components/Source
 import { SourceQualityPanel } from './components/SourceQualityPanel';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
+import { CompilerActivityPanel } from './components/CompilerActivityPanel';
+import { createCompilerActivityStore, type ActivityToken } from './model/compilerActivity';
 import { createSourceCheckpointStore, checkpointRestoreIsCurrent, type CheckpointCaptureReview, type CheckpointRestoreReview, type CheckpointRemovalReview } from './model/sourceCheckpoints';
 import { qualityPlanIsCurrent, type QualityCleanupPlan } from './model/sourceQuality';
 import { WorkingChangesPanel } from './components/WorkingChangesPanel';
@@ -228,6 +230,8 @@ export default function App() {
   const [draftRecovery] = useState(createDraftRecoveryJournal);
   const [workspaceSessions] = useState(createWorkspaceSessionStore);
   const [sourceCheckpoints] = useState(createSourceCheckpointStore);
+  const [compilerActivity] = useState(createCompilerActivityStore);
+  const currentActivityToken = useRef<ActivityToken | null>(null);
   const [workspaceSessionView, setWorkspaceSessionView] = useState(() => workspaceSessions.view());
   const [recoveryView, setRecoveryView] = useState(() => draftRecovery.view());
   const lastRecoveryAttempt = useRef<readonly StudioDocument[] | null>(null);
@@ -387,7 +391,7 @@ export default function App() {
   const [preferredOutputMode, setOutputPanelMode] = useState<OutputPanelMode>('normal');
   const { explorerVisible, outputPanelMode } = effectiveWorkspaceVisibility({ explorerVisible: preferredExplorerVisible, outputPanelMode: preferredOutputMode }, focusMode);
   const [compilerControlsOpen, setCompilerControlsOpen] = useState(true);
-  const [resultsView, setResultsView] = useState<'output' | 'problems'>('output');
+  const [resultsView, setResultsView] = useState<'output' | 'problems' | 'history'>('output');
   const pendingProblem = useRef<Extract<ProblemTarget, { kind: 'source' }> | null>(null);
   const problemsTab = useRef<HTMLButtonElement | null>(null);
   const focusProblemsTab = useRef(false);
@@ -1920,6 +1924,9 @@ export default function App() {
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
     setCompilerOutput((mode === 'exec' ? 'Running ' : 'Verifying ') + fileName(source) + '…');
+    setResultsView('output');
+    const activityToken = compilerActivity.start({ command: { scope: 'source', action: mode }, target: fileName(source), timestamp: Date.now() });
+    currentActivityToken.current = activityToken;
     try {
       const result = await executeScarp(
         binary, source, mode, expectedContent,
@@ -1930,6 +1937,9 @@ export default function App() {
       // async probe/launch. An edit, same-content Save, Save As or close/reopen
       // while it runs makes the old output informational, not a live result.
       const staleSource = sourceResultIsStale(verifiedSnapshot, liveEditor.current.documents);
+      compilerActivity.finish(activityToken, { timestamp: Date.now(), outcome: 'returned', exitCode: null,
+        staleAtCompletion: staleSource, inputChanged: mode === 'exec' && inputGenerationAtStart !== inputRevision.current,
+        output: result.output });
       setCompilerOutput(staleSource
         ? '[Scarp source changed while this command ran. Output below is from an earlier saved snapshot; save edits and rerun.]\n\n' + result.output
         : result.output);
@@ -1949,8 +1959,12 @@ export default function App() {
       setCompletedSourceOutput(null);
       setCompletedRunInputGeneration(null);
       setCompilerOutput('Scarp ' + mode + ' could not complete:\n' + message);
+      compilerActivity.finish(activityToken, { timestamp: Date.now(), outcome: 'invocation-error', exitCode: null,
+        staleAtCompletion: sourceResultIsStale(verifiedSnapshot, liveEditor.current.documents),
+        inputChanged: mode === 'exec' && inputGenerationAtStart !== inputRevision.current, output: message });
       setError(message);
     } finally {
+      currentActivityToken.current = null;
       commandInProgress.current = false;
       setCompilerBusy(false);
     }
@@ -2078,6 +2092,9 @@ export default function App() {
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
     setCompilerOutput('Scarp project ' + action + '…');
+    const activityToken = compilerActivity.start({ command: { scope: 'project', action },
+      target: fileName(selectedProjectPath), timestamp: Date.now() });
+    currentActivityToken.current = activityToken;
     try {
       const output = await scarpProjectAction(
         compilerPath, selectedProjectPath, action,
@@ -2089,6 +2106,9 @@ export default function App() {
         { epoch: reportEpoch, listing: reportSelection },
         { epoch: projectResultEpoch.current, listing: selectedFolderRef.current },
       );
+      compilerActivity.finish(activityToken, { timestamp: Date.now(), outcome: 'returned', exitCode: output.exitCode,
+        staleAtCompletion: freshness.stale, inputChanged: action === 'run' && inputGenerationAtStart !== inputRevision.current,
+        output: output.output });
       setCompilerOutput(freshness.warning
         ? freshness.warning + '\n\n' + output.output
         : output.output);
@@ -2112,8 +2132,13 @@ export default function App() {
     } catch (caught) {
       const message = toMessage(caught);
       setCompilerOutput('Scarp project ' + action + ' could not complete:\n' + message);
+      compilerActivity.finish(activityToken, { timestamp: Date.now(), outcome: 'invocation-error', exitCode: null,
+        staleAtCompletion: projectResultFreshness(action, { epoch: reportEpoch, listing: reportSelection },
+          { epoch: projectResultEpoch.current, listing: selectedFolderRef.current }).stale,
+        inputChanged: action === 'run' && inputGenerationAtStart !== inputRevision.current, output: message });
       setError(message);
     } finally {
+      currentActivityToken.current = null;
       commandInProgress.current = false;
       setCompilerBusy(false);
     }
@@ -2121,8 +2146,10 @@ export default function App() {
 
   async function stopCompiler(): Promise<void> {
     if (!isTauri()) return;
+    const activityToken = currentActivityToken.current;
     try {
       const stopping = await stopScarp();
+      if (stopping) compilerActivity.markStopRequested(activityToken);
       setNotice(stopping ? 'Scarp stop signal sent' : 'No active Scarp process to stop');
     } catch (caught) {
       setError('Could not stop Scarp: ' + toMessage(caught));
@@ -3357,10 +3384,11 @@ export default function App() {
             </div>
             <div className="results-view-switch" role="group" aria-label="Compiler result view">
               <button type="button" aria-pressed={resultsView === 'output'} onClick={() => setResultsView('output')}>Output</button>
+              <button type="button" aria-pressed={resultsView === 'history'} onClick={() => setResultsView('history')}>History</button>
               <button type="button" ref={problemsTab} aria-pressed={resultsView === 'problems'} onClick={showProblems} title={"Show Problems (" + shortcut('show-problems') + ')'}>Problems ({problems.length})</button>
             </div>
             <div className="compiler-results" tabIndex={0} aria-label="Compiler results and diagnostics">
-            {resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
+            {resultsView === 'history' ? <CompilerActivityPanel store={compilerActivity} native={isTauri()} /> : resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
               busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
 
             {projectTestResult && isSelectedProjectTestReport(projectTestResult.folder, selectedProjectPath) && (
