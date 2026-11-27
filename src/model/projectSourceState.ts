@@ -1,4 +1,4 @@
-import { isDirty, type StudioDocument } from './documents';
+import { isDirty, isScarpPath, type StudioDocument } from './documents';
 import type { ScarpProjectAction } from '../services/project';
 
 type CanonicalParts = { kind: 'windows' | 'posix'; parts: string[] };
@@ -60,6 +60,13 @@ function belongsToProject(path: string | null, root: CanonicalParts): boolean {
   return candidate !== null && candidate.kind === root.kind &&
     candidate.parts.length > root.parts.length &&
     root.parts.every((part, index) => candidate.parts[index] === part);
+}
+
+/** Only already-open source paths inside the selected project. This lexical
+ * membership is used for consistency checks, not filesystem authorization. */
+export function projectOpenSourceDocuments(documents:readonly StudioDocument[],folderPath:string):readonly StudioDocument[]{
+  const root=pathParts(folderPath);
+  return root?documents.filter(document=>document.path!==null&&isScarpPath(document.path)&&belongsToProject(document.path,root)):[];
 }
 
 /** Project Info reads the saved project manifest, not Studio source buffers.

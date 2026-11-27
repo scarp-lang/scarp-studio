@@ -1,3 +1,5 @@
+import { planProjectCommandDiskCheck,projectCommandDiskPlanCurrent,checkProjectCommandDisk,projectDiskCheckMessage,applyProjectDiskFreshness,type ProjectDiskCheckEvidence } from './model/projectCommandDiskGuard';
+import { ProjectCommandDiskEvidence } from './components/ProjectCommandDiskEvidence';
 import { userSnippetStore } from './model/userSnippets';
 import { buildSnippetPaletteEntries, planSnippetInsertion, isSnippetPaletteEntry } from './model/snippetInsertion';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
@@ -275,6 +277,8 @@ export default function App() {
   // Advances whenever a selected-project source changes or its Explorer is
   // successfully replaced. In-flight test reports must match this generation.
   const projectResultEpoch = useRef(0);
+  const [projectDiskEvidence,setProjectDiskEvidence]=useState<ProjectDiskCheckEvidence|null>(null);
+  const projectPreflight=useRef<{cancelled:boolean}|null>(null);
   const { documents, activeId } = editorState;
   // Completed searches survive safe navigation but never selected-project
   // source mutations, listing replacement or changed search options.
@@ -2332,6 +2336,10 @@ export default function App() {
         return;
       }
     }
+    const diskPlan=projectActionRequiresSavedSources(action)
+      ?planProjectCommandDiskCheck(liveEditor.current.documents,selectedProjectPath):null;
+    if(diskPlan&&!diskPlan.ok){setError(diskPlan.error);return;}
+    setProjectDiskEvidence(null);
     setFocusMode(false);
     setOutputPanelMode(revealOutputPanel);
     // Capture the current listing instance AND the selected-project source
@@ -2361,17 +2369,35 @@ export default function App() {
       target: fileName(selectedProjectPath), timestamp: Date.now() });
     currentActivityToken.current = activityToken;
     try {
+      const guard=diskPlan?.ok?diskPlan.value:null;
+      const preflight={cancelled:false};
+      const isCurrent=()=>!preflight.cancelled&&reportEpoch===projectResultEpoch.current&&
+        reportSelection===selectedFolderRef.current&&
+        (action!=='run'||inputGenerationAtStart===inputRevision.current)&&
+        (!guard||projectCommandDiskPlanCurrent(guard,liveEditor.current.documents));
+      let beforeReview:Awaited<ReturnType<typeof checkProjectCommandDisk>>|null=null;
+      if(guard){
+        projectPreflight.current=preflight;
+        try{
+          beforeReview=await checkProjectCommandDisk(guard,readScarpSource,isCurrent);
+        }finally{projectPreflight.current=null;}
+        setProjectDiskEvidence({folder:selectedProjectPath,before:beforeReview,after:null});
+        const problem=projectDiskCheckMessage(beforeReview,'before');
+        if(problem||!isCurrent())throw new Error(problem??'Project command was not launched because the editor changed.');
+      }
       const output = await scarpProjectAction(
         compilerPath, selectedProjectPath, action,
         action === 'run' ? stdinText : '',
         action === 'run' && promptInputMode,
         testFilter,
       );
-      const freshness = projectResultFreshness(
+      const afterReview=guard?await checkProjectCommandDisk(guard,readScarpSource,isCurrent):null;
+      if(guard)setProjectDiskEvidence({folder:selectedProjectPath,before:beforeReview,after:afterReview});
+      const freshness = applyProjectDiskFreshness(projectResultFreshness(
         action,
         { epoch: reportEpoch, listing: reportSelection },
         { epoch: projectResultEpoch.current, listing: selectedFolderRef.current },
-      );
+      ),afterReview);
       compilerActivity.finish(activityToken, { timestamp: Date.now(), outcome: 'returned', exitCode: output.exitCode,
         nativeOutcome: output.nativeOutcome, staleAtCompletion: freshness.stale, inputChanged: action === 'run' && inputGenerationAtStart !== inputRevision.current,
         output: output.output });
@@ -2423,6 +2449,7 @@ export default function App() {
         inputChanged: action === 'run' && inputGenerationAtStart !== inputRevision.current, output: message });
       setError(message);
     } finally {
+      projectPreflight.current=null;
       currentActivityToken.current = null;
       commandInProgress.current = false;
       setCompilerBusy(false);
@@ -2431,6 +2458,12 @@ export default function App() {
 
   async function stopCompiler(): Promise<void> {
     if (!isTauri()) return;
+    if(projectPreflight.current){
+      projectPreflight.current.cancelled=true;
+      compilerActivity.markStopRequested(currentActivityToken.current);
+      setNotice('Project source check cancellation requested; no compiler process will be launched.');
+      return;
+    }
     const activityToken = currentActivityToken.current;
     try {
       const stopping = await stopScarp();
@@ -3848,6 +3881,8 @@ export default function App() {
                     : 'No Scarp project manifest detected. Refresh Explorer after creating one.'}
                 </span>
               )}
+              {projectDiskEvidence&&projectDiskEvidence.folder===selectedProjectPath&&
+                <ProjectCommandDiskEvidence evidence={projectDiskEvidence} historical={true}/>}
               {dirtySelectedProjectSources.length > 0 && (
                 <span className="project-dirty-warning" role="status">
                   Save {dirtySelectedProjectSources.length} modified project source(s) before
