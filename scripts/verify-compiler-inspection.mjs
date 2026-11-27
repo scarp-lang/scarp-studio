@@ -70,6 +70,13 @@ try {
   const library = 'pub bind value=2; pub pure funcra f(n: integer)->integer{return n;}\n';
   writeFileSync(main, source);
   writeFileSync(lib, library);
+  const info = invoke(['project','info','--json','--',project]);
+  assert.equal(info.status,0,info.stderr);
+  assert.equal(info.stderr,'');
+  assert.deepEqual(JSON.parse(info.stdout),{
+    schema_version:1,name:'inspection',version:'0.1.0',type:'application',
+    entry:'src/main.srp',manifest:'scarp.project',format:'v2',
+  });
   const definitions = inspect('symbols');
   const report = inspect('references');
   assert.deepEqual(report.symbols, definitions.symbols);

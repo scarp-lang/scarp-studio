@@ -83,3 +83,20 @@ describe('native inspection provenance', () => {
     }
   });
 });
+
+describe('saved metadata native channel',()=>{
+  it('accepts an Info report separately from inspection and test JSON',async()=>{
+    vi.mocked(invoke).mockResolvedValue(['display',null,0,[0,false,false,false],'{"schema_version":1}']);
+    const result=await scarpProjectAction('C:/scarp.exe','C:/project','info');
+    expect(result.projectInfoJson).toBe('{"schema_version":1}');
+    expect(result.inspectionJson).toBeUndefined();
+    expect(result.testReportJson).toBeNull();
+    expect((await scarpProjectAction('C:/scarp.exe','C:/project','run')).projectInfoJson).toBeUndefined();
+  });
+  it('does not accept a failed or truncated native metadata response',async()=>{
+    for(const meta of [[0,true,false,false],[0,false,true,false],[0,false,false,true],[1,false,false,false],null]){
+      vi.mocked(invoke).mockResolvedValue(['display',null,0,meta,'{}']);
+      expect((await scarpProjectAction('C:/scarp.exe','C:/project','info')).projectInfoJson).toBeUndefined();
+    }
+  });
+});
