@@ -67,6 +67,36 @@ function location(raw:unknown):DiagnosticLocation|null{
   if(value.span[0]===value.span[1]&&(start.line!==end.line||start.column!==end.column))return null;
   return Object.freeze({path:value.path,byteStart:value.span[0],byteEnd:value.span[1],start,end});
 }
+export type DiagnosticEnvelopeParse={readonly ok:true;readonly detail:DiagnosticDetail}|{readonly ok:false;readonly reason:string};
+function diagnosticFailure(reason:string):DiagnosticEnvelopeParse{return {ok:false,reason};}
+/** Shared schema validation only. Callers establish command/channel provenance
+ * independently; this does not make arbitrary program stdout trustworthy. */
+export function parseDiagnosticEnvelope(raw:unknown,id:number):DiagnosticEnvelopeParse{
+  if(!Number.isSafeInteger(id)||id<0||id>=MAX_DIAGNOSTIC_ROWS)return diagnosticFailure('Invalid diagnostic record identity.');
+  const value=record(raw);
+  if(!value||value.schema_version!==1||value.severity!=='error'||value.span_encoding!=='utf-8-bytes'||
+    value.column_encoding!=='unicode-scalar'||value.position_base!==1||
+    (value.code!==null&&(typeof value.code!=='string'||!/^E\d{4}$/.test(value.code)))||
+    !validText(value.message,MAX_DIAGNOSTIC_TEXT)||
+    (value.help!==null&&!validText(value.help,MAX_DIAGNOSTIC_TEXT))||
+    !Array.isArray(value.related)||value.related.length>MAX_DIAGNOSTIC_RELATED){
+    return diagnosticFailure('Unsupported or oversized diagnostic record.');
+  }
+  const primary=value.primary===null?null:location(value.primary);
+  if(value.primary!==null&&!primary)return diagnosticFailure('Invalid primary diagnostic location.');
+  const related:RelatedDiagnostic[]=[];
+  for(const rawNote of value.related){
+    const note=record(rawNote);
+    if(!note||!validText(note.message,MAX_DIAGNOSTIC_TEXT))return diagnosticFailure('Invalid related diagnostic message.');
+    const site=note.location===null?null:location(note.location);
+    if(note.location!==null&&!site)return diagnosticFailure('Invalid related diagnostic location.');
+    related.push(Object.freeze({message:note.message,location:site}));
+  }
+  return {ok:true,detail:Object.freeze({
+    id,code:value.code as string|null,message:value.message,primary,
+    related:Object.freeze(related),help:value.help as string|null,
+  })};
+}
 export function isStaticDiagnosticAction(action:unknown):action is DiagnosticAction{
   return action==='source-verify'||action==='verify'||action==='inspect-symbols'||action==='inspect-references';
 }
@@ -82,29 +112,9 @@ export function parseDiagnosticReport(stderr:string|null,action:DiagnosticAction
   const diagnostics:DiagnosticDetail[]=[];
   for(const line of lines){
     let raw:unknown;try{raw=JSON.parse(line);}catch{return fail('Diagnostic stderr contains a non-JSON record.');}
-    const value=record(raw);
-    if(!value||value.schema_version!==1||value.severity!=='error'||value.span_encoding!=='utf-8-bytes'||
-      value.column_encoding!=='unicode-scalar'||value.position_base!==1||
-      (value.code!==null&&(typeof value.code!=='string'||!/^E\d{4}$/.test(value.code)))||
-      !validText(value.message,MAX_DIAGNOSTIC_TEXT)||
-      (value.help!==null&&!validText(value.help,MAX_DIAGNOSTIC_TEXT))||
-      !Array.isArray(value.related)||value.related.length>MAX_DIAGNOSTIC_RELATED){
-      return fail('Unsupported or oversized diagnostic record.');
-    }
-    const primary=value.primary===null?null:location(value.primary);
-    if(value.primary!==null&&!primary)return fail('Invalid primary diagnostic location.');
-    const related:RelatedDiagnostic[]=[];
-    for(const rawNote of value.related){
-      const note=record(rawNote);
-      if(!note||!validText(note.message,MAX_DIAGNOSTIC_TEXT))return fail('Invalid related diagnostic message.');
-      const site=note.location===null?null:location(note.location);
-      if(note.location!==null&&!site)return fail('Invalid related diagnostic location.');
-      related.push(Object.freeze({message:note.message,location:site}));
-    }
-    diagnostics.push(Object.freeze({
-      id:diagnostics.length,code:value.code as string|null,message:value.message,primary,
-      related:Object.freeze(related),help:value.help as string|null,
-    }));
+    const parsed=parseDiagnosticEnvelope(raw,diagnostics.length);
+    if(!parsed.ok)return fail(parsed.reason);
+    diagnostics.push(parsed.detail);
   }
   return {ok:true,report:Object.freeze({action,diagnostics:Object.freeze(diagnostics)})};
 }

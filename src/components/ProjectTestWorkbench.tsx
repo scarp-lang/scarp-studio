@@ -1,3 +1,4 @@
+import { ProjectTestFailureDetails } from './ProjectTestFailureDetails';
 import { selectionCoverageLabel } from '../model/projectTestSelection';
 import { useMemo, useState } from 'react';
 import type { TestSourceListing } from '../model/projectTestNavigation';
@@ -123,6 +124,7 @@ export function ProjectTestWorkbench({ result, selection, historical, busy, base
       <p>{report.included} included; {report.omitted} omitted by size limit.</p>
       <textarea aria-label="Matching project test report" readOnly rows={8} value={report.text}/>
     </div>}
+    <ProjectTestFailureDetails report={result.report} historical={historical}/>
     <section className="test-workbench-baseline" aria-label="Session test baseline">
       <h3>Compare test runs</h3>
       <p>Explicit session-only baseline. Retains relative test paths, status, failure phase and code, not messages or help.
