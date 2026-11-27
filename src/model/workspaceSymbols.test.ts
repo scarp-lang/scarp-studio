@@ -42,7 +42,7 @@ describe('workspace declaration inventory', () => {
   it('recognizes multiline and comment-separated headers without guessing parameter bindings', () => {
     const source = 'pub // public\npure funcra\n// header\ncompute\n(\n value: integer\n) -> integer {\n bind\nx\n= value;\nreturn x;\n}';
     const result = single(source);
-    expect(result.symbols.map(item => [item.name, item.line, item.column])).toEqual([['compute', 4, 1], ['x', 10, 1]]);
+    expect(result.symbols.map(item => [item.name, item.line, item.column])).toEqual([['compute', 4, 1], ['x', 9, 1]]);
     expect(result.symbols[0]).toMatchObject({ visibility: 'public', pure: true, depth: 0 });
     expect(result.symbols[1]).toMatchObject({ kind: 'binding', depth: 1 });
   });
