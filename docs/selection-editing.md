@@ -35,3 +35,15 @@ or runs the compiler.
 Limits: 24 selections, 512 Ki UTF-16 units of source, 24 Ki units of selected
 text and 24 Ki units of transformed text. Each literal option is limited to
 120 UTF-16 units and rejects malformed Unicode and control characters.
+
+
+## Browser regression scenarios
+
+The Settings browser smoke includes real interactions with the existing
+command palette and selection workbench. It checks Compiler and Snippets
+collection membership, pinning without execution, Tab and Shift+Tab focus
+cycling, recent selection, pinned ordering and reviewed clearing in Settings.
+It then enters disposable source text in Monaco, captures the real selection,
+reviews and applies a surround edit, checks guarded Undo, and rejects a
+confirmation after changing the live selection. These browser scenarios
+exercise the web UI only; native Tauri acceptance remains separate.
