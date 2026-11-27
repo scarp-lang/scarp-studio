@@ -48,6 +48,8 @@ import { WorkspaceDiskReviewPanel } from './components/WorkspaceDiskReviewPanel'
 import { diskOperationCurrent, inspectWorkspaceDisk, prepareWorkspaceDiskReload, type WorkspaceDiskReview, type WorkspaceDiskResult } from './model/workspaceDiskReview';
 import { OpenEditorManager } from './components/OpenEditorManager';
 import { resolveBulkClose, type TabSelection } from './model/openEditorManagement';
+import { ProjectDependencyAuditPanel } from './components/ProjectDependencyAuditPanel';
+import { auditListedProjectDependencies,resolveAuditFile,type AuditMode,type AuditResult,type ProjectDependencyAudit } from './model/projectDependencyAudit';
 import { ProjectScaffoldPanel } from './components/ProjectScaffoldPanel';
 import { summarizeScaffoldResult, type ProjectScaffoldPlan, type ScaffoldCompletion } from './model/projectScaffold';
 import { createProjectScaffold } from './services/projectScaffold';
@@ -1570,6 +1572,26 @@ export default function App() {
       filePickerInProgress.current = false;
       setBusy(false);
     }
+  }
+
+  async function scanProjectDependencies(mode:AuditMode):Promise<AuditResult>{
+    const listing=selectedFolderRef.current;
+    const folder=selectedProjectPath;
+    const start=liveEditor.current;
+    const epoch=projectResultEpoch.current;
+    if(!isTauri()||!listing||!folder||recoveryOperationsBlocked()||compilerScanning)return {ok:false,error:'Choose a manifest project and finish current native operations.'};
+    filePickerInProgress.current=true;setBusy(true);
+    try{
+      return await auditListedProjectDependencies(listing,folder,mode,start.documents,
+        folderListingLimited||unavailableProjectFolders.length>0,readScarpSource,
+        ()=>listing===selectedFolderRef.current&&epoch===projectResultEpoch.current&&start.sessionRevision===liveEditor.current.sessionRevision);
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+  function openDependencyAuditFile(audit:ProjectDependencyAudit,id:string){
+    if(recoveryOperationsBlocked())return;
+    const path=resolveAuditFile(audit,id,selectedFolderRef.current,selectedProjectPath);
+    if(path)void openFolderFile(path);
+    else setError('The audited source is no longer uniquely listed.');
   }
 
   async function scanOpenFilesOnDisk(): Promise<WorkspaceDiskResult<WorkspaceDiskReview>> {
@@ -3151,6 +3173,9 @@ export default function App() {
                   Check folder access permissions.
                 </p>
               )}
+              <ProjectDependencyAuditPanel key={'dependency:'+folderPath} folder={selectedProjectPath}
+                generation={editorState.sessionRevision+projectResultEpoch.current} busy={!isTauri()||busy||compilerBusy||compilerSelecting||compilerScanning}
+                onAudit={scanProjectDependencies} onOpen={openDependencyAuditFile}/>
               <ProjectScaffoldPanel key={'scaffold:' + folderPath}
                 directories={folderDirectories} unavailable={unavailableProjectFolders}
                 busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
