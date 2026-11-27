@@ -51,6 +51,8 @@ import { workspaceCreationTargets, type WorkspaceCreateRequest } from './model/w
 import { createWorkspaceItem } from './services/workspaceCreate';
 import { SourceInsightsPanel, type InsightNavigation } from './components/SourceInsightsPanel';
 import { SourceQualityPanel } from './components/SourceQualityPanel';
+import { LineRangeToolsPanel } from './components/LineRangeToolsPanel';
+import { lineRangePlanIsCurrent, type LineRangePlan } from './model/lineRangeTools';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
 import { OutputInspectionPanel } from './components/OutputInspectionPanel';
@@ -104,6 +106,8 @@ import {
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReportForAction, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource, isSelectedProjectTestReport } from './model/projectTestNavigation';
+import { ProjectTestWorkbench } from './components/ProjectTestWorkbench';
+import type { TestBaseline } from './model/projectTestWorkbench';
 import {
   dirtyProjectSourceNames, projectActionRequiresSavedSources,
   projectSourceBuffersChanged,
@@ -348,6 +352,7 @@ export default function App() {
   const [replacePreview, setReplacePreview] = useState<OpenFileReplacePlan | null>(null);
   const [replaceUndo, setReplaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [qualityUndo, setQualityUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [lineRangeUndo, setLineRangeUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [checkpointUndo, setCheckpointUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
@@ -403,6 +408,7 @@ export default function App() {
   const focusProblemsTab = useRef(false);
   const outputToggle = useRef<HTMLButtonElement | null>(null);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
+  const [testBaseline, setTestBaseline] = useState<TestBaseline | null>(null);
   const [compilerDiagnosticStderr, setCompilerDiagnosticStderr] = useState<string | null>(null);
   const [compilerOutputSource, setCompilerOutputSource] = useState<VerifiedSourceSnapshot | null>(null);
   // This input is session-local, not persisted or stored in source files.
@@ -2083,6 +2089,9 @@ export default function App() {
   }
 
   function openProjectTestSource(testPath: string, reportFolder: string): void {
+    if (recoveryOperationsBlocked() || outputFreshnessWarning || !projectTestResult ||
+        !sameFilePath(projectTestResult.folder, reportFolder) ||
+        !projectTestResult.report.tests.some(test => test.path === testPath)) return;
     // Re-resolve on click: the report may outlive an Explorer refresh or
     // project change. The shared openFolderFile path also rejects stale
     // async reads and preserves existing dirty editor buffers.
@@ -2405,6 +2414,32 @@ export default function App() {
     dispatch({ type: 'replace-open-files', changes: checkpointUndo.changes, allSnapshots: checkpointUndo.after });
     autoSaveReview.current.holdReplacements(liveEditor.current.documents, checkpointUndo.changes.map(change => change.id));
     setCheckpointUndo(null); setError(null); setNotice('Undid checkpoint restore in memory.');
+  }
+
+  function applyLineRange(plan: LineRangePlan): boolean {
+    const current = liveEditor.current;
+    if (recoveryOperationsBlocked() || !lineRangePlanIsCurrent(plan, current)) {
+      setError('Line transformation review is stale or a native operation is active. No source changed.');
+      return false;
+    }
+    const before = current.documents;
+    dispatch({ type: 'replace-open-files', changes: [plan.change], allSnapshots: before });
+    const after = liveEditor.current.documents;
+    if (before === after) return false;
+    autoSaveReview.current.holdReplacements(after, [plan.change.id]);
+    setLineRangeUndo(createOpenFileReplaceUndo(before, after));
+    setError(null); setNotice('Applied reviewed line transformation in memory. Review or Undo, then Save manually.');
+    return true;
+  }
+
+  function undoLineRange(): void {
+    if (recoveryOperationsBlocked() || !lineRangeUndo || !canUndoOpenFileReplace(lineRangeUndo, liveEditor.current)) {
+      setError('Line transformation undo is stale or a native operation is active. No source changed.');
+      return;
+    }
+    dispatch({ type: 'replace-open-files', changes: lineRangeUndo.changes, allSnapshots: lineRangeUndo.after });
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents, lineRangeUndo.changes.map(change => change.id));
+    setLineRangeUndo(null); setError(null); setNotice('Undid line transformation in the editor buffer.');
   }
 
   function applyQualityCleanup(plan: QualityCleanupPlan): boolean {
@@ -2934,6 +2969,10 @@ export default function App() {
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!qualityUndo && canUndoOpenFileReplace(qualityUndo, editorState)}
             onNavigate={jumpToSourceInsight} onApply={applyQualityCleanup} onUndo={undoQualityCleanup} />
+          <LineRangeToolsPanel editor={editorState} cursorLine={cursor.line}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            undoAvailable={!!lineRangeUndo && canUndoOpenFileReplace(lineRangeUndo, editorState)}
+            onApply={applyLineRange} onUndo={undoLineRange} />
           <WorkingChangesPanel document={active} onNavigate={jumpToSourceInsight} />
           <SourceCheckpointsPanel editor={editorState} store={sourceCheckpoints}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
@@ -3478,43 +3517,11 @@ export default function App() {
               busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
 
             {projectTestResult && isSelectedProjectTestReport(projectTestResult.folder, selectedProjectPath) && (
-              <section className="project-test-report" aria-label="Scarp project test results">
-                <div className="project-test-heading">
-                  <strong>{projectTestResult.report.mode === 'list' ? 'DISCOVERED TESTS' : 'PROJECT TEST RESULTS'}</strong>
-                  <span>{projectTestResult.report.discovered} total ·
-                    {projectTestResult.report.passed} passed ·
-                    {projectTestResult.report.failed} failed</span>
-                  <button type="button" onClick={() => setProjectTestResult(null)}
-                    title="Hide the structured project test summary">Hide</button>
-                </div>
-                <ul className="project-test-list">
-                  {projectTestResult.report.tests.map((test) => (
-                    <li key={test.path} className={'project-test-' + test.status}>
-                      <strong>{test.status === 'passed' ? 'PASS' :
-                        test.status === 'failed' ? 'FAIL' : 'TEST'}</strong>
-                      <span>{test.path}</span>
-                      <button type="button" className="project-test-open"
-                        disabled={busy || compilerBusy || compilerSelecting ||
-                          !resolveListedTestSource(
-                            test.path, projectTestResult.folder, selectedFolderRef.current,
-                          )}
-                        onClick={() => openProjectTestSource(test.path, projectTestResult.folder)}
-                        title="Open only if this test is in the current Scarp Explorer listing">
-                        Open Source
-                      </button>
-                      {test.message && (
-                        <div className="project-test-error">
-                          <strong>{test.code || test.phase || 'Scarp test failure'}</strong>
-                          {' — ' + test.message}
-                          {test.help && <div>{test.help}</div>}
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                  {!projectTestResult.report.tests.length &&
-                    <li>No project tests were discovered.</li>}
-                </ul>
-              </section>
+              <ProjectTestWorkbench result={projectTestResult} selection={selectedFolderRef.current}
+                historical={Boolean(outputFreshnessWarning)}
+                busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+                baseline={testBaseline} onBaseline={setTestBaseline}
+                onOpenSource={openProjectTestSource} onHide={() => setProjectTestResult(null)} />
             )}
             {diagnostic && (
               <div className="compiler-diagnostic" role="status">

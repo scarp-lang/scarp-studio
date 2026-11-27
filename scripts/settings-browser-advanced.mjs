@@ -340,4 +340,22 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.equal(await evaluate(() => document.querySelector('.compiler-output')?.textContent), before);
   });
 
+  await step('reviewed line transformation applies and undoes exact selected source', async () => {
+    await evaluate(() => document.querySelector('.monaco-editor textarea').focus());
+    const selectAll = { key: 'a', code: 'KeyA', modifiers: 2, windowsVirtualKeyCode: 65, nativeVirtualKeyCode: 65 };
+    await cdp.send('Input.dispatchKeyEvent', { ...selectAll, type: 'keyDown' });
+    await cdp.send('Input.dispatchKeyEvent', { ...selectAll, type: 'keyUp' });
+    await cdp.send('Input.insertText', { text: '// zebra\n// apple\n// outside\n' });
+    const panel = '.line-range-tools';
+    await click(panel + ' .insights-toggle');
+    await change('input[aria-label="First transformation line"]', '1');
+    await change('input[aria-label="Last transformation line"]', '2');
+    await button('Review line transformation', panel);
+    await visible('[aria-label="Confirm line transformation"]');
+    assert.match(await evaluate(() => document.querySelector('[aria-label="After transformation"]').textContent), /apple.*zebra/s);
+    await button('Confirm line transformation', panel);
+    await wait(() => /apple.*zebra.*outside/s.test(document.querySelector('.monaco-editor .view-lines')?.textContent ?? ''), 'selected lines sorted');
+    await button('Undo last line transformation', panel);
+    await wait(() => /zebra.*apple.*outside/s.test(document.querySelector('.monaco-editor .view-lines')?.textContent ?? ''), 'exact original source restored');
+  });
 }
