@@ -130,14 +130,19 @@ export function analyzeQualityFile(document: StudioDocument): QualityFileReport 
   const lineEndings = new Set<string>();
   function inspectLine(end: number): void {
     const text = source.slice(start, end);
-    const trailing = /[ \t]+$/.exec(text);
-    if (trailing) {
-      const offset = start + trailing.index;
+    // A reverse walk is linear even for an adversarial long run of spaces
+    // followed by a non-space. An unanchored trailing-whitespace regex can
+    // otherwise retry from every starting point in that run.
+    let trailingStart = text.length;
+    while (trailingStart > 0 && (text[trailingStart - 1] === ' ' || text[trailingStart - 1] === '\t')) trailingStart--;
+    if (trailingStart < text.length) {
+      const offset = start + trailingStart;
+      const trailing = text.slice(trailingStart);
       const insideString = tokenAtOffset(scan.tokens, offset)?.kind === 'string';
       const editable = lexicalSafe && !insideString;
-      add({ rule: 'trailing-whitespace', severity: 'style', offset, line, column: trailing.index + 1,
-        message: trailing[0].length + ' trailing space/tab unit(s).',
-        ...(editable ? { edit: { start: offset, end, original: trailing[0], replacement: '' } } : {}),
+      add({ rule: 'trailing-whitespace', severity: 'style', offset, line, column: trailingStart + 1,
+        message: trailing.length + ' trailing space/tab unit(s).',
+        ...(editable ? { edit: { start: offset, end, original: trailing, replacement: '' } } : {}),
       });
     }
     const indent = /^[ \t]+/.exec(text)?.[0];
@@ -311,13 +316,17 @@ export function qualityPlanIsCurrent(plan: QualityCleanupPlan, state: EditorStat
 
 /** Report is deliberately local and read-only; does not contain paths, source
  * excerpts, or raw invisible controls. Document names are still user data. */
+function reportName(name: string): string {
+  return JSON.stringify(name).replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g,
+    unit => '\\u' + unit.charCodeAt(0).toString(16).padStart(4, '0'));
+}
 export function qualityReportText(report: QualityReport, findings: readonly QualityFinding[]): string {
   return [
     'Scarp Studio source quality (editor-only, not compiler verification)',
     'Scope: ' + report.scope + '; coverage: ' + (report.complete ? 'complete within editor rules' : 'limited'),
     'Files analyzed: ' + report.files.length + '; omitted: ' + report.omittedDocuments,
     'Findings shown: ' + findings.length,
-    ...findings.map(item => JSON.stringify(item.documentName) + ':' + item.line + ':' + item.column +
+    ...findings.map(item => reportName(item.documentName) + ':' + item.line + ':' + item.column +
       ' [' + item.severity + '] ' + QUALITY_LABELS[item.rule] + ' — ' + item.message),
   ].join('\n');
 }

@@ -233,3 +233,17 @@ describe('guarded reviewed quality cleanup', () => {
     expect(text).toContain('not compiler verification');
   });
 });
+
+describe('quality workbench adversarial text', () => {
+  it('handles long whitespace followed by a non-space without false cleanup', () => {
+    const source = ' '.repeat(100000) + 'x\n';
+    expect(byRule(source, 'trailing-whitespace')).toEqual([]);
+  });
+  it('escapes directional controls in exported filenames', () => {
+    const document = { ...doc('x '), name: 'a\u202eb.srp' };
+    const report = analyzeSourceQuality([document], 'a', 'open');
+    const exported = qualityReportText(report, report.findings);
+    expect(exported).not.toContain('\u202e');
+    expect(exported).toContain('\\u202e');
+  });
+});

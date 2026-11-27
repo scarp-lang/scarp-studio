@@ -26,21 +26,22 @@ export function SourceQualityPanel({ documents, activeId, busy, undoAvailable, o
   const [showReport, setShowReport] = useState(false);
   // A captured document-array identity prevents selections from silently
   // targeting another revision of the same offset after a source edit.
-  const [selectionSource, setSelectionSource] = useState<readonly StudioDocument[] | null>(null);
+  const [selectionSource, setSelectionSource] = useState<{ documents: readonly StudioDocument[]; activeId: string | null } | null>(null);
   const report = useMemo(() => expanded ? analyzeSourceQuality(documents, activeId, scope) : null,
     [expanded, documents, activeId, scope]);
   const visible = useMemo(() => report ? filterQualityFindings(report.findings, filter) : [], [report, filter]);
-  const selected = selectionSource === documents ? selection : [];
+  const selectionCurrent = selectionSource?.documents === documents && (scope === 'open' || selectionSource.activeId === activeId);
+  const selected = selectionCurrent ? selection : [];
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const pageFindings = visible.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const stale = !!plan && (selectionSource !== documents || (scope === 'active' && plan.activeId !== activeId));
+  const stale = !!plan && (!selectionCurrent || (scope === 'active' && plan.activeId !== activeId));
   const canSelect = !!report?.complete && !busy;
   function clear() {
     setSelection([]); setSelectionSource(null); setPlan(null); setNotice('');
   }
   function updateSelection(ids: readonly string[]) {
-    setSelectionSource(documents); setSelection(ids); setPlan(null); setNotice('');
+    setSelectionSource({ documents, activeId }); setSelection(ids); setPlan(null); setNotice('');
   }
   function updateFilter(next: Partial<QualityFilter>) {
     setFilter(old => ({ ...old, ...next })); setPage(1); setPlan(null); setNotice('');
