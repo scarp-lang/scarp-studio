@@ -1,3 +1,4 @@
+import { nativeExitCode, type NativeOutcome } from '../services/nativeOutcome';
 import { unicodeSafePreviewBounds } from './utf8Text';
 import type { ScarpMode } from '../services/compiler';
 import type { ScarpProjectAction } from '../services/project';
@@ -13,10 +14,10 @@ export type ActivityMode = 'off' | 'metadata' | 'output';
 export type ActivityCommand =
   | { readonly scope: 'source'; readonly action: ScarpMode }
   | { readonly scope: 'project'; readonly action: ScarpProjectAction };
-export type ActivityOutcome = 'returned' | 'exit-zero' | 'exit-nonzero' | 'invocation-error';
+export type ActivityOutcome = 'returned' | 'exit-zero' | 'exit-nonzero' | 'invocation-error' | 'cancelled';
 export const OUTCOME_LABELS: Readonly<Record<ActivityOutcome, string>> = Object.freeze({
   returned: 'Returned (exit status unavailable)', 'exit-zero': 'Exit 0',
-  'exit-nonzero': 'Nonzero exit', 'invocation-error': 'Invocation error',
+  'exit-nonzero': 'Nonzero exit', 'invocation-error': 'Invocation error', cancelled: 'Native cancellation reported',
 });
 export interface ActivityStart {
   readonly command: ActivityCommand;
@@ -43,6 +44,7 @@ export interface ActivityCompletion {
   readonly staleAtCompletion: boolean;
   readonly inputChanged: boolean;
   readonly output: string;
+  readonly nativeOutcome?: NativeOutcome;
 }
 export interface ActivityRecord {
   readonly id: number;
@@ -59,6 +61,7 @@ export interface ActivityRecord {
   readonly output: string | null;
   readonly outputTruncated: boolean;
   readonly outputOriginalUnits: number | null;
+  readonly nativeOutputTruncated: boolean | null;
 }
 export interface ActivityState {
   readonly mode: ActivityMode;
@@ -108,11 +111,9 @@ function canonicalCommand(command: ActivityCommand): ActivityCommand | null {
   }
   return null;
 }
-function validExitCode(value: number | null): number | null {
-  return value !== null && Number.isSafeInteger(value) && value >= -2147483648 && value <= 4294967295 ? value : null;
-}
 function outcomeFor(completion: ActivityCompletion, code: number | null): ActivityOutcome {
   if (completion.outcome === 'invocation-error') return 'invocation-error';
+  if (completion.nativeOutcome?.cancelled === true) return 'cancelled';
   return code === null ? 'returned' : code === 0 ? 'exit-zero' : 'exit-nonzero';
 }
 function outputSize(records: readonly ActivityRecord[]): number {
@@ -212,16 +213,19 @@ export function createCompilerActivityStore() {
     const timeValid = validTime(completion.timestamp);
     const finishedAt = timeValid ? completion.timestamp : started.startedAt;
     const elapsedMs = timeValid && finishedAt >= started.startedAt ? finishedAt - started.startedAt : null;
-    const exitCode = completion.outcome === 'returned' && started.command.scope === 'project'
-      ? validExitCode(completion.exitCode) : null;
+    const native = completion.outcome === 'returned' ? completion.nativeOutcome : undefined;
+    const exitCode = completion.outcome !== 'returned' ? null
+      : native ? nativeExitCode(native.exitCode)
+      : started.command.scope === 'project' ? nativeExitCode(completion.exitCode) : null;
     const retain = started.retainOutput && state.mode === 'output';
     const preview = retain ? boundedOutput(completion.output) : null;
     const record = Object.freeze({
       id: token.id, command: started.command, target: started.target,
       startedAt: started.startedAt, finishedAt, elapsedMs, outcome: outcomeFor(completion, exitCode),
-      exitCode, staleAtCompletion: completion.staleAtCompletion, inputChanged: completion.inputChanged,
+      exitCode, staleAtCompletion: completion.staleAtCompletion || native?.sourceStale === true, inputChanged: completion.inputChanged,
       stopRequested: started.stopRequested, output: preview?.text ?? null,
       outputTruncated: preview?.truncated ?? false, outputOriginalUnits: retain ? completion.output.length : null,
+      nativeOutputTruncated: native?.outputTruncated ?? null,
     });
     const all = [...state.records, record];
     const records = all.slice(-MAX_ACTIVITY_RECORDS);
@@ -262,6 +266,8 @@ export interface ActivitySummary {
   readonly exitZero: number;
   readonly exitNonzero: number;
   readonly invocationErrors: number;
+  readonly cancelled: number;
+  readonly nativeTruncated: number;
   readonly changed: number;
   readonly stopRequests: number;
 }
@@ -271,6 +277,8 @@ export function summarizeActivity(records: readonly ActivityRecord[]): ActivityS
     exitZero: records.filter(record => record.outcome === 'exit-zero').length,
     exitNonzero: records.filter(record => record.outcome === 'exit-nonzero').length,
     invocationErrors: records.filter(record => record.outcome === 'invocation-error').length,
+    cancelled: records.filter(record => record.outcome === 'cancelled').length,
+    nativeTruncated: records.filter(record => record.nativeOutputTruncated === true).length,
     changed: records.filter(record => record.staleAtCompletion || record.inputChanged).length,
     stopRequests: records.filter(record => record.stopRequested).length,
   };
@@ -290,6 +298,7 @@ export function activityMetadataReport(state: ActivityState, records: readonly A
       record.staleAtCompletion ? 'source/project changed during invocation' : '',
       record.inputChanged ? 'input changed during invocation' : '',
       record.stopRequested ? 'stop signal requested (outcome not inferred)' : '',
+      record.nativeOutputTruncated === true ? 'native output truncated' : '',
     ].filter(Boolean).join(' | ')),
   ].join('\n');
 }

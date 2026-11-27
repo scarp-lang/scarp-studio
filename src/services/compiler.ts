@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { parseNativeOutcome, type NativeOutcome } from './nativeOutcome';
 
 export type ScarpMode = 'exec' | 'verify';
 
@@ -10,14 +11,21 @@ export function probeScarp(binary: string): Promise<string> {
 export async function executeScarp(
   binary: string, source: string, mode: ScarpMode, expectedContent: string,
   stdinText: string, interactive = false,
-): Promise<{ output: string; diagnosticStderr: string | null }> {
+): Promise<{ output: string; diagnosticStderr: string | null; nativeOutcome?: NativeOutcome }> {
   const args = { binary, source, mode, expectedContent, stdinText };
   // Native returns a distinct, Verify-only stderr field for diagnostics.
   // Raw program stdout is never parsed as a source location.
-  const [output, diagnosticStderr] = await invoke<[string, string | null]>(
+  const [output, diagnosticStderr, rawOutcome] = await invoke<[string, string | null, unknown?]>(
     'scarp_execute', interactive ? { ...args, interactive: true } : args,
   );
-  return { output, diagnosticStderr };
+  const nativeOutcome = parseNativeOutcome(rawOutcome);
+  // Recheck the trusted native channel as a defense in depth. No Run stdout,
+  // cancellation, truncated or stale result may acquire Verify diagnostics.
+  const usable = mode === 'verify' && (rawOutcome === undefined ||
+    (nativeOutcome !== null && !nativeOutcome.cancelled && !nativeOutcome.outputTruncated && !nativeOutcome.sourceStale &&
+      nativeOutcome.exitCode !== 0 && nativeOutcome.exitCode !== null));
+  return { output, diagnosticStderr: usable ? diagnosticStderr : null,
+    ...(nativeOutcome ? { nativeOutcome } : {}) };
 }
 
 export function stopScarp(): Promise<boolean> {
