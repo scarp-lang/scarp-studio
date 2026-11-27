@@ -74,3 +74,9 @@ describe('native single-source outcome', () => {
     expect(result.diagnosticStderr).toBeNull();
   });
 });
+
+it('rejects Verify diagnostics attached to malformed new-format outcome metadata', async () => {
+  vi.mocked(invoke).mockResolvedValue(['output', 'diagnostic', [1, false]]);
+  expect(await executeScarp('C:/scarp.exe', 'C:/main.srp', 'verify', '', ''))
+    .toEqual({ output: 'output', diagnosticStderr: null });
+});

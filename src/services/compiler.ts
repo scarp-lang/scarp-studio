@@ -21,8 +21,8 @@ export async function executeScarp(
   const nativeOutcome = parseNativeOutcome(rawOutcome);
   // Recheck the trusted native channel as a defense in depth. No Run stdout,
   // cancellation, truncated or stale result may acquire Verify diagnostics.
-  const usable = mode === 'verify' && (!nativeOutcome ||
-    (!nativeOutcome.cancelled && !nativeOutcome.outputTruncated && !nativeOutcome.sourceStale &&
+  const usable = mode === 'verify' && (rawOutcome === undefined ||
+    (nativeOutcome !== null && !nativeOutcome.cancelled && !nativeOutcome.outputTruncated && !nativeOutcome.sourceStale &&
       nativeOutcome.exitCode !== 0 && nativeOutcome.exitCode !== null));
   return { output, diagnosticStderr: usable ? diagnosticStderr : null,
     ...(nativeOutcome ? { nativeOutcome } : {}) };

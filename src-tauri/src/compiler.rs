@@ -62,6 +62,9 @@ pub struct CompilerRuntime {
     sequence: Arc<AtomicU64>,
 }
 
+// Exit code, cancellation, native output cap and source freshness.
+pub type NativeOutcome = (Option<i32>, bool, bool, bool);
+
 struct ProcessResult {
     status: ExitStatus,
     stdout: String,
@@ -378,14 +381,18 @@ fn parse_version(output: &str) -> Option<String> {
 // Published v0.0.7 releases retain the legacy run prompt flag and the
 // structured project-test JSON v2 contract. Future series require review.
 fn supports_audited_alpha7(version: &str) -> bool {
-    matches!(version, "0.0.7-alpha.1" | "0.0.7-alpha.2" | "0.0.7-alpha.3")
+    matches!(
+        version,
+        "0.0.7-alpha.1" | "0.0.7-alpha.2" | "0.0.7-alpha.3"
+    )
 }
 
 fn supports_prompt_input(version: &str) -> bool {
     version
         .strip_prefix("0.0.6-alpha.")
         .and_then(|suffix| suffix.parse::<u16>().ok())
-        .is_some_and(|alpha| alpha >= 10) || supports_audited_alpha7(version)
+        .is_some_and(|alpha| alpha >= 10)
+        || supports_audited_alpha7(version)
 }
 
 /// Project actions never write source and only accept a selected manifest root.
@@ -467,7 +474,8 @@ fn supports_structured_project_tests(version: &str) -> bool {
     version
         .strip_prefix("0.0.6-alpha.")
         .and_then(|suffix| suffix.parse::<u16>().ok())
-        .is_some_and(|alpha| alpha >= 9) || supports_audited_alpha7(version)
+        .is_some_and(|alpha| alpha >= 9)
+        || supports_audited_alpha7(version)
 }
 
 /// Only an ordinary CLI exit can support a trusted structured test report.
@@ -500,7 +508,7 @@ pub async fn scarp_project_action(
     stdin_text: Option<String>,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<(String, Option<String>, Option<i32>, (Option<i32>, bool, bool, bool)), String> {
+) -> Result<(String, Option<String>, Option<i32>, NativeOutcome), String> {
     let runtime = state.inner().clone();
     let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -564,7 +572,12 @@ pub async fn scarp_project_action(
             );
             // The UI independently checks exit_code against the exact schema
             // counts. Do not infer success by regexing the display string.
-            Ok((display, report_json, exit_code, (exit_code, result.cancelled, result.truncated, false)))
+            Ok((
+                display,
+                report_json,
+                exit_code,
+                (exit_code, result.cancelled, result.truncated, false),
+            ))
         })();
         release_job(&runtime, reserved.id);
         execution
@@ -754,7 +767,7 @@ pub async fn scarp_execute(
     stdin_text: String,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<(String, Option<String>, (Option<i32>, bool, bool, bool)), String> {
+) -> Result<(String, Option<String>, NativeOutcome), String> {
     let runtime = state.inner().clone();
     // Claim the native execution slot before the background worker probes
     // compiler CLI support, so Stop prevents later source execution.
@@ -844,7 +857,16 @@ pub async fn scarp_execute(
                 result.stderr,
                 cap_notice
             );
-            Ok((display, diagnostic_stderr, (result.status.code(), result.cancelled, result.truncated, source_stale)))
+            Ok((
+                display,
+                diagnostic_stderr,
+                (
+                    result.status.code(),
+                    result.cancelled,
+                    result.truncated,
+                    source_stale,
+                ),
+            ))
         })();
         release_job(&runtime, reserved.id);
         execution
@@ -927,7 +949,12 @@ mod tests {
             assert!(supports_prompt_input(version));
             assert!(supports_structured_project_tests(version));
         }
-        for version in ["0.0.7-alpha.0", "0.0.7-alpha.4", "0.0.7-beta.1", "0.0.8-alpha.1"] {
+        for version in [
+            "0.0.7-alpha.0",
+            "0.0.7-alpha.4",
+            "0.0.7-beta.1",
+            "0.0.8-alpha.1",
+        ] {
             assert!(!supports_prompt_input(version));
             assert!(!supports_structured_project_tests(version));
         }
