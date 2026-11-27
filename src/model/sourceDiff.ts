@@ -1,3 +1,5 @@
+import { unicodeSafePreviewBounds } from './utf8Text';
+
 /** Snapshot-only line diff for Scarp Studio's Working Changes panel.
  *
  * This module never reads disk, writes files, executes a compiler, or resolves
@@ -102,7 +104,7 @@ function compactLine(
     kind,
     beforeLine: before?.index ?? null,
     afterLine: after?.index ?? null,
-    preview: text.slice(0, MAX_DIFF_LINE_PREVIEW_UNITS),
+    preview: text.slice(0, unicodeSafePreviewBounds(text, 0, Math.min(text.length, MAX_DIFF_LINE_PREVIEW_UNITS)).end),
     previewTruncated: text.length > MAX_DIFF_LINE_PREVIEW_UNITS,
     endingChanged: before !== null && after !== null &&
       before.ending !== after.ending,
@@ -162,12 +164,23 @@ function boundedSteps(
   }
   const width = newLength + 1;
   const lengths = new Uint32Array((oldLength + 1) * width);
+  // Intern full line identities once. The DP loop compares integers rather
+  // than repeatedly comparing very long, nearly identical source strings.
+  const identities = new Map<string, Map<DiffLineEnding, number>>();
+  let nextIdentity = 1;
+  const identity = (line: SnapshotLine): number => {
+    let endings = identities.get(line.text);
+    if (!endings) { endings = new Map(); identities.set(line.text, endings); }
+    let id = endings.get(line.ending);
+    if (id === undefined) { id = nextIdentity++; endings.set(line.ending, id); }
+    return id;
+  };
+  const oldIds = before.slice(prefix, oldEnd).map(identity);
+  const newIds = after.slice(prefix, newEnd).map(identity);
   for (let i = oldLength - 1; i >= 0; i--) {
     for (let j = newLength - 1; j >= 0; j--) {
       const index = i * width + j;
-      lengths[index] = identicalSnapshotLines(
-        before[prefix + i], after[prefix + j],
-      )
+      lengths[index] = oldIds[i] === newIds[j]
         ? 1 + lengths[(i + 1) * width + j + 1]
         : Math.max(lengths[(i + 1) * width + j], lengths[i * width + j + 1]);
     }
@@ -179,7 +192,7 @@ function boundedSteps(
   let i = 0, j = 0;
   while (i < oldLength || j < newLength) {
     if (i < oldLength && j < newLength &&
-        identicalSnapshotLines(before[prefix + i], after[prefix + j])) {
+        oldIds[i] === newIds[j]) {
       edits.push({
         kind: 'context', before: before[prefix + i], after: after[prefix + j],
       });
@@ -254,18 +267,19 @@ export function compareScarpSnapshots(
 ): SourceDiffReport {
   if (saved === current) {
     // Avoid splitting 4 MiB clean buffers merely to report no changes.
-    const count = 1 + (saved.match(/\r\n|\r|\n/g)?.length ?? 0);
+    const count = countSnapshotLines(saved);
     return cleanReport(count);
   }
   if (saved.length > MAX_DIFF_SOURCE_UNITS || current.length > MAX_DIFF_SOURCE_UNITS) {
     return changedReport(0, 0,
       'Changes preview unavailable: either buffer exceeds 512 Ki UTF-16 units.');
   }
-  const before = splitSnapshotLines(saved), after = splitSnapshotLines(current);
-  if (before.length > MAX_DIFF_SOURCE_LINES || after.length > MAX_DIFF_SOURCE_LINES) {
-    return changedReport(before.length, after.length,
+  const oldCount = countSnapshotLines(saved), newCount = countSnapshotLines(current);
+  if (oldCount > MAX_DIFF_SOURCE_LINES || newCount > MAX_DIFF_SOURCE_LINES) {
+    return changedReport(oldCount, newCount,
       'Changes preview unavailable: more than 2,400 lines in a snapshot.');
   }
+  const before = splitSnapshotLines(saved), after = splitSnapshotLines(current);
   const steps = boundedSteps(before, after);
   if (!steps) {
     return changedReport(before.length, after.length,
@@ -297,4 +311,75 @@ export function compareScarpSnapshots(
       ? 'Only the first bounded change hunks are displayed; counts include all changes.'
       : null,
   };
+}
+
+
+/** Count line boundaries without allocating arrays of separators or rows. */
+export function countSnapshotLines(text: string): number {
+  let count = 1;
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\r') {
+      if (text[i + 1] === '\n') i++;
+      count++;
+    } else if (text[i] === '\n') count++;
+  }
+  return count;
+}
+export interface SnapshotEditBlock {
+  readonly id: number;
+  readonly beforeStart: number;
+  readonly beforeEnd: number;
+  readonly afterStart: number;
+  readonly afterEnd: number;
+  readonly beforeLine: number;
+  readonly afterLine: number;
+  readonly beforeCount: number;
+  readonly afterCount: number;
+}
+export type ExactSnapshotBlocks =
+  | { readonly ok: true; readonly blocks: readonly SnapshotEditBlock[] }
+  | { readonly ok: false; readonly error: string };
+/** Exact contiguous non-context spans in the same bounded diff used by
+ * Working Changes. Offsets refer to original strings including separators.
+ * No text previews or caller-supplied patch coordinates are authoritative. */
+export function exactSnapshotEditBlocks(beforeText: string, afterText: string): ExactSnapshotBlocks {
+  if (beforeText === afterText) return { ok: true, blocks: [] };
+  if (beforeText.length > MAX_DIFF_SOURCE_UNITS || afterText.length > MAX_DIFF_SOURCE_UNITS ||
+      countSnapshotLines(beforeText) > MAX_DIFF_SOURCE_LINES ||
+      countSnapshotLines(afterText) > MAX_DIFF_SOURCE_LINES) {
+    return { ok: false, error: 'Exact comparison exceeds the source or line budget.' };
+  }
+  const before = splitSnapshotLines(beforeText), after = splitSnapshotLines(afterText);
+  const steps = boundedSteps(before, after);
+  if (!steps) return { ok: false, error: 'Exact comparison exceeds the diff complexity budget.' };
+  let oldIndex = 0, newIndex = 0;
+  let pending: { old: number; next: number } | null = null;
+  const blocks: SnapshotEditBlock[] = [];
+  const offset = (lines: readonly SnapshotLine[], i: number, size: number) => lines[i]?.start ?? size;
+  function flush() {
+    if (!pending) return;
+    const block = {
+      id: blocks.length + 1,
+      beforeStart: offset(before, pending.old, beforeText.length),
+      beforeEnd: offset(before, oldIndex, beforeText.length),
+      afterStart: offset(after, pending.next, afterText.length),
+      afterEnd: offset(after, newIndex, afterText.length),
+      beforeLine: pending.old + 1, afterLine: pending.next + 1,
+      beforeCount: oldIndex - pending.old, afterCount: newIndex - pending.next,
+    };
+    // The virtual empty EOF row may differ in the line-level sequence but
+    // have no actual characters. It must not become a phantom text edit.
+    if (beforeText.slice(block.beforeStart, block.beforeEnd) !== afterText.slice(block.afterStart, block.afterEnd)) {
+      blocks.push(Object.freeze(block));
+    }
+    pending = null;
+  }
+  for (const step of steps) {
+    if (step.kind === 'context') flush();
+    else if (!pending) pending = { old: oldIndex, next: newIndex };
+    if (step.before) oldIndex++;
+    if (step.after) newIndex++;
+  }
+  flush();
+  return { ok: true, blocks: Object.freeze(blocks) };
 }

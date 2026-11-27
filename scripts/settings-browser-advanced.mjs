@@ -378,4 +378,35 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     await button('Undo last identifier edits', panel);
     await wait(() => !document.querySelector('.monaco-editor .view-lines')?.textContent.includes('new_counter'), 'identifier edits undone');
   });
+  await step('open-buffer comparison transfers selected text from a second open source', async () => {
+    // Compare with the initial empty saved snapshot of the unsaved browser tab.
+    const panel = '.open-buffer-comparison';
+    await click(panel + ' .insights-toggle');
+    const target = await textValue('select[aria-label="Target buffer"]');
+    await change('select[aria-label="Reference buffer"]', target);
+    await change('select[aria-label="Reference version"]', 'saved');
+    await button('Compare selected snapshots', panel);
+    await button('Review exact transfer blocks', panel);
+    await visible('.buffer-transfer-block');
+    await button('Select all transfer blocks', panel);
+    await button('Review selected transfer', panel);
+    await button('Confirm buffer transfer', panel);
+    await wait(() => !document.querySelector('.monaco-editor .view-lines')?.textContent.includes('old_counter'), 'working text replaced by saved snapshot');
+    await button('Undo last buffer transfer', panel);
+    await wait(() => document.querySelector('.monaco-editor .view-lines')?.textContent.includes('old_counter'), 'working buffer restored');
+  });
+  await step('Explorer tool directory filters mounted tools without losing their state', async () => {
+    await change('input[aria-label="Search Explorer tools"]', 'line tools');
+    await wait(() => document.querySelector('#explorer-tool-imports').hidden && !document.querySelector('#explorer-tool-line-tools').hidden, 'tool filter');
+    await button('Browse tool index', '.tool-directory-controls');
+    await click('button[aria-label="Pin Line tools"]');
+    await button('Show all tools', '.tool-directory-controls');
+    await change('select[aria-label="Explorer tool category"]', 'pinned');
+    await wait(() => document.querySelector('#explorer-tool-symbols').hidden && !document.querySelector('#explorer-tool-line-tools').hidden, 'pinned filter');
+    await change('select[aria-label="Explorer tool category"]', 'analysis');
+    await button('Line tools', '[aria-label="Pinned Explorer tools"]');
+    await wait(() => !document.querySelector('#explorer-tool-line-tools').hidden, 'reveal hidden pinned tool');
+    await button('Reset tool directory view', '.tool-directory-controls');
+    await wait(() => Array.from(document.querySelectorAll('.explorer-tool-slot')).every(slot=>!slot.hidden), 'all tools restored');
+  });
 }
