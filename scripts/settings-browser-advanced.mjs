@@ -177,7 +177,11 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     // Use a real editor input event, not a synthetic internal App state write.
     await cdp.send('Input.insertText', { text: 'print(7);  ' });
     const panel = '.quality-panel';
-    await button('Inspect source quality', panel);
+    // The disclosure includes a decorative arrow, so use its stable selector.
+    if (await evaluate(() => document.querySelector('#scarp-explorer').classList.contains('sidebar-hidden'))) {
+      await click('button[aria-controls="scarp-explorer"]');
+    }
+    await click(panel + ' .insights-toggle');
     await wait(() => document.querySelector('.quality-findings')?.textContent.includes('Trailing whitespace'),
       'source quality finds trailing spaces');
     await button('Select matching cleanup', panel);
