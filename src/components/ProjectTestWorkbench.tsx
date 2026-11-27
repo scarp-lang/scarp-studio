@@ -1,3 +1,4 @@
+import { selectionCoverageLabel } from '../model/projectTestSelection';
 import { useMemo, useState } from 'react';
 import type { TestSourceListing } from '../model/projectTestNavigation';
 import { buildTestTextReport, captureTestBaseline, compareProjectTestBaseline, DEFAULT_TEST_FILTER,
@@ -51,6 +52,8 @@ export function ProjectTestWorkbench({ result, selection, historical, busy, base
       <span>{result.report.discovered} total · {result.report.passed} passed · {result.report.failed} failed</span>
       <button type="button" onClick={onHide} title="Hide the structured project test summary">Hide</button>
     </header>
+    <p role="status">{selectionCoverageLabel(result.report)}</p>
+    {result.report.filter !== undefined && result.report.mode === 'run' && result.report.discovered === 0 && <p role="alert">No tests matched. Strict filtered execution did not pass.</p>}
     {historical && <p role="status">Historical results. Save changed sources and rerun before navigation or baseline comparison.</p>}
     {result.report.mode === 'list' && <p role="status">Discovery only. Listed tests have not been executed.</p>}
     <dl className="activity-metrics">
@@ -126,10 +129,10 @@ export function ProjectTestWorkbench({ result, selection, historical, busy, base
         Comparisons describe reported outcomes, not proof that the source or environment is unchanged.</p>
       {baseline && <p>Baseline: {baseline.cases.length} tests, captured {new Date(baseline.capturedAt).toLocaleTimeString()}.</p>}
       <div className="test-workbench-filters">
-        <button type="button" disabled={busy || historical || result.report.mode !== 'run'} onClick={() => {
+        <button type="button" disabled={busy || historical || result.report.mode !== 'run' || result.report.filter !== undefined} onClick={() => {
           setClearReview(null); setBaselineReview(reviewTestBaseline(result, baseline, historical)); setNotice('');
         }}>Review capture test baseline</button>
-        <button type="button" disabled={busy || historical || !baseline || result.report.mode !== 'run'} aria-expanded={compare}
+        <button type="button" disabled={busy || historical || !baseline || result.report.mode !== 'run' || result.report.filter !== undefined} aria-expanded={compare}
           onClick={() => { setCompare(value => !value); setComparePage(1); }}>
           {compare ? 'Hide test comparison' : 'Compare with test baseline'}
         </button>

@@ -122,6 +122,7 @@ import { ProjectInfoPanel } from './components/ProjectInfoPanel';
 import { parseProjectInfo, projectInfoEntry, type ProjectInfoSnapshot } from './model/projectInfo';
 import { CompilerNavigationPanel } from './components/CompilerNavigationPanel';
 import { parseCompilerNavigation, type CompilerNavigationReport } from './model/compilerNavigation';
+import { ProjectTestSelectionPanel } from './components/ProjectTestSelectionPanel';
 import { ProjectTestWorkbench } from './components/ProjectTestWorkbench';
 import type { TestBaseline } from './model/projectTestWorkbench';
 import {
@@ -2233,7 +2234,7 @@ export default function App() {
       : 'Selected workspace root for project commands');
   }
 
-  async function runProjectAction(action: ScarpProjectAction): Promise<void> {
+  async function runProjectAction(action: ScarpProjectAction, testFilter?: string): Promise<void> {
     if (!isTauri() || commandInProgress.current || selectionInProgress.current ||
         saveInProgress.current || filePickerInProgress.current ||
         nativeDialogGate.current.isActive) return;
@@ -2302,6 +2303,7 @@ export default function App() {
         compilerPath, selectedProjectPath, action,
         action === 'run' ? stdinText : '',
         action === 'run' && promptInputMode,
+        testFilter,
       );
       const freshness = projectResultFreshness(
         action,
@@ -2323,7 +2325,7 @@ export default function App() {
       // Trust the schema, requested command AND exact native process exit.
       // An incongruent test report cannot present a fabricated pass/fail.
       const structured = freshness.allowStructuredTests
-        ? parseScarpTestReportForAction(output.testReportJson, action, output.exitCode)
+        ? parseScarpTestReportForAction(output.testReportJson, action, output.exitCode, testFilter)
         : null;
       if (structured) {
         setProjectTestResult({ folder: selectedProjectPath, report: structured });
@@ -3755,6 +3757,10 @@ export default function App() {
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
                   dirtySelectedProjectSources.length > 0}
                 title="Explicitly execute saved project tests; save edited project sources first">Run Tests</button>
+              {selectedProjectPath && <ProjectTestSelectionPanel key={selectedProjectPath} folder={selectedProjectPath}
+                busy={busy || compilerBusy || compilerSelecting || compilerScanning || !compilerPath || !selectedProjectHasManifest}
+                report={projectTestResult && isSelectedProjectTestReport(projectTestResult.folder,selectedProjectPath) ? projectTestResult.report : null}
+                onCommand={(action,filter)=>void runProjectAction(action,filter)} />}
               <button type="button" onClick={() => void runProjectAction('inspect-symbols')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
                   dirtySelectedProjectSources.length > 0}
