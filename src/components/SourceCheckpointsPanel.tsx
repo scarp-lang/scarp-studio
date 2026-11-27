@@ -6,7 +6,7 @@ import {
   MAX_CHECKPOINT_LABEL_UNITS, MAX_CHECKPOINTS_PER_TAB, MAX_SOURCE_CHECKPOINTS, MAX_CHECKPOINT_TOTAL_BYTES,
   type createSourceCheckpointStore, type CheckpointCaptureReview, type CheckpointRestoreReview, type CheckpointRemovalReview,
 } from '../model/sourceCheckpoints';
-import type { SourceDiffReport } from '../model/sourceDiff';
+import { splitSnapshotLines, type SourceDiffReport } from '../model/sourceDiff';
 
 interface Props {
   editor: EditorState;
@@ -19,9 +19,11 @@ interface Props {
   onUndo: () => void;
   initiallyExpanded?: boolean;
 }
-function CheckpointDiff({ report, showContext }: { report: SourceDiffReport; showContext: boolean }) {
+function CheckpointDiff({ report, showContext, before, after }: { report: SourceDiffReport; showContext: boolean; before: string; after: string }) {
   if (report.status === 'clean') return <p role="status">The current buffer matches the checkpoint exactly.</p>;
   if (report.status === 'limited') return <p role="status">{report.message}</p>;
+  const beforeLines = splitSnapshotLines(before), afterLines = splitSnapshotLines(after);
+  const endingLabel = (ending: string | undefined) => ending === '\r\n' ? 'CRLF' : ending === '\r' ? 'CR' : ending === '\n' ? 'LF' : 'EOF';
   return <div className="checkpoint-diff">
     <p role="status">+{report.addedLines} / −{report.removedLines} lines on restore · {report.hunkCount} change group(s)</p>
     {report.message && <p role="status">{report.message}</p>}
@@ -32,7 +34,7 @@ function CheckpointDiff({ report, showContext }: { report: SourceDiffReport; sho
           <div className={'changes-line changes-line-' + line.kind} key={index}>
             <span className="changes-line-marker" aria-hidden="true">{line.kind === 'added' ? '+' : line.kind === 'removed' ? '−' : '·'}</span>
             <span className="changes-line-number">{line.kind === 'removed' ? line.beforeLine : line.afterLine}</span>
-            <code>{line.preview}{line.previewTruncated ? '…' : ''}</code>
+            <code>{line.preview}{line.previewTruncated ? '…' : ''} <small className="checkpoint-eol">[{endingLabel(line.kind === 'removed' ? beforeLines[(line.beforeLine ?? 1) - 1]?.ending : afterLines[(line.afterLine ?? 1) - 1]?.ending)}]</small></code>
           </div>)}
       </div>
     </section>)}
@@ -105,7 +107,7 @@ export function SourceCheckpointsPanel({ editor, store, busy, undoAvailable, onC
             <strong>{selected.label}</strong>
             <p>Compare current text with this checkpoint. Added and removed lines describe the proposed restoration.</p>
             <label><input type="checkbox" checked={showContext} onChange={event => setShowContext(event.target.checked)}/> Show unchanged context</label>
-            {report?.ok && <CheckpointDiff report={report.value} showContext={showContext} />}
+            {report?.ok && <CheckpointDiff report={report.value} showContext={showContext} before={active.content} after={selected.content} />}
             {report && !report.ok && <p role="status">{report.error}</p>}
             <button type="button" aria-expanded={showSource} onClick={() => setShowSource(value => !value)}>
               {showSource ? 'Hide checkpoint source' : 'Inspect checkpoint source'}
