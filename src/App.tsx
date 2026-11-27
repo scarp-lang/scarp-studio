@@ -44,6 +44,8 @@ import { verifiedProblemMarker } from './model/problemMarkers';
 import { collectProblems, currentDiagnosticTarget, sameDiagnosticTarget, type StudioProblem, type ProblemTarget } from './model/problems';
 import { ProblemsPanel } from './components/ProblemsPanel';
 import { ProjectExplorer } from './components/ProjectExplorer';
+import { WorkspaceDiskReviewPanel } from './components/WorkspaceDiskReviewPanel';
+import { diskOperationCurrent, inspectWorkspaceDisk, prepareWorkspaceDiskReload, type WorkspaceDiskReview, type WorkspaceDiskResult } from './model/workspaceDiskReview';
 import { OpenEditorManager } from './components/OpenEditorManager';
 import { resolveBulkClose, type TabSelection } from './model/openEditorManagement';
 import { ProjectScaffoldPanel } from './components/ProjectScaffoldPanel';
@@ -313,7 +315,7 @@ export default function App() {
     }
     // A successful Save or an explicitly confirmed discard must retire its
     // checkpoint immediately, rather than waiting for the next typing delay.
-    if (action.type === 'saved' || action.type === 'reload' || action.type === 'close') {
+    if (action.type === 'saved' || action.type === 'reload' || action.type === 'reload-clean-files' || action.type === 'close') {
       flushDraftRecovery(true);
     }
   }
@@ -1561,6 +1563,42 @@ export default function App() {
       setError('Could not read folder file: ' + toMessage(caught));
     } finally {
       filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function scanOpenFilesOnDisk(): Promise<WorkspaceDiskResult<WorkspaceDiskReview>> {
+    if (!isTauri() || recoveryOperationsBlocked() || compilerScanning)
+      return {ok:false,error:'Finish the current native operation before checking open files.'};
+    const start=liveEditor.current;
+    filePickerInProgress.current=true;
+    setBusy(true);
+    try {
+      return await inspectWorkspaceDisk(start,readScarpSource,()=>diskOperationCurrent(start,liveEditor.current));
+    } finally {
+      filePickerInProgress.current=false;
+      setBusy(false);
+    }
+  }
+
+  async function reloadReviewedCleanFiles(review:WorkspaceDiskReview,ids:readonly string[]):Promise<WorkspaceDiskResult<number>>{
+    if(!isTauri()||recoveryOperationsBlocked()||compilerScanning)
+      return {ok:false,error:'Finish the current native operation before reloading files.'};
+    const start=liveEditor.current;
+    filePickerInProgress.current=true;
+    setBusy(true);
+    try{
+      const result=await prepareWorkspaceDiskReload(review,ids,start,readScarpSource,()=>diskOperationCurrent(start,liveEditor.current));
+      if(!result.ok)return result;
+      if(!diskOperationCurrent(start,liveEditor.current))return {ok:false,error:'Editor changed. No files reloaded.'};
+      const action:EditorAction={type:'reload-clean-files',changes:result.value,allSnapshots:start.documents};
+      const before=liveEditor.current;
+      dispatch(action);
+      if(before===liveEditor.current)return {ok:false,error:'Reload was rejected. No buffers changed.'};
+      setNotice('Reloaded '+result.value.length+' reviewed clean source tab(s).');
+      return {ok:true,value:result.value.length};
+    }finally{
+      filePickerInProgress.current=false;
       setBusy(false);
     }
   }
@@ -3158,6 +3196,9 @@ export default function App() {
           <OpenEditorManager documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             onActivate={activateManagedTab} onClose={closeSelectedCleanTabs} />
+          <WorkspaceDiskReviewPanel editor={editorState} native={isTauri()}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onScan={scanOpenFilesOnDisk} onReload={reloadReviewedCleanFiles} />
           </ExplorerToolSlot>
           <ExplorerToolSlot id="recently-closed">
           <RecentlyClosedPanel entries={recentlyClosed.entries}

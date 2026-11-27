@@ -46,6 +46,7 @@ export type EditorAction =
   | { type: 'edit'; id: string; content: string }
   | { type: 'saved'; id: string; path: string; savedContent: string }
   | { type: 'reload'; id: string; snapshot: StudioDocument; content: string }
+  | { type: 'reload-clean-files'; changes: readonly BufferReplacement[]; allSnapshots: readonly StudioDocument[] }
   | { type: 'replace-open-files'; changes: readonly BufferReplacement[]; allSnapshots: readonly StudioDocument[] }
   | { type: 'activate'; id: string }
   | { type: 'close'; id: string; snapshot: StudioDocument }
@@ -211,6 +212,22 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
                 revision: doc.revision + 1 }
             : doc,
         ),
+      };
+    }
+    case 'reload-clean-files': {
+      if (!sameOpenDocumentSnapshots(action.allSnapshots, state.documents) ||
+          !canApplyReplacementSnapshots(state, action.changes)) return state;
+      for (const change of action.changes) {
+        if (!change.snapshot.path || isDirty(change.snapshot)) return state;
+        try { assertScarpSourceText(change.content); } catch { return state; }
+      }
+      const byId = new Map(action.changes.map(change => [change.id, change.content]));
+      return {
+        ...state,
+        documents: state.documents.map(document => byId.has(document.id)
+          ? { ...document, content: byId.get(document.id)!, savedContent: byId.get(document.id)!,
+              revision: document.revision + 1 }
+          : document),
       };
     }
     case 'replace-open-files': {
