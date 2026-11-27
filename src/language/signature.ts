@@ -1,3 +1,4 @@
+import { explicitCallOpenOffset, formatLocalFunctionName } from './genericSyntax';
 import { MAX_ASSIST_SCAN_UNITS } from './assist';
 import { indexLocalFunctionHeaders, MAX_DEFINITION_SOURCE_UNITS, type LocalFunctionHeader } from './definition';
 import { blocksIndirectCall, blocksLocalFunctionName } from './localCallContext';
@@ -59,6 +60,13 @@ export function activeLocalCall(source: string, offset: number): { name: string;
       while (i < offset && /[A-Za-z_0-9]/.test(source[i])) i++;
       remember(source.slice(start, i));
       continue;
+    }
+    if (char === ':' && source[i+1] === ':' && /^[A-Za-z_][A-Za-z_0-9]*$/.test(last)) {
+      // Preserve the function name and its qualification context until the
+      // actual value-argument parenthesis. Type commas are not arguments.
+      const next = explicitCallOpenOffset(source,i,offset);
+      if (next !== null) { i=next; continue; }
+      if (/^::\s*</.test(source.slice(i,Math.min(offset,i+MAX_SIGNATURE_HEADER_UNITS)))) return null;
     }
     if (char === '(' || char === '[' || char === '{') {
       const named = char === '(' && /^[A-Za-z_][A-Za-z_0-9]*$/.test(last);
@@ -148,7 +156,7 @@ export function localSignatureFromCall(call: { name: string; argument: number },
   if (matches.length !== 1) return null;
   const parameters = readParameters(matches[0].openOffset);
   if (!parameters || call.argument >= Math.max(1, parameters.length)) return null;
-  return { name: call.name, label: call.name + '(' + parameters.join(', ') + ')',
+  return { name: call.name, label: formatLocalFunctionName(call.name,matches[0].typeParameters) + '(' + parameters.join(', ') + ')',
     parameters: [...parameters], activeParameter: call.argument };
 }
 

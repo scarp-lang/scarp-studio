@@ -3,6 +3,7 @@ import {
   type ScarpFunctionSymbol,
 } from './assist';
 import { scanScarpSource, tokenAtOffset, scarpInsightIdentifier, type SourceLexResult, type InsightToken } from './sourceLex';
+import { genericParameterHeader, functionCallOpenIndex } from './genericSyntax';
 import { blocksLocalFunctionName } from './localCallContext';
 
 /** Editor-only, bounded lookup for unqualified function calls. It is not
@@ -15,6 +16,7 @@ export function scarpCallNameAt(line: string, column: number): string | null {
   const offset = column - 1;
   if (!Number.isSafeInteger(column) || offset < 0 || offset >= line.length ||
       line.length > MAX_ASSIST_SCAN_UNITS || !isScarpCodePosition(line, offset)) return null;
+  if (line.includes('::')) return scarpCallNameAtOffset(line,offset);
   for (const match of line.matchAll(/[A-Za-z_][A-Za-z_0-9]*/g)) {
     const start = match.index;
     const end = start + match[0].length;
@@ -52,14 +54,10 @@ export function scarpCallNameFromLexical(source: string, offset: number,
   const token = tokenAtOffset(lexical.tokens, offset);
   if (!token || token.kind !== 'identifier' || token.previewTruncated ||
       !scarpInsightIdentifier(token.text) || token.column > MAX_ASSIST_SCAN_UNITS) return null;
-  const index = lexical.tokens.indexOf(token);
-  let previous = index - 1;
-  while (previous >= 0 && lexical.tokens[previous].kind === 'comment') previous--;
-  let next = index + 1;
-  while (next < lexical.tokens.length && lexical.tokens[next].kind === 'comment') next++;
-  const before = lexical.tokens[previous];
-  const after = lexical.tokens[next];
-  if (!after || after.kind !== 'delimiter' || after.text !== '(') return null;
+  const tokens = lexical.tokens.filter(item => item.kind !== 'comment');
+  const index = tokens.indexOf(token);
+  const before = tokens[index - 1];
+  if (functionCallOpenIndex(tokens,index) === null) return null;
   if (before && (before.kind === 'identifier' || before.kind === 'operator') &&
       blocksLocalFunctionName(before.text)) return null;
   // Unsupported adjacent non-ASCII identifier characters must not make a
@@ -76,6 +74,7 @@ export function scarpCallNameFromLexical(source: string, offset: number,
  */
 export interface LocalFunctionHeader extends ScarpFunctionSymbol {
   openOffset: number;
+  typeParameters?: readonly string[];
 }
 
 export const MAX_LOCAL_DECLARATION_NESTING = 128;
@@ -95,11 +94,22 @@ export function indexLocalFunctionHeaders(source: string,
   let previous: InsightToken | undefined;
   let state: 'idle' | 'name' | 'open' = 'idle';
   let pending: InsightToken | undefined;
-  for (const token of lexical.tokens) {
-    if (token.kind === 'comment') continue;
+  const tokens = lexical.tokens.filter(token => token.kind !== 'comment');
+  for (let index=0; index<tokens.length; index++) {
+    let token = tokens[index];
     // The current local analysis recognizes ASCII code tokens only. Never
     // reinterpret unsupported code units as an independent declaration.
     if (token.kind !== 'string' && /[^\x20-\x7e]/.test(token.text)) return null;
+    let typeParameters: readonly string[] | undefined;
+    if (stack.length === 0 && state === 'open' && pending && token.text === '<') {
+      const generic = genericParameterHeader(tokens,index);
+      // An incomplete or unsupported generic declaration could hide a
+      // duplicate name; do not return an apparently exhaustive index.
+      if (!generic) return null;
+      typeParameters = generic.labels;
+      index = generic.openIndex;
+      token = tokens[index];
+    }
     if (stack.length === 0) {
       if (state === 'name' && token.kind === 'identifier' &&
           !token.previewTruncated && scarpInsightIdentifier(token.text)) {
@@ -107,7 +117,8 @@ export function indexLocalFunctionHeaders(source: string,
         state = 'open';
       } else if (state === 'open' && pending && token.kind === 'delimiter' && token.text === '(') {
         symbols.push({ name: pending.text, line: pending.line, startColumn: pending.column,
-          endColumn: pending.column + pending.end - pending.start, openOffset: token.start });
+          endColumn: pending.column + pending.end - pending.start, openOffset: token.start,
+          ...(typeParameters ? {typeParameters} : {}) });
         if (symbols.length >= MAX_SCARP_OUTLINE_SYMBOLS) return null;
         state = 'idle';
         pending = undefined;
@@ -135,7 +146,7 @@ export function indexLocalFunctionHeaders(source: string,
 }
 
 export function indexLocalFunctionDefinitions(source: string): ScarpFunctionSymbol[] | null {
-  return indexLocalFunctionHeaders(source)?.map(({ openOffset: _openOffset, ...symbol }) => symbol) ?? null;
+  return indexLocalFunctionHeaders(source)?.map(({ openOffset: _openOffset, typeParameters: _typeParameters, ...symbol }) => symbol) ?? null;
 }
 
 export function findLocalFunctionDefinition(

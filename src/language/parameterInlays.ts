@@ -1,3 +1,4 @@
+import { explicitTypeArguments, genericParameterHeader } from './genericSyntax';
 import type { InlayHintMode } from '../model/intelliSensePreferences';
 import { MAX_ASSIST_SCAN_UNITS } from './assist';
 import { blocksIndirectCall, blocksLocalFunctionName } from './localCallContext';
@@ -64,9 +65,25 @@ export function collectParameterInlays(source: string, lex: SourceLexResult,
       hints.push({ offset: argument.first.start, label });
     }
   }
-  for (const token of lex.tokens) {
-    if (token.kind === 'comment') continue;
+  const tokens=lex.tokens.filter(token=>token.kind!=='comment');
+  for (let index=0; index<tokens.length; index++) {
+    const token=tokens[index];
     const frame = frames.at(-1);
+    // Consume recognized type-only suffixes as part of the name, not as
+    // value arguments. Incomplete/ambiguous syntax still follows the
+    // conservative angle-operator invalidation below.
+    if (token.kind==='identifier' && !token.previewTruncated) {
+      const header=previous?.text==='funcra'?genericParameterHeader(tokens,index+1):null;
+      const explicit=explicitTypeArguments(tokens,index+1);
+      const open=header?.openIndex??explicit?.openIndex;
+      if(open!==undefined){
+        append(frame,token);
+        beforePrevious=previous;
+        previous=token;
+        index=open-1;
+        continue;
+      }
+    }
     if (token.kind === 'delimiter' && ['(', '[', '{'].includes(token.text)) {
       append(frame, token);
       const named = token.text === '(' && previous?.kind === 'identifier' &&
