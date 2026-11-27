@@ -395,4 +395,18 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     await button('Undo last buffer transfer', panel);
     await wait(() => document.querySelector('.monaco-editor .view-lines')?.textContent.includes('old_counter'), 'working buffer restored');
   });
+  await step('Explorer tool directory filters mounted tools without losing their state', async () => {
+    await change('input[aria-label="Search Explorer tools"]', 'line tools');
+    await wait(() => document.querySelector('#explorer-tool-imports').hidden && !document.querySelector('#explorer-tool-line-tools').hidden, 'tool filter');
+    await button('Browse tool index', '.tool-directory-controls');
+    await click('button[aria-label="Pin Line tools"]');
+    await button('Show all tools', '.tool-directory-controls');
+    await change('select[aria-label="Explorer tool category"]', 'pinned');
+    await wait(() => document.querySelector('#explorer-tool-symbols').hidden && !document.querySelector('#explorer-tool-line-tools').hidden, 'pinned filter');
+    await change('select[aria-label="Explorer tool category"]', 'analysis');
+    await button('Line tools', '[aria-label="Pinned Explorer tools"]');
+    await wait(() => !document.querySelector('#explorer-tool-line-tools').hidden, 'reveal hidden pinned tool');
+    await button('Reset tool directory view', '.tool-directory-controls');
+    await wait(() => Array.from(document.querySelectorAll('.explorer-tool-slot')).every(slot=>!slot.hidden), 'all tools restored');
+  });
 }

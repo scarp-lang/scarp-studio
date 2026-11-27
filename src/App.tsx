@@ -54,6 +54,7 @@ import { SourceQualityPanel } from './components/SourceQualityPanel';
 import { LineRangeToolsPanel } from './components/LineRangeToolsPanel';
 import { IdentifierEditPanel } from './components/IdentifierEditPanel';
 import { OpenBufferComparisonPanel } from './components/OpenBufferComparisonPanel';
+import { ExplorerToolDirectory, ExplorerToolSlot } from './components/ExplorerToolDirectory';
 import { bufferTransferIsCurrent, type BufferTransferPlan } from './model/openBufferComparison';
 import { identifierPlanIsCurrent, type IdentifierEditPlan } from './model/identifierEdit';
 import { lineRangePlanIsCurrent, type LineRangePlan } from './model/lineRangeTools';
@@ -2965,11 +2966,6 @@ export default function App() {
           ) : (
             <div className="sidebar-note">Choose a folder to browse its .srp files.</div>
           )}
-          <WorkspaceSessionPanel key={folderPath ?? 'no-workspace'} root={folderPath}
-            files={folderEntries} documents={documents} activeId={activeId}
-            view={workspaceSessionView} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
-            onRemember={rememberWorkspaceTabs} onRestore={(session, plan) => void restoreWorkspaceTabs(session, plan)}
-            onForget={forgetWorkspaceTabs} onClearAll={clearRememberedWorkspaces} />
           <section className="sidebar-section open-editors">
             <div className="sidebar-heading">OPEN EDITORS</div>
             {documents.map((document) => (
@@ -2992,13 +2988,26 @@ export default function App() {
             ))}
             {!documents.length && <p className="sidebar-note">No files open.</p>}
           </section>
+          <ExplorerToolDirectory>
+          <ExplorerToolSlot id="sessions">
+          <WorkspaceSessionPanel key={folderPath ?? 'no-workspace'} root={folderPath}
+            files={folderEntries} documents={documents} activeId={activeId}
+            view={workspaceSessionView} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onRemember={rememberWorkspaceTabs} onRestore={(session, plan) => void restoreWorkspaceTabs(session, plan)}
+            onForget={forgetWorkspaceTabs} onClearAll={clearRememberedWorkspaces} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="manage-tabs">
           <OpenEditorManager documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             onActivate={activateManagedTab} onClose={closeSelectedCleanTabs} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="recently-closed">
           <RecentlyClosedPanel entries={recentlyClosed.entries}
             busy={!isTauri() || busy || compilerBusy || compilerSelecting || compilerScanning}
             onReopen={entry => void reopenClosedSource(entry)}
             onForget={forgetClosedSource} onClear={clearClosedSources} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="outline">
           <section className="sidebar-section" aria-label="Scarp declaration outline">
             <div className="sidebar-heading">DECLARATION OUTLINE</div>
             <button type="button" className="file-row" disabled={!active}
@@ -3022,52 +3031,82 @@ export default function App() {
             {declarationOutline.length >= 500 &&
               <p className="sidebar-note" role="status">Declaration outline limited to 500 entries.</p>}
           </section>
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="insights">
           <SourceInsightsPanel document={active} onNavigate={jumpToSourceInsight} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="quality">
           <SourceQualityPanel documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!qualityUndo && canUndoOpenFileReplace(qualityUndo, editorState)}
             onNavigate={jumpToSourceInsight} onApply={applyQualityCleanup} onUndo={undoQualityCleanup} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="identifier-edit">
           <IdentifierEditPanel editor={editorState} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!identifierUndo && canUndoOpenFileReplace(identifierUndo, editorState)}
             onApply={applyIdentifierEdit} onUndo={undoIdentifierEdit} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="line-tools">
           <LineRangeToolsPanel editor={editorState} cursorLine={cursor.line}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!lineRangeUndo && canUndoOpenFileReplace(lineRangeUndo, editorState)}
             onApply={applyLineRange} onUndo={undoLineRange} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="working-changes">
           <WorkingChangesPanel document={active} onNavigate={jumpToSourceInsight} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="compare-buffers">
           <OpenBufferComparisonPanel editor={editorState} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!bufferTransferUndo && canUndoOpenFileReplace(bufferTransferUndo, editorState)}
             onApply={applyBufferTransfer} onUndo={undoBufferTransfer} onNavigate={jumpToSourceInsight} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="checkpoints">
           <SourceCheckpointsPanel editor={editorState} store={sourceCheckpoints}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             undoAvailable={!!checkpointUndo && canUndoOpenFileReplace(checkpointUndo, editorState)}
             onCapture={captureSourceCheckpoint} onRestore={restoreSourceCheckpoint}
             onRemove={removeSourceCheckpoints} onUndo={undoSourceCheckpointRestore} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="imports">
           <SourceImportsPanel documents={documents} listed={folderEntries}
             activeId={activeId} busy={busy || compilerBusy || compilerSelecting}
             onOpen={path => void openFolderFile(path)} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="bookmarks">
           <SourceBookmarksPanel documents={documents} bookmarks={bookmarks}
             activeId={activeId} cursor={cursor}
             busy={busy || compilerBusy || compilerSelecting}
             onAdd={addCurrentBookmark}
             onRemove={id => setBookmarks(previous => removeSourceBookmark(previous, id))}
             onNavigate={jumpToBookmark} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="workspace-insights">
           <WorkspaceInsightsPanel documents={documents} listed={folderEntries}
             roots={projectRoots} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting}
             onActivate={id => dispatch({ type: 'activate', id })} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="symbols">
           <WorkspaceSymbolsPanel documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             onNavigate={jumpToSourceInsight} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="trail">
           <NavigationTrailPanel store={navigationTrail} documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             onMark={markTrailCursor} onMove={replayTrailMove} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="references">
           <CodeReferencesPanel documents={documents} activeId={activeId}
             cursor={cursor} busy={busy || compilerBusy || compilerSelecting}
             onNavigate={jumpToSourceInsight} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="tasks">
           <WorkspaceTaskBoard documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting}
             onNavigate={jumpToSourceInsight} />
+          </ExplorerToolSlot>
+          </ExplorerToolDirectory>
         </aside>
 
         {explorerVisible && <WorkspaceSplitter dimension="explorerWidth" value={workspaceLayout.explorerWidth}

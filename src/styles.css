@@ -1748,3 +1748,17 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .buffer-transfer-block {display:grid;gap:4px;border:1px solid currentColor;padding:6px;min-width:0;}
 .buffer-transfer-block code {white-space:pre-wrap;overflow-wrap:anywhere;unicode-bidi:isolate;max-height:14rem;overflow:auto;}
 .open-buffer-comparison button:focus-visible,.open-buffer-comparison select:focus-visible,.open-buffer-comparison input:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
+
+
+.explorer-tool-directory {min-width:0;}
+.explorer-tool-slot[hidden],#explorer-tool-directory-index[hidden] {display:none!important;}
+.tool-directory-controls {display:grid;gap:6px;min-width:0;padding-bottom:8px;}
+.tool-directory-controls label {display:grid;gap:3px;}
+.tool-directory-controls input,.tool-directory-controls select {width:100%;box-sizing:border-box;min-width:0;}
+.tool-directory-actions,.tool-directory-shortcuts {display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
+.tool-directory-shortcuts strong {font-size:11px;flex-basis:100%;}
+.tool-directory-entry {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;margin-block:4px;}
+.tool-directory-reveal {display:grid;gap:3px;text-align:left;overflow-wrap:anywhere;min-width:0;}
+.tool-directory-reveal span {font-size:11px;line-height:1.35;}
+.tool-directory-controls p {margin:3px 0;font-size:11px;}
+.explorer-tool-slot:focus {outline:2px solid var(--accent);outline-offset:-2px;}
