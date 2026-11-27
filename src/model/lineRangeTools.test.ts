@@ -149,7 +149,7 @@ describe('exact line transformation commit and undo', () => {
 
 describe('separator fusion and exact preview safety', () => {
   it('refuses to fuse an interior CR and LF when an empty line is moved between them', () => {
-    const result = planLineRange(editor('z\ra\n\rx'), {
+    const result = planLineRange(editor('a\rz\n\rx'), {
       ...DEFAULT_RANGE_REQUEST, first: 1, last: 3, operation: 'sort-descending',
     });
     // Sorting puts the empty line last, not between CR and LF.
