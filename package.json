@@ -11,7 +11,7 @@
     "test": "vitest run",
     "tauri": "tauri",
     "check:release-candidate": "node scripts/check-release-candidate.mjs",
-    "test:release-candidate": "node --test scripts/check-release-candidate.node-tests.mjs scripts/windows-acceptance-report.node-tests.mjs",
+    "test:release-candidate": "node --test scripts/check-release-candidate.node-tests.mjs scripts/windows-acceptance-report.node-tests.mjs scripts/settings-browser-harness.node-tests.mjs",
     "test:settings-browser": "node scripts/settings-browser-smoke.mjs"
   },
   "dependencies": {
