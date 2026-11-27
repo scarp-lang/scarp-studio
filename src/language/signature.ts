@@ -66,7 +66,7 @@ export function activeLocalCall(source: string, offset: number): { name: string;
       // actual value-argument parenthesis. Type commas are not arguments.
       const next = explicitCallOpenOffset(source,i,offset);
       if (next !== null) { i=next; continue; }
-      if (source.slice(i,Math.min(offset,i+3)) === '::<') return null;
+      if (/^::\s*</.test(source.slice(i,Math.min(offset,i+MAX_SIGNATURE_HEADER_UNITS)))) return null;
     }
     if (char === '(' || char === '[' || char === '{') {
       const named = char === '(' && /^[A-Za-z_][A-Za-z_0-9]*$/.test(last);
