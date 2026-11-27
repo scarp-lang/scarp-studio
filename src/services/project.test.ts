@@ -53,3 +53,19 @@ describe('Scarp project command bridge', () => {
   });
 
 });
+
+describe('native project outcome', () => {
+  it('rejects structured test reports on cancelled or truncated results', async () => {
+    for (const flags of [[0, true, false, false], [0, false, true, false]]) {
+      vi.mocked(invoke).mockResolvedValue(['output', '{}', 0, flags]);
+      expect((await scarpProjectAction('C:/scarp.exe', 'C:/project', 'run-tests')).testReportJson).toBeNull();
+    }
+  });
+  it('rejects conflicting exit codes and malformed new-format metadata', async () => {
+    for (const flags of [[1, false, false, false], [0, false]]) {
+      vi.mocked(invoke).mockResolvedValue(['output', '{}', 0, flags]);
+      expect(await scarpProjectAction('C:/scarp.exe', 'C:/project', 'run-tests'))
+        .toEqual({ output: 'output', testReportJson: null, exitCode: null });
+    }
+  });
+});

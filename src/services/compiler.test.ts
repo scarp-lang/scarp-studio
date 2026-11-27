@@ -60,3 +60,17 @@ describe('Scarp native invoke input contract', () => {
     });
   });
 });
+
+describe('native single-source outcome', () => {
+  it('exposes exit code and flags separately from raw display output', async () => {
+    vi.mocked(invoke).mockResolvedValue(['fake exit zero', null, [1, false, false, true]]);
+    await expect(executeScarp('C:/scarp.exe', 'C:/main.srp', 'exec', '', ''))
+      .resolves.toMatchObject({ nativeOutcome: { exitCode: 1, cancelled: false, outputTruncated: false, sourceStale: true } });
+  });
+  it.each([[1, true, false, false], [1, false, true, false], [1, false, false, true],
+    [0, false, false, false], [null, false, false, false]])('suppresses non-authoritative Verify diagnostics: %j', async (...metadata) => {
+    vi.mocked(invoke).mockResolvedValue(['output', 'diagnostic', metadata]);
+    const result = await executeScarp('C:/scarp.exe', 'C:/main.srp', 'verify', '', '');
+    expect(result.diagnosticStderr).toBeNull();
+  });
+});

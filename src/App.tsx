@@ -2021,9 +2021,9 @@ export default function App() {
       // The compiler operated on the saved disk snapshot captured BEFORE the
       // async probe/launch. An edit, same-content Save, Save As or close/reopen
       // while it runs makes the old output informational, not a live result.
-      const staleSource = sourceResultIsStale(verifiedSnapshot, liveEditor.current.documents);
-      compilerActivity.finish(activityToken, { timestamp: Date.now(), outcome: 'returned', exitCode: null,
-        staleAtCompletion: staleSource, inputChanged: mode === 'exec' && inputGenerationAtStart !== inputRevision.current,
+      const staleSource = sourceResultIsStale(verifiedSnapshot, liveEditor.current.documents) || result.nativeOutcome?.sourceStale === true;
+      compilerActivity.finish(activityToken, { timestamp: Date.now(), outcome: 'returned', exitCode: result.nativeOutcome?.exitCode ?? null,
+        nativeOutcome: result.nativeOutcome, staleAtCompletion: staleSource, inputChanged: mode === 'exec' && inputGenerationAtStart !== inputRevision.current,
         output: result.output });
       setCompilerOutput(staleSource
         ? '[Scarp source changed while this command ran. Output below is from an earlier saved snapshot; save edits and rerun.]\n\n' + result.output
@@ -2198,7 +2198,7 @@ export default function App() {
         { epoch: projectResultEpoch.current, listing: selectedFolderRef.current },
       );
       compilerActivity.finish(activityToken, { timestamp: Date.now(), outcome: 'returned', exitCode: output.exitCode,
-        staleAtCompletion: freshness.stale, inputChanged: action === 'run' && inputGenerationAtStart !== inputRevision.current,
+        nativeOutcome: output.nativeOutcome, staleAtCompletion: freshness.stale, inputChanged: action === 'run' && inputGenerationAtStart !== inputRevision.current,
         output: output.output });
       setCompilerOutput(freshness.warning
         ? freshness.warning + '\n\n' + output.output

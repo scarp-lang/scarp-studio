@@ -500,7 +500,7 @@ pub async fn scarp_project_action(
     stdin_text: Option<String>,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<(String, Option<String>, Option<i32>), String> {
+) -> Result<(String, Option<String>, Option<i32>, (Option<i32>, bool, bool, bool)), String> {
     let runtime = state.inner().clone();
     let reserved = reserve_job(&runtime)?;
     tauri::async_runtime::spawn_blocking(move || {
@@ -564,7 +564,7 @@ pub async fn scarp_project_action(
             );
             // The UI independently checks exit_code against the exact schema
             // counts. Do not infer success by regexing the display string.
-            Ok((display, report_json, exit_code))
+            Ok((display, report_json, exit_code, (exit_code, result.cancelled, result.truncated, false)))
         })();
         release_job(&runtime, reserved.id);
         execution
@@ -754,7 +754,7 @@ pub async fn scarp_execute(
     stdin_text: String,
     interactive: Option<bool>,
     state: tauri::State<'_, CompilerRuntime>,
-) -> Result<(String, Option<String>), String> {
+) -> Result<(String, Option<String>, (Option<i32>, bool, bool, bool)), String> {
     let runtime = state.inner().clone();
     // Claim the native execution slot before the background worker probes
     // compiler CLI support, so Stop prevents later source execution.
@@ -844,7 +844,7 @@ pub async fn scarp_execute(
                 result.stderr,
                 cap_notice
             );
-            Ok((display, diagnostic_stderr))
+            Ok((display, diagnostic_stderr, (result.status.code(), result.cancelled, result.truncated, source_stale)))
         })();
         release_job(&runtime, reserved.id);
         execution

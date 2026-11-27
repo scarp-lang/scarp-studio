@@ -271,3 +271,34 @@ describe('activity filtering and historical report', () => {
     expect(new Set(commands.map(activityCommandLabel)).size).toBe(commands.length);
   });
 });
+
+describe('native process outcome provenance', () => {
+  it('records native single-source exits without parsing the display output', () => {
+    const entry = record(enabled(), source, {
+      nativeOutcome: { exitCode: 1, cancelled: false, outputTruncated: false, sourceStale: false },
+      output: 'SUCCESS EXIT 0',
+    });
+    expect(entry).toMatchObject({ exitCode: 1, outcome: 'exit-nonzero', nativeOutputTruncated: false });
+  });
+  it('keeps cancellation distinct even when a process reports exit zero', () => {
+    const store = enabled();
+    const entry = record(store, project, {
+      nativeOutcome: { exitCode: 0, cancelled: true, outputTruncated: true, sourceStale: false },
+    });
+    expect(entry).toMatchObject({ exitCode: 0, outcome: 'cancelled', nativeOutputTruncated: true });
+    expect(summarizeActivity(store.getSnapshot().records)).toMatchObject({ cancelled: 1, nativeTruncated: 1, exitZero: 0 });
+    expect(activityMetadataReport(store.getSnapshot(), [entry])).toContain('native output truncated');
+  });
+  it('records a disk change even when the open editor generation is unchanged', () => {
+    const entry = record(enabled(), source, {
+      nativeOutcome: { exitCode: 0, cancelled: false, outputTruncated: false, sourceStale: true },
+    });
+    expect(entry.staleAtCompletion).toBe(true);
+  });
+  it('does not promote an invocation error to a process success', () => {
+    const entry = record(enabled(), source, { outcome: 'invocation-error',
+      nativeOutcome: { exitCode: 0, cancelled: false, outputTruncated: false, sourceStale: false },
+    });
+    expect(entry).toMatchObject({ exitCode: null, outcome: 'invocation-error', nativeOutputTruncated: null });
+  });
+});

@@ -91,6 +91,8 @@ export function CompilerActivityPanel({ store, native }: Props) {
       <div><dt>Exit 0</dt><dd>{summary.exitZero}</dd></div>
       <div><dt>Nonzero exit</dt><dd>{summary.exitNonzero}</dd></div>
       <div><dt>Invocation error</dt><dd>{summary.invocationErrors}</dd></div>
+      <div><dt>Native cancellation</dt><dd>{summary.cancelled}</dd></div>
+      <div><dt>Native output truncated</dt><dd>{summary.nativeTruncated}</dd></div>
       <div><dt>Changed during run</dt><dd>{summary.changed}</dd></div>
       <div><dt>Stop requests</dt><dd>{summary.stopRequests}</dd></div>
     </dl>
@@ -104,6 +106,7 @@ export function CompilerActivityPanel({ store, native }: Props) {
         <small>{record.elapsedMs === null ? 'Duration unavailable' : record.elapsedMs + ' ms'}
           {record.staleAtCompletion || record.inputChanged ? ' · Changed during invocation' : ''}
           {record.stopRequested ? ' · Stop requested' : ''}
+          {record.nativeOutputTruncated ? ' · Native output truncated' : ''}
           {record.output !== null ? ' · Output retained' : ''}</small>
       </button>)}
       {!records.length && <p>No matching recorded invocations.</p>}
@@ -122,6 +125,7 @@ export function CompilerActivityPanel({ store, native }: Props) {
         <div><dt>Finished</dt><dd>{new Date(selected.finishedAt).toLocaleString()}</dd></div>
         <div><dt>Outcome</dt><dd>{OUTCOME_LABELS[selected.outcome]}</dd></div>
         <div><dt>Exit code</dt><dd>{selected.exitCode ?? 'Unavailable'}</dd></div>
+        <div><dt>Native output cap</dt><dd>{selected.nativeOutputTruncated === null ? 'Unavailable' : selected.nativeOutputTruncated ? 'Truncated' : 'Not reported truncated'}</dd></div>
         <div><dt>Source/project changed</dt><dd>{selected.staleAtCompletion ? 'Observed' : 'Not observed during invocation'}</dd></div>
         <div><dt>Input changed</dt><dd>{selected.inputChanged ? 'Observed' : 'Not observed during invocation'}</dd></div>
         <div><dt>Stop request</dt><dd>{selected.stopRequested ? 'Signal requested; outcome not inferred' : 'Not recorded'}</dd></div>

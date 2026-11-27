@@ -48,3 +48,15 @@ is omitted explicitly; older output is removed first to keep recent metadata.
 No records or output are recovered on restart. Review Clear History to
 discard retained records and any pending history entry without stopping
 the current process or clearing the ordinary Output view.
+
+
+### Native outcome provenance
+
+The native bridge includes a separate process exit code, cancellation flag,
+native output-cap flag and disk-source freshness flag. The journal never
+parses raw program output to determine these values. A reported native
+cancellation remains distinct from an exit-zero or nonzero result.
+The native output cap is separate from the journal's own retention cap.
+A stop request alone is not evidence of cancellation. Older bridge
+responses without metadata remain supported and do not invent source
+exit codes.
