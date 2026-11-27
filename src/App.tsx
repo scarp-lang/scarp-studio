@@ -1,3 +1,6 @@
+import { TestFixturesPanel } from './components/TestFixturesPanel';
+import { fixtureProjectTarget,type FixtureStream,type FixtureCreatePlan,type FixtureResult,type FixtureInventory,type FixtureByteSummary } from './model/testFixtures';
+import { scanTestFixtures,inspectTestFixture,createTestFixture,type FixtureCreationOutcome } from './services/testFixtures';
 import { planProjectCommandDiskCheck,projectCommandDiskPlanCurrent,checkProjectCommandDisk,projectDiskCheckMessage,applyProjectDiskFreshness,type ProjectDiskCheckEvidence } from './model/projectCommandDiskGuard';
 import { ProjectCommandDiskEvidence } from './components/ProjectCommandDiskEvidence';
 import { userSnippetStore } from './model/userSnippets';
@@ -1581,6 +1584,37 @@ export default function App() {
       filePickerInProgress.current = false;
       setBusy(false);
     }
+  }
+
+  async function performFixtureOperation<T>(operation:(target:NonNullable<ReturnType<typeof fixtureProjectTarget>>,current:()=>boolean)=>Promise<T>):Promise<T>{
+    const selection=selectedFolderRef.current;
+    const target=fixtureProjectTarget(selection,selectedProjectPath);
+    if(!isTauri()||!target||recoveryOperationsBlocked()||compilerScanning)throw Error('Select a discovered project and finish native operations first.');
+    const epoch=projectResultEpoch.current;
+    const editor=liveEditor.current;
+    filePickerInProgress.current=true;setBusy(true);
+    try{
+      return await operation(target,()=>selection===selectedFolderRef.current&&epoch===projectResultEpoch.current&&
+        editor.sessionRevision===liveEditor.current.sessionRevision);
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+  async function scanFixtures():Promise<FixtureResult<FixtureInventory>>{
+    return performFixtureOperation((target,isCurrent)=>scanTestFixtures({target,isCurrent}));
+  }
+  async function inspectFixture(test:string,stream:FixtureStream):Promise<FixtureResult<FixtureByteSummary>>{
+    return performFixtureOperation((target,isCurrent)=>inspectTestFixture({target,isCurrent},test,stream));
+  }
+  async function createFixture(plan:FixtureCreatePlan):Promise<FixtureCreationOutcome>{
+    const outcome=await performFixtureOperation((target,isCurrent)=>createTestFixture({target,isCurrent},plan));
+    if(outcome.status!=='blocked'){
+      // Fixture creation changes a test input even if no .srp buffer changed.
+      projectResultEpoch.current++;
+      setProjectTestResult(null);
+      setCompilerNavigation(null);
+      setProjectDiagnosticReport(null);
+      setNotice(outcome.message);
+    }
+    return outcome;
   }
 
   async function scanProjectDependencies(mode:AuditMode):Promise<AuditResult>{
@@ -3865,6 +3899,10 @@ export default function App() {
                 busy={busy || compilerBusy || compilerSelecting || compilerScanning || !compilerPath || !selectedProjectHasManifest}
                 report={projectTestResult && isSelectedProjectTestReport(projectTestResult.folder,selectedProjectPath) ? projectTestResult.report : null}
                 onCommand={(action,filter)=>void runProjectAction(action,filter)} />}
+              {selectedProjectPath && <TestFixturesPanel key={selectedProjectPath+':fixtures'} folder={selectedProjectPath}
+                generation={editorState.sessionRevision+projectResultEpoch.current}
+                busy={!isTauri()||busy||compilerBusy||compilerSelecting||compilerScanning||!selectedProjectHasManifest}
+                onScan={scanFixtures} onInspect={inspectFixture} onCreate={createFixture}/>}
               <button type="button" onClick={() => void runProjectAction('inspect-symbols')}
                 disabled={!isTauri() || compilerBusy || compilerSelecting || busy || !compilerPath || !selectedProjectHasManifest || !selectedProjectPath ||
                   dirtySelectedProjectSources.length > 0}
