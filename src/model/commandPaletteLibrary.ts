@@ -15,7 +15,7 @@ const groups=new Map<string,CommandGroup>();
 for(const [group,ids] of Object.entries(groupIds))for(const id of ids)groups.set(id,group as CommandGroup);
 export function commandGroup(id:string):CommandGroup|null{
   if(id.startsWith('template:'))return 'Templates';
-  if(id.startsWith('snippet:'))return 'Snippets';
+  if(id.startsWith('user-snippet:'))return 'Snippets';
   return groups.get(id)??null;
 }
 /** Only built-in IDs are retained. No source, filename, query, snippet,
