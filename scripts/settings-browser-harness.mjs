@@ -134,8 +134,7 @@ export class DevTools {
   close() { this.#socket.close(); }
 }
 
-export async function launchBrowser(url) {
-  const exe = await browserExecutable();
+async function launchBrowserAttempt(url, exe) {
   const profile = await mkdtemp(join(tmpdir(), 'scarp-settings-browser-'));
   const child = spawn(exe, [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
@@ -148,7 +147,8 @@ export async function launchBrowser(url) {
   child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-5000); });
   child.on('error', error => { startupError = error; });
   let cdp;
-  async function close() {
+  let closing;
+  async function closeOnce() {
     if (cdp) { try { await cdp.send('Browser.close'); } catch { /* expected disconnect */ } cdp.close(); }
     if (child.pid && child.exitCode === null) {
       if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 10000 });
@@ -156,13 +156,14 @@ export async function launchBrowser(url) {
     }
     await rm(profile, { recursive: true, force: true, maxRetries: 6, retryDelay: 150 });
   }
+  function close() { return closing ??= closeOnce(); }
   try {
     const port = await eventually(async () => {
       if (startupError) throw startupError;
       if (child.exitCode !== null) throw new Error('Browser exited: ' + stderr);
       const file = await readFile(join(profile, 'DevToolsActivePort'), 'utf8');
       const value = Number(file.split(/\r?\n/)[0]);
-      return Number.isInteger(value) && value > 0 ? value : false;
+      return Number.isInteger(value) && value > 0 && value <= 65535 ? value : false;
     }, 'browser debugging port', 20000);
     const page = await eventually(async () => {
       if (startupError) throw startupError;
@@ -177,7 +178,47 @@ export async function launchBrowser(url) {
     cdp = await DevTools.connect(page.webSocketDebuggerUrl);
     await cdp.send('Runtime.enable');
     await cdp.send('Page.enable');
-    await cdp.send('Page.navigate', { url });
+    // Check the transport against about:blank BEFORE loading application code.
+    // A failure here is infrastructure; application assertions are not retried.
+    const ready = await cdp.evaluate(() => 1);
+    if (ready !== 1) throw new Error('Browser transport readiness probe failed');
+    const navigation = await cdp.send('Page.navigate', { url });
+    if (navigation.errorText) throw new Error('Browser navigation failed: ' + navigation.errorText);
     return { cdp, close };
-  } catch (error) { await close(); throw error; }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const diagnostic = new Error(detail + '\nBrowser startup stderr: ' + (stderr.trim() || '(empty)'));
+    try { await close(); } catch (cleanup) {
+      // Do not launch another browser when the previous instance could not be cleaned up.
+      throw new BrowserCleanupError(diagnostic.message + '\nCleanup failed: ' + String(cleanup));
+    }
+    throw diagnostic;
+  }
+}
+
+
+export class BrowserCleanupError extends Error {}
+
+/** Only retry browser startup/transport initialization. The smoke test body
+ * runs exactly once after this returns; failed assertions cannot be retried.
+ * A fresh isolated profile is allocated and cleaned by each attempt. */
+export async function launchWithStartupRetry(attempt, log = console.warn, maxAttempts = 2) {
+  if (!Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 3) {
+    throw new Error('Invalid browser startup attempt count');
+  }
+  const errors = [];
+  for (let number = 1; number <= maxAttempts; number++) {
+    try { return await attempt(number); }
+    catch (error) {
+      if (error instanceof BrowserCleanupError) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push('Attempt ' + number + ': ' + message);
+      if (number < maxAttempts) log('Chromium startup failed; retrying with a clean profile. ' + message);
+    }
+  }
+  throw new Error('Browser startup failed after ' + maxAttempts + ' attempt(s):\n' + errors.join('\n'));
+}
+export async function launchBrowser(url) {
+  const exe = await browserExecutable();
+  return launchWithStartupRetry(() => launchBrowserAttempt(url, exe));
 }
