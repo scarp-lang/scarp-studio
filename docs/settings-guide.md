@@ -26,7 +26,7 @@ Export the JSON and review it before sharing. Portable groups are appearance, ed
 
 Named configurations save up to 12 complete portable snapshots. Switching is explicit and reviewed. Workspace associations store up to 12 local workspace keys and selected portable categories. Opening a workspace does not automatically apply its association; applying it changes the active Studio settings globally. Forgetting an association removes metadata, not files.
 
-Session history records up to 32 changes in memory; it may combine rapid changes to a single field. Review the before or after snapshot and selected groups before restoration. Clearing history leaves active preferences unchanged. The preference audit compares every portable field to its default and supports a copyable report and reviewed individual resets.
+Session history records up to 32 changes in memory; it may combine rapid changes to a single field. Review the before or after snapshot and selected groups before restoration. Use **Review recorded fields only** to restore just the fields changed by that history entry, preserving later unrelated choices even within the same category. The full historical restore remains available for selected categories. Both modes require a current review before confirmation. Clearing history leaves active preferences unchanged. The preference audit compares every portable field to its default and supports a copyable report and reviewed individual resets.
 
 Portable transfer does not include source, paths, named profiles, snippets, compiler approval, startup discovery, Auto Save authorization, recovery copies or keyboard bindings. Settings storage is local and not encrypted; do not place secrets in snippet bodies.
 
