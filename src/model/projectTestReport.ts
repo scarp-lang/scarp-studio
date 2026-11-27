@@ -1,3 +1,4 @@
+import { inspectProjectTestDiagnostic,type TestDiagnosticInspection } from './projectTestDiagnostic';
 import { validateFilteredTestReport } from './projectTestSelection';
 import type { ScarpProjectAction } from '../services/project';
 
@@ -13,6 +14,8 @@ export interface ScarpTestCase {
   code: string | null;
   message: string | null;
   help: string | null;
+  /** Only validated nested diagnostic envelopes expose exact locations. */
+  inspection?: TestDiagnosticInspection;
 }
 
 export interface ScarpTestReport {
@@ -67,6 +70,7 @@ export function parseScarpTestReport(json: string | null): ScarpTestReport | nul
     let code: string | null = null;
     let message: string | null = null;
     let help: string | null = null;
+    let inspection: TestDiagnosticInspection | undefined;
     if (status === 'failed') {
       if (item.phase !== 'compile' && item.phase !== 'fixture' && item.phase !== 'runtime') return null;
       phase = item.phase;
@@ -74,6 +78,8 @@ export function parseScarpTestReport(json: string | null): ScarpTestReport | nul
       if (!diagnostic || typeof diagnostic.message !== 'string' ||
           Array.from(diagnostic.message).length > 1600) return null;
       message = diagnostic.message;
+      const detail=inspectProjectTestDiagnostic(diagnostic);
+      if(detail.coverage!=='summary-only')inspection=detail;
       if (diagnostic.code !== null && diagnostic.code !== undefined) {
         if (typeof diagnostic.code !== 'string' || !/^E\d{4}$/.test(diagnostic.code)) return null;
         code = diagnostic.code;
@@ -83,7 +89,7 @@ export function parseScarpTestReport(json: string | null): ScarpTestReport | nul
         help = diagnostic.help;
       }
     }
-    cases.push({ path: item.path, status, phase, code, message, help });
+    cases.push({ path: item.path, status, phase, code, message, help, ...(inspection?{inspection}:{}) });
   }
   const passed = cases.filter((item) => item.status === 'passed').length;
   const failed = cases.filter((item) => item.status === 'failed').length;
