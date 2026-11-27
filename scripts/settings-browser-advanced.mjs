@@ -279,4 +279,24 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.match(await evaluate(() => document.querySelector('.compiler-activity-panel').textContent), /No matching recorded invocations/);
   });
 
+  await step('session input presets review apply and undo without starting a compiler', async () => {
+    await change('#scarp-stdin', '42\nfirst reply\n');
+    await button('Manage input presets', '.input-presets');
+    const scope = '.input-presets';
+    await change('input[aria-label="Input preset label"]', 'Practice fixture');
+    await button('Review save input preset', scope);
+    await button('Confirm input preset capture', scope);
+    await wait(() => document.querySelector('.input-preset-list')?.textContent.includes('Practice fixture'), 'input preset saved');
+    await change('#scarp-stdin', 'new reply');
+    await button('Review apply input preset', scope);
+    await button('Confirm apply input preset', scope);
+    await wait(() => document.querySelector('#scarp-stdin')?.value === '42\nfirst reply\n', 'preset applied');
+    await button('Undo last preset apply', scope);
+    await wait(() => document.querySelector('#scarp-stdin')?.value === 'new reply', 'input undo');
+    await button('Review remove input preset', scope);
+    await button('Confirm remove input presets', scope);
+    await wait(() => document.querySelector('.input-preset-list')?.textContent.includes('No matching session presets'), 'input preset removed');
+    assert.equal(await textValue('#scarp-stdin'), 'new reply');
+  });
+
 }

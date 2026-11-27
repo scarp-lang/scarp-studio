@@ -1639,3 +1639,20 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .compiler-activity-panel select:focus-visible, .compiler-activity-panel textarea:focus-visible {
   outline: 2px solid currentColor; outline-offset: 2px;
 }
+
+/* Session input presets: review controls are not execution controls. */
+.input-presets { display: grid; gap: 6px; min-width: 0; }
+#input-presets-content:not([hidden]), .input-preset-detail { display: grid; gap: 8px; min-width: 0; }
+.input-preset-tools { display: flex; flex-wrap: wrap; align-items: end; gap: 6px; }
+.input-preset-tools label { flex: 1 1 160px; min-width: 0; }
+.input-presets label { display: grid; gap: 4px; }
+.input-presets input:not([type="checkbox"]), .input-presets textarea { width: 100%; box-sizing: border-box; min-width: 0; }
+.input-preset-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 4px; }
+.input-preset-entry { display: grid; gap: 4px; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+.input-preset-entry[aria-pressed="true"] { outline: 1px solid currentColor; outline-offset: -1px; }
+.input-preset-comparison { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; }
+.input-preset-comparison dd { margin: 2px 0 0; }
+.input-presets textarea { resize: vertical; white-space: pre; overflow: auto; max-height: 20rem; }
+.input-presets button:focus-visible, .input-presets input:focus-visible, .input-presets textarea:focus-visible {
+  outline: 2px solid currentColor; outline-offset: 2px;
+}

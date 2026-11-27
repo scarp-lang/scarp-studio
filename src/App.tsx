@@ -54,6 +54,8 @@ import { SourceQualityPanel } from './components/SourceQualityPanel';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
 import { CompilerActivityPanel } from './components/CompilerActivityPanel';
+import { ProgramInputPresetsPanel } from './components/ProgramInputPresetsPanel';
+import { createProgramInputPresetStore, inputPresetApplyIsCurrent, inputPresetUndoIsCurrent, type ProgramInputSnapshot, type InputPresetCaptureReview, type InputPresetApplyReview, type InputPresetRemovalReview, type InputPresetUndo } from './model/programInputPresets';
 import { createCompilerActivityStore, type ActivityToken } from './model/compilerActivity';
 import { createSourceCheckpointStore, checkpointRestoreIsCurrent, type CheckpointCaptureReview, type CheckpointRestoreReview, type CheckpointRemovalReview } from './model/sourceCheckpoints';
 import { qualityPlanIsCurrent, type QualityCleanupPlan } from './model/sourceQuality';
@@ -405,6 +407,34 @@ export default function App() {
   // Increment synchronously in input handlers; an async first-Run trust
   // dialog must never launch a CLI with an older preloaded input snapshot.
   const inputRevision = useRef(0);
+  const [inputPresets] = useState(createProgramInputPresetStore);
+  const liveProgramInput = useRef<ProgramInputSnapshot>({ text: '', interactive: false, revision: 0 });
+  function changeProgramInput(text: string, interactive: boolean): ProgramInputSnapshot {
+    const before = liveProgramInput.current;
+    if (before.text === text && before.interactive === interactive) return before;
+    const next = { text, interactive, revision: ++inputRevision.current };
+    liveProgramInput.current = next;
+    setStdinText(text);
+    setPromptInputMode(interactive);
+    return next;
+  }
+  function captureProgramInputPreset(review: InputPresetCaptureReview): number | null {
+    if (recoveryOperationsBlocked()) return null;
+    const result = inputPresets.capture(review, liveProgramInput.current);
+    return result.ok ? result.value.id : null;
+  }
+  function applyProgramInputPreset(review: InputPresetApplyReview): ProgramInputSnapshot | null {
+    if (recoveryOperationsBlocked() || !inputPresetApplyIsCurrent(review, inputPresets.getSnapshot(), liveProgramInput.current)) return null;
+    return changeProgramInput(review.targetText, review.targetInteractive);
+  }
+  function removeProgramInputPresets(review: InputPresetRemovalReview): boolean {
+    return !recoveryOperationsBlocked() && inputPresets.remove(review);
+  }
+  function undoProgramInputPreset(undo: InputPresetUndo): boolean {
+    if (recoveryOperationsBlocked() || !inputPresetUndoIsCurrent(undo, liveProgramInput.current)) return false;
+    changeProgramInput(undo.before.text, undo.before.interactive);
+    return true;
+  }
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
@@ -3347,8 +3377,7 @@ export default function App() {
               <label className="compiler-input-mode">
                 <input type="checkbox" checked={promptInputMode} disabled={compilerBusy}
                   onChange={(event) => {
-                    inputRevision.current++;
-                    setPromptInputMode(event.target.checked);
+                    changeProgramInput(liveProgramInput.current.text, event.target.checked);
                   }} />
                 Enable alpha.10 prompt functions (input/ask)
               </label>
@@ -3362,8 +3391,7 @@ export default function App() {
                 value={stdinText}
                 aria-invalid={stdinValidationError !== null}
                 onChange={(event) => {
-                  inputRevision.current++;
-                  setStdinText(event.target.value);
+                  changeProgramInput(event.target.value, liveProgramInput.current.interactive);
                 }}
                 disabled={compilerBusy}
                 maxLength={MAX_INPUT_BYTES}
@@ -3380,6 +3408,11 @@ export default function App() {
                   <div role="status"><strong>{stdinValidationError}</strong> — edit Program Input before Run.</div>
                 )}
               </div>
+              <ProgramInputPresetsPanel store={inputPresets}
+                current={{ text: stdinText, interactive: promptInputMode, revision: inputRevision.current }}
+                busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+                onCapture={captureProgramInputPreset} onApply={applyProgramInputPreset}
+                onRemove={removeProgramInputPresets} onUndo={undoProgramInputPreset} />
             </div>
             </div>
             <div className="results-view-switch" role="group" aria-label="Compiler result view">
