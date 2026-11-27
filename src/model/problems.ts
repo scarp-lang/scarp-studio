@@ -1,4 +1,5 @@
-import type { StudioDocument } from './documents';
+import { sameFilePath, type StudioDocument } from './documents';
+import { visibleDiagnosticText, type DiagnosticReport } from './diagnosticReport';
 import { diagnosticSourcePosition, type ScarpDiagnostic } from './diagnostics';
 import { isCurrentVerifiedSource, type VerifiedSourceSnapshot } from './verifiedSource';
 import type { ScarpTestReport } from './projectTestReport';
@@ -23,6 +24,8 @@ export interface ProblemInputs {
   testResult: { folder: string; report: ScarpTestReport } | null;
   selection: TestSourceListing | null;
   stale: boolean;
+  projectDiagnosticReport?: DiagnosticReport | null;
+  selectedProjectPath?: string | null;
 }
 
 export function currentDiagnosticTarget(
@@ -50,8 +53,19 @@ export function collectProblems(input: ProblemInputs): StudioProblem[] {
       target: currentDiagnosticTarget(d, input.snapshot, input.documents),
     });
   }
+  if (input.projectDiagnosticReport && input.projectDiagnosticReport.action !== 'source-verify') {
+    for (const row of input.projectDiagnosticReport.diagnostics) {
+      problems.push({
+        id: 'project-diagnostic:' + row.id, kind: 'compiler', code: row.code,
+        message: visibleDiagnosticText(row.message), help: row.help === null ? null : visibleDiagnosticText(row.help),
+        location: row.primary ? visibleDiagnosticText(row.primary.path) + ':' + row.primary.start.line + ':' + row.primary.start.column : null,
+        target: null,
+      });
+    }
+  }
   const tests = input.testResult;
-  if (tests && input.selection && tests.folder === input.selection.path && tests.report.mode === 'run') {
+  const selected = input.selectedProjectPath === undefined ? input.selection?.path : input.selectedProjectPath;
+  if (tests && input.selection && selected && sameFilePath(tests.folder, selected) && tests.report.mode === 'run') {
     for (const test of tests.report.tests) {
       if (test.status !== 'failed') continue;
       problems.push({

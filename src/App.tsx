@@ -111,6 +111,8 @@ import {
 import { scarpProjectAction, type ScarpProjectAction } from './services/project';
 import { parseScarpTestReportForAction, type ScarpTestReport } from './model/projectTestReport';
 import { resolveListedTestSource, isSelectedProjectTestReport } from './model/projectTestNavigation';
+import { DiagnosticReportPanel } from './components/DiagnosticReportPanel';
+import { parseDiagnosticReport, type DiagnosticReport } from './model/diagnosticReport';
 import { ProjectInfoPanel } from './components/ProjectInfoPanel';
 import { parseProjectInfo, projectInfoEntry, type ProjectInfoSnapshot } from './model/projectInfo';
 import { CompilerNavigationPanel } from './components/CompilerNavigationPanel';
@@ -288,6 +290,7 @@ export default function App() {
       setProjectTestResult(null);
       setCompilerNavigation(null);
       setProjectInfo(null);
+      setProjectDiagnosticReport(null);
     }
     // Keep a valid previous Verify result through tab switches and unrelated
     // edits, but invalidate it on any change to the actual verified source.
@@ -421,6 +424,7 @@ export default function App() {
   const focusProblemsTab = useRef(false);
   const outputToggle = useRef<HTMLButtonElement | null>(null);
   const [projectTestResult, setProjectTestResult] = useState<{folder: string; report: ScarpTestReport} | null>(null);
+  const [projectDiagnosticReport, setProjectDiagnosticReport] = useState<DiagnosticReport | null>(null);
   const [projectInfo, setProjectInfo] = useState<ProjectInfoSnapshot | null>(null);
   const [projectInfoBaseline, setProjectInfoBaseline] = useState<ProjectInfoSnapshot | null>(null);
   const [compilerNavigation, setCompilerNavigation] = useState<CompilerNavigationReport | null>(null);
@@ -572,10 +576,14 @@ export default function App() {
     laterSourceOutputWarning, laterProjectOutputWarning, laterRunInputWarning,
   ].filter((warning) => warning !== null).join('\n\n');
   const diagnostic = useMemo(() => parseScarpDiagnostic(compilerDiagnosticStderr), [compilerDiagnosticStderr]);
+  const detailedSourceDiagnostic = useMemo(() => {
+    const parsed = parseDiagnosticReport(compilerDiagnosticStderr, 'source-verify');
+    return parsed.ok ? parsed.report : null;
+  }, [compilerDiagnosticStderr]);
   const problems = useMemo(() => collectProblems({ diagnostic, snapshot: compilerOutputSource,
     documents, testResult: projectTestResult, selection: selectedFolderRef.current,
-    stale: Boolean(outputFreshnessWarning),
-  }), [diagnostic, compilerOutputSource, documents, projectTestResult, folderEntries, outputFreshnessWarning]);
+    stale: Boolean(outputFreshnessWarning), projectDiagnosticReport, selectedProjectPath,
+  }), [diagnostic, compilerOutputSource, documents, projectTestResult, folderEntries, outputFreshnessWarning, projectDiagnosticReport, selectedProjectPath]);
   const navigableDiagnostic = problems.find(problem => problem.kind === 'compiler' && problem.target?.kind === 'source');
   const problemMarker = useMemo(() => outputFreshnessWarning ? null : verifiedProblemMarker(diagnostic, compilerOutputSource, active),
     [diagnostic, compilerOutputSource, active, outputFreshnessWarning]);
@@ -1225,6 +1233,7 @@ export default function App() {
       setProjectTestResult(null);
       setCompilerNavigation(null);
       setProjectInfo(null);
+      setProjectDiagnosticReport(null);
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
       setProjectRoots(result.projectRoots);
@@ -1271,6 +1280,7 @@ export default function App() {
       setProjectTestResult(null);
       setCompilerNavigation(null);
       setProjectInfo(null);
+      setProjectDiagnosticReport(null);
       invalidateProjectSearch();
       selectedFolderRef.current = { path: result.path, files: result.files, projectRoots: result.projectRoots };
       setProjectRoots(result.projectRoots);
@@ -1580,6 +1590,7 @@ export default function App() {
       setProjectTestResult(null);
       setCompilerNavigation(null);
       setProjectInfo(null);
+      setProjectDiagnosticReport(null);
       invalidateProjectSearch();
       selectedFolderRef.current = {
         path: result.path, files: result.files, projectRoots: result.projectRoots,
@@ -1822,6 +1833,7 @@ export default function App() {
     setProjectTestResult(null);
     setCompilerNavigation(null);
     setProjectInfo(null);
+    setProjectDiagnosticReport(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2024,6 +2036,7 @@ export default function App() {
     setProjectTestResult(null);
     setCompilerNavigation(null);
     setProjectInfo(null);
+    setProjectDiagnosticReport(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2142,6 +2155,7 @@ export default function App() {
     setProjectTestResult(null);
     setCompilerNavigation(null);
     setProjectInfo(null);
+    setProjectDiagnosticReport(null);
     setNotice(directory ? 'Selected Scarp project: ' + directory
       : 'Selected workspace root for project commands');
   }
@@ -2202,6 +2216,7 @@ export default function App() {
     setProjectTestResult(null);
     setCompilerNavigation(null);
     setProjectInfo(null);
+    setProjectDiagnosticReport(null);
     setCompletedProjectOutput(null);
     setCompletedSourceOutput(null);
     setCompletedRunInputGeneration(null);
@@ -2239,6 +2254,11 @@ export default function App() {
         : null;
       if (structured) {
         setProjectTestResult({ folder: selectedProjectPath, report: structured });
+      }
+      if (!freshness.stale && output.diagnosticStderr !== undefined &&
+          (action === 'verify' || action === 'inspect-symbols' || action === 'inspect-references')) {
+        const parsed = parseDiagnosticReport(output.diagnosticStderr, action);
+        if (parsed.ok) setProjectDiagnosticReport(parsed.report);
       }
       if (!freshness.stale && action === 'info' && output.projectInfoJson !== undefined) {
         const parsed = parseProjectInfo(output.projectInfoJson);
@@ -3683,6 +3703,9 @@ export default function App() {
                 busy={busy || compilerBusy || compilerSelecting || compilerScanning}
                 baseline={testBaseline} onBaseline={setTestBaseline}
                 onOpenSource={openProjectTestSource} onHide={() => setProjectTestResult(null)} />
+            )}
+            {!outputFreshnessWarning && (projectDiagnosticReport || (compilerOutputSource && detailedSourceDiagnostic)) && (
+              <DiagnosticReportPanel report={(projectDiagnosticReport ?? detailedSourceDiagnostic)!} />
             )}
             {diagnostic && (
               <div className="compiler-diagnostic" role="status">

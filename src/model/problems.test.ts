@@ -57,3 +57,26 @@ describe('pending diagnostic navigation', () => {
     expect(sameDiagnosticTarget({ ...target, snapshot: { ...snapshot } }, target)).toBe(false);
   });
 });
+
+
+describe('selected project structured problems',()=>{
+  it('uses the actual nested manifest root rather than the Explorer parent',()=>{
+    const testResult={folder:'C:/workspace/nested',report:{mode:'run' as const,discovered:1,passed:0,failed:1,
+      tests:[{path:'tests/fail.srp',status:'failed' as const,phase:'compile' as const,code:'E0015',message:'Wrong type',help:null}]}};
+    const selection={path:'C:/workspace',projectRoots:[{directory:'nested',path:'C:/workspace/nested'}],
+      files:[{name:'nested/tests/fail.srp',path:'C:/workspace/nested/tests/fail.srp'}]};
+    const input={...base,diagnostic:null,testResult,selection,selectedProjectPath:'C:/WORKSPACE/nested'};
+    expect(collectProblems(input)).toHaveLength(1);
+    expect(collectProblems(input)[0].target).toEqual({kind:'test',folder:testResult.folder,path:'tests/fail.srp'});
+    expect(collectProblems({...input,selectedProjectPath:'C:/workspace/another'})).toEqual([]);
+    expect(collectProblems({...input,selectedProjectPath:null})).toEqual([]);
+  });
+  it('lists project static errors without interpreting foreign source labels as editor targets',()=>{
+    const report={action:'verify' as const,diagnostics:[{id:0,code:'E0015',message:'project error',help:null,
+      primary:{path:'C:/project/main.srp',byteStart:0,byteEnd:1,start:{line:1,column:1},end:{line:1,column:2}},related:[]}]};
+    const input={...base,diagnostic:null,projectDiagnosticReport:report};
+    expect(collectProblems(input)).toEqual([{id:'project-diagnostic:0',kind:'compiler',code:'E0015',message:'project error',
+      help:null,location:'C:/project/main.srp:1:1',target:null}]);
+    expect(collectProblems({...input,stale:true})).toEqual([]);
+  });
+});

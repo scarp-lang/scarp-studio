@@ -100,3 +100,23 @@ describe('saved metadata native channel',()=>{
     }
   });
 });
+
+
+describe('static project diagnostic channel',()=>{
+  it('accepts only complete failure metadata from explicit static commands',async()=>{
+    for(const action of ['verify','inspect-symbols','inspect-references'] as const){
+      vi.mocked(invoke).mockResolvedValue(['display',null,1,[1,false,false,false],null,'{"schema_version":1}']);
+      expect((await scarpProjectAction('C:/scarp.exe','C:/project',action)).diagnosticStderr).toBe('{"schema_version":1}');
+    }
+    for(const action of ['run','run-tests','list-tests','info'] as const){
+      vi.mocked(invoke).mockResolvedValue(['display',null,1,[1,false,false,false],null,'{"schema_version":1}']);
+      expect((await scarpProjectAction('C:/scarp.exe','C:/project',action)).diagnosticStderr).toBeUndefined();
+    }
+  });
+  it('rejects misleading diagnostic data with inconsistent process outcome',async()=>{
+    for(const meta of [[1,true,false,false],[1,false,true,false],[1,false,false,true],[0,false,false,false],null]){
+      vi.mocked(invoke).mockResolvedValue(['display',null,1,meta,null,'{}']);
+      expect((await scarpProjectAction('C:/scarp.exe','C:/project','verify')).diagnosticStderr).toBeUndefined();
+    }
+  });
+});
