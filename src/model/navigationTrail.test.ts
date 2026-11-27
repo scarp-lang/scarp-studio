@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createUntitled, openedDocument } from './documents';
+import { editorReducer, initialEditorState } from './editorState';
 import { captureTrailLocation, createNavigationTrailStore, MAX_TRAIL_ENTRIES, MAX_TRAIL_SOURCE_UNITS,
   resolveTrailTarget, reviewTrailMove, reviewTrailSelection, trailEntryStatus, trailMoveTarget } from './navigationTrail';
 
@@ -171,5 +172,33 @@ describe('navigation trail transitions', () => {
     const store = createNavigationTrailStore();
     store.record(point(b.documents[0]), point(b.documents[1]), b.documents);
     expect(store.move(reviewTrailMove(store.getSnapshot(), 'back', b.documents)!, b.documents)?.source).toBe('one');
+  });
+});
+
+
+describe('navigation trail against real editor generations', () => {
+  it('does not revive a marked location after edit and exact textual reversion', () => {
+    const source = initialEditorState.documents[0];
+    const marked = point(source);
+    const edited = editorReducer(initialEditorState, { type: 'edit', id: source.id, content: 'changed' });
+    const restored = editorReducer(edited, { type: 'edit', id: source.id, content: source.content });
+    expect(restored.documents[0].content).toBe(source.content);
+    expect(resolveTrailTarget(marked, restored.documents)).toBeNull();
+  });
+  it('does not revive a saved file location after close and reopen of the same path', () => {
+    const opened = editorReducer(initialEditorState, { type: 'open', path: 'C:/demo/main.srp', content: 'one\n' });
+    const source = opened.documents.find(item => item.id === opened.activeId)!;
+    const location = point(source);
+    const closed = editorReducer(opened, { type: 'close', id: source.id, snapshot: source });
+    expect(trailEntryStatus(location, closed.documents)).toBe('closed');
+    const reopened = editorReducer(closed, { type: 'open', path: source.path!, content: source.content });
+    expect(reopened.activeId).toBe(source.id);
+    expect(resolveTrailTarget(location, reopened.documents)).toBeNull();
+  });
+  it('invalidates coordinates after a save-as changes source identity', () => {
+    const source = initialEditorState.documents[0];
+    const location = point(source);
+    const saved = editorReducer(initialEditorState, { type: 'saved', id: source.id, path: 'C:/demo/first.srp', savedContent: source.content });
+    expect(trailEntryStatus(location, saved.documents)).toBe('changed');
   });
 });

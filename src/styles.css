@@ -1685,3 +1685,11 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .output-inspection-panel textarea { display: block; width: 100%; resize: vertical; box-sizing: border-box; }
 .output-history-comparison select { max-width: 100%; }
 .output-comparison-result { display: grid; gap: 8px; min-width: 0; }
+
+
+.problem-review-group { min-width: 0; display: grid; gap: 4px; }
+.problem-review-group h3 { margin: 4px 0; font-size: 12px; }
+.problem-report { min-width: 0; display: grid; gap: 6px; padding: 6px; }
+.problem-report p { margin: 0; }
+.problem-report textarea { width: 100%; min-width: 0; box-sizing: border-box; resize: vertical; }
+.problems-toolbar label { display: inline-flex; gap: 4px; align-items: center; flex-wrap: wrap; }
