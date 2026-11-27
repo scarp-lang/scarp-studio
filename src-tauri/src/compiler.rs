@@ -587,7 +587,10 @@ pub async fn scarp_project_action(
                 if result.stderr.is_empty() { "" } else { "\nCompiler diagnostics:\n" },
                 result.stderr, cap_notice,
             );
-            let inspection_json = if matches!(action.as_str(), "inspect-symbols" | "inspect-references")
+            let inspection_json = if matches!(
+                action.as_str(),
+                "info" | "inspect-symbols" | "inspect-references"
+            )
                 && exit_code == Some(0)
                 && !result.truncated
                 && !result.cancelled
