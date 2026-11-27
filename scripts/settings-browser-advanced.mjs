@@ -324,4 +324,20 @@ export async function advancedSettingsSmoke({ evaluate, wait, visible, click, bu
     assert.match(await evaluate(() => document.querySelector('.monaco-editor .view-lines').textContent), /third/);
   });
 
+  await step('output inspection searches displayed output without creating diagnostics', async () => {
+    await button('Output', '.results-view-switch');
+    const before = await evaluate(() => document.querySelector('.compiler-output')?.textContent);
+    await button('Inspect', '.results-view-switch');
+    await visible('.output-inspection-panel');
+    await change('input[aria-label="Find compiler output text"]', 'zz-no-such-output-match-zz');
+    await wait(() => document.querySelector('.output-search-summary')?.textContent.includes('0 occurrence(s)'), 'literal output search');
+    await button('Clear output search', '.output-inspection-panel');
+    await button('Review copyable output excerpt', '.output-inspection-panel');
+    await visible('textarea[aria-label="Selected compiler output excerpt"]');
+    const excerpt = await textValue('textarea[aria-label="Selected compiler output excerpt"]');
+    assert.ok(before.includes(excerpt));
+    await button('Output', '.results-view-switch');
+    assert.equal(await evaluate(() => document.querySelector('.compiler-output')?.textContent), before);
+  });
+
 }

@@ -1666,3 +1666,22 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .trail-list button span { font-size: 11px; }
 .trail-confirm { display: grid; gap: 6px; }
 .trail-confirm p { margin: 0; }
+
+
+.output-inspection-panel, .output-inspection-body, .output-inspection-text, .output-history-comparison { display: grid; gap: 9px; min-width: 0; }
+.output-inspection-panel { padding: 8px; }
+.output-inspection-panel h3, .output-inspection-panel p { margin: 0; }
+.output-inspection-controls { display: flex; flex-wrap: wrap; gap: 7px; align-items: end; }
+.output-inspection-controls label { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.output-inspection-controls input[type="search"] { max-width: 240px; }
+.output-inspection-controls input[inputmode="numeric"] { width: 72px; }
+.output-search-matches { display: grid; gap: 4px; }
+.output-match { display: grid; gap: 4px; text-align: left; min-width: 0; }
+.output-match[aria-pressed="true"], .output-context-line.selected { outline: 1px solid var(--accent); }
+.output-inspection-preview { display: block; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: isolate; }
+.output-empty-line { opacity: .65; }
+.output-context { display: grid; gap: 3px; }
+.output-context-line { display: grid; grid-template-columns: 46px minmax(0,1fr) 40px; align-items: baseline; gap: 6px; padding: 3px; }
+.output-inspection-panel textarea { display: block; width: 100%; resize: vertical; box-sizing: border-box; }
+.output-history-comparison select { max-width: 100%; }
+.output-comparison-result { display: grid; gap: 8px; min-width: 0; }

@@ -53,6 +53,7 @@ import { SourceInsightsPanel, type InsightNavigation } from './components/Source
 import { SourceQualityPanel } from './components/SourceQualityPanel';
 import { WorkspaceSymbolsPanel } from './components/WorkspaceSymbolsPanel';
 import { SourceCheckpointsPanel } from './components/SourceCheckpointsPanel';
+import { OutputInspectionPanel } from './components/OutputInspectionPanel';
 import { CompilerActivityPanel } from './components/CompilerActivityPanel';
 import { NavigationTrailPanel } from './components/NavigationTrailPanel';
 import { captureTrailLocation, createNavigationTrailStore, type TrailMove, type TrailReason } from './model/navigationTrail';
@@ -396,7 +397,7 @@ export default function App() {
   const [preferredOutputMode, setOutputPanelMode] = useState<OutputPanelMode>('normal');
   const { explorerVisible, outputPanelMode } = effectiveWorkspaceVisibility({ explorerVisible: preferredExplorerVisible, outputPanelMode: preferredOutputMode }, focusMode);
   const [compilerControlsOpen, setCompilerControlsOpen] = useState(true);
-  const [resultsView, setResultsView] = useState<'output' | 'problems' | 'history'>('output');
+  const [resultsView, setResultsView] = useState<'output' | 'problems' | 'history' | 'inspection'>('output');
   const pendingProblem = useRef<Extract<ProblemTarget, { kind: 'source' }> | null>(null);
   const problemsTab = useRef<HTMLButtonElement | null>(null);
   const focusProblemsTab = useRef(false);
@@ -3467,11 +3468,13 @@ export default function App() {
             </div>
             <div className="results-view-switch" role="group" aria-label="Compiler result view">
               <button type="button" aria-pressed={resultsView === 'output'} onClick={() => setResultsView('output')}>Output</button>
+              <button type="button" aria-pressed={resultsView === 'inspection'} onClick={() => setResultsView('inspection')}>Inspect</button>
               <button type="button" aria-pressed={resultsView === 'history'} onClick={() => setResultsView('history')}>History</button>
               <button type="button" ref={problemsTab} aria-pressed={resultsView === 'problems'} onClick={showProblems} title={"Show Problems (" + shortcut('show-problems') + ')'}>Problems ({problems.length})</button>
             </div>
             <div className="compiler-results" tabIndex={0} aria-label="Compiler results and diagnostics">
-            {resultsView === 'history' ? <CompilerActivityPanel store={compilerActivity} native={isTauri()} /> : resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
+            {resultsView === 'inspection' ? <OutputInspectionPanel output={compilerOutput} freshnessWarning={outputFreshnessWarning}
+              busy={busy || compilerBusy || compilerSelecting || compilerScanning} activity={compilerActivity} /> : resultsView === 'history' ? <CompilerActivityPanel store={compilerActivity} native={isTauri()} /> : resultsView === 'problems' ? <ProblemsPanel problems={problems} stale={Boolean(outputFreshnessWarning)}
               busy={busy || compilerBusy || compilerSelecting} onNavigate={navigateProblem} onShowOutput={() => setResultsView('output')} /> : <>
 
             {projectTestResult && isSelectedProjectTestReport(projectTestResult.folder, selectedProjectPath) && (
