@@ -35,6 +35,7 @@ import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForLi
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
 import { searchQuickOpen, quickOpenLabelParts, QUICK_OPEN_SCOPES, QUICK_OPEN_SCOPE_LABELS,
   type QuickOpenScope, type QuickOpenMatchMode } from './model/quickOpenSearch';
+import { EMPTY_QUICK_OPEN_RECENCY, updateQuickOpenRecency } from './model/quickOpenRecency';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
   DEFAULT_EDITOR_PREFERENCES, editorDisplayOptions,
@@ -547,6 +548,11 @@ export default function App() {
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [quickOpenScope, setQuickOpenScope] = useState<QuickOpenScope>('all');
   const [quickOpenMode, setQuickOpenMode] = useState<QuickOpenMatchMode>('fuzzy');
+  const [quickOpenRecency, setQuickOpenRecency] = useState(EMPTY_QUICK_OPEN_RECENCY);
+  useEffect(() => {
+    setQuickOpenRecency(previous => updateQuickOpenRecency(previous,
+      documents.map(document => document.id), activeId));
+  }, [documents, activeId]);
   const paletteInput = useRef<HTMLInputElement | null>(null);
   const paletteDismiss = useRef<HTMLButtonElement | null>(null);
   const paletteSelectedResult = useRef<HTMLButtonElement | null>(null);
@@ -823,8 +829,8 @@ export default function App() {
   const quickOpenEntries = useMemo(() => paletteMode === 'files'
     ? buildQuickOpenEntries(documents, folderEntries) : [], [paletteMode, documents, folderEntries]);
   const quickOpenResults = useMemo(() => searchQuickOpen(quickOpenEntries, paletteQuery,
-    { scope: quickOpenScope, mode: quickOpenMode, activeId }),
-    [quickOpenEntries, paletteQuery, quickOpenScope, quickOpenMode, activeId]);
+    { scope: quickOpenScope, mode: quickOpenMode, activeId, recency: quickOpenRecency }),
+    [quickOpenEntries, paletteQuery, quickOpenScope, quickOpenMode, activeId, quickOpenRecency]);
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
     ? quickOpenEntries
     : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : [...builtInPaletteCommands,
