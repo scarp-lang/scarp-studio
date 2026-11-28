@@ -2651,7 +2651,8 @@ export default function App() {
       setProjectSearchResult({ selection, query: searchQuery, result, coverage:coverage.value });
       setNotice('Project search: ' + result.hits.length + ' match(es) in ' +
         result.searchedFiles + ' fully scanned source(s)' +
-        (result.truncated ? ' (incomplete)' : ''));
+        (coverage.value.batch ? ' in batch '+coverage.value.batch.index+' of '+coverage.value.batch.total : '') +
+        (coverage.value.incomplete ? ' (incomplete scope coverage)' : ''));
     } catch (caught) {
       if (current()) setError('Project search failed: ' + toMessage(caught));
     } finally {
@@ -3696,10 +3697,11 @@ export default function App() {
                 <section className="project-search-results" aria-label="Read-only selected project search">
                   <div className="search-status" role="status">
                     Project (read-only): {projectSearchResult.result.hits.length} match(es) ·
-                    {' '}{projectSearchResult.result.searchedFiles} / {projectSearchResult.result.totalListedFiles} listed .srp files fully searched
+                    {' '}{projectSearchResult.result.searchedFiles} / {projectSearchResult.result.totalListedFiles} selected .srp files fully searched
                     {projectSearchResult.result.truncated && (
                       <strong> · Incomplete ({projectSearchResult.result.skippedFiles} not fully searched).</strong>
                     )}
+                    {projectSearchResult.coverage.batch&&<strong> · Batch {projectSearchResult.coverage.batch.index} of {projectSearchResult.coverage.batch.total}; {projectSearchResult.coverage.batch.deferred} candidate(s) outside this batch.</strong>}
                     {' '}No files changed.
                   </div>
                   <ProjectSearchCoverage key={'coverage-'+projectSearchEpoch.current} summary={projectSearchResult.coverage}/>
@@ -3723,7 +3725,7 @@ export default function App() {
                       </div>
                     ))}
                     {!projectSearchResult.result.hits.length && (
-                      <p className="sidebar-note">No matches among the searched project sources.</p>
+                      <p className="sidebar-note">No displayed matches in this search. Check coverage before drawing conclusions.</p>
                     )}
                   </div>
                 </section>
