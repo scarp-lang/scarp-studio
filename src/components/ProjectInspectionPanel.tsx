@@ -225,7 +225,7 @@ export function ProjectInspectionPanel({ listed, listingLimited, available, busy
   return <section className="sidebar-section listed-inspection-panel" aria-label="Listed project source inspection">
     <div className="sidebar-heading">LISTED SOURCE INSPECTION</div>
     <button type="button" className="insights-toggle" aria-expanded={expanded} disabled={running}
-      onClick={() => setExpanded(value => !value)}>{expanded ? 'Hide listed source inspection' : 'Inspect listed source quality and tasks'}</button>
+      onClick={() => { setExpanded(!expanded); if (expanded) setReview(null); }}>{expanded ? 'Hide listed source inspection' : 'Inspect listed source quality and tasks'}</button>
     {expanded && <>
       <p>Read-only lexical analysis of up to {INSPECTION_READ_LIMITS.files} already-listed Scarp files and
         {' '}{INSPECTION_READ_LIMITS.totalBytes / 1024 / 1024} MiB of source. No compiler execution or cleanup occurs.</p>
@@ -249,7 +249,9 @@ export function ProjectInspectionPanel({ listed, listingLimited, available, busy
         }}>{cancelRequested ? 'Inspection cancellation requested' : 'Cancel source inspection'}</button>
       </div>}
       {notice && <p role="alert">{notice}</p>}
-      <ProjectInspectionComparisonPanel current={result} busy={blocked}/>
+    </>}
+    <ProjectInspectionComparisonPanel current={result} busy={blocked} visible={expanded}/>
+    {expanded && <>
       {result && <><ProjectInspectionResults report={result} busy={blocked} onOpen={label => onOpen(result, label)}/>
         <button type="button" disabled={running} onClick={() => setResult(null)}>Dismiss inspection results</button></>}
     </>}

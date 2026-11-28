@@ -179,6 +179,42 @@ export async function inspectionScenarios(d, step) {
     });
   });
 
+  await step('collapsing inspection keeps recorded baselines but retires transient reviews', async () => {
+    await d.reset();
+    await openInspection(d);
+    await d.button(s.fixture, 'Add fixture task');
+    await run(d);
+    await d.noReads(async () => {
+      await d.button(baseline, 'Compare inspection baselines');
+      await d.button(baseline, 'Record current inspection baseline');
+      await d.contains(baseline, '1 / 8 baselines recorded');
+      await d.button(comparison, 'Review inspection comparison report');
+      await d.check(comparison, 'Include relative file labels in comparison report');
+      await d.button(results, 'Review inspection report');
+      await d.check(results, 'Include relative source labels in inspection report');
+      await d.button(baseline, 'Clear inspection baselines');
+      await prepare(d);
+      await d.button(inspection, 'Hide listed source inspection');
+      await d.absent(baseline);
+      await d.absent(review);
+      await d.absent(results);
+      await d.absent(comparisonReport);
+      await d.absent(report);
+      await openInspection(d);
+      await d.absent(review);
+      await d.visible(results);
+      await d.absent(report);
+      await d.button(baseline, 'Compare inspection baselines');
+      await d.contains(baseline, '1 / 8 baselines recorded');
+      await d.visible(comparison);
+      await d.absent(comparisonReport);
+      await d.absent(labeled('Confirm clearing inspection baselines'));
+      await d.metric(comparison, 'Task count change', '1 → 1 (0)');
+      await d.button(comparison, 'Review inspection comparison report');
+      await assertPrivateInspection(d, comparisonReport, [buffer, missing, dense]);
+    });
+  });
+
   await step('inspection stale scope review never expands to changed listing', async () => {
     await d.reset();
     await openInspection(d);

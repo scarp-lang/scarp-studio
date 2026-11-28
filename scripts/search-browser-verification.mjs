@@ -282,6 +282,73 @@ export async function verificationScenarios(d, step) {
     });
   });
 
+  await step('verification collapse preserves saved profiles and baselines without retaining private previews', async () => {
+    await d.reset();
+    await openVerification(d);
+    await configureTwoRules(d);
+    await d.button(profiles,'Manage verification profiles');
+    await saveProfile(d,'Retained profile');
+    await run(d);
+    await d.noReads(async () => {
+      await d.button(history,'Compare verification runs');
+      await d.button(history,'Capture verification baseline');
+      await d.contains(history,'1 / 8 verification baselines saved');
+      await d.check(profiles,'Reveal private verification backup including literal queries');
+      await d.visible(backup);
+      await d.button(profiles,'Review applying profile');
+      await d.visible(profileReview);
+      await d.button(comparison,'Review verification comparison report');
+      await d.check(comparison,'Include rule names in comparison report');
+      await d.button(history,'Review clearing verification baselines');
+      await prepare(d);
+      await d.button(panel,'Hide literal source verification');
+      await d.absent(profiles);
+      await d.absent(history);
+      await d.absent(review);
+      await d.absent(result);
+      await d.absent(backup);
+      await d.absent(profileReview);
+      await d.absent(comparisonReport);
+      await openVerification(d);
+      await d.absent(review);
+      await d.visible(result);
+      await d.button(profiles,'Manage verification profiles');
+      await d.contains(profiles,'1 / 12 profiles saved');
+      await d.absent(backup);
+      await d.absent(profileReview);
+      await d.valueIs(field(1,'query'),'needle');
+      await d.button(history,'Compare verification runs');
+      await d.contains(history,'1 / 8 verification baselines saved');
+      await d.visible(comparison);
+      await d.absent(comparisonReport);
+      await d.buttonDisabled(history,'Review clearing verification baselines',false);
+      await d.button(comparison,'Review verification comparison report');
+      assertVerificationPrivacy(await d.value(comparisonReport),[ruleName,forbiddenName],[buffer,missing]);
+    });
+  });
+
+  await step('closing just the profiles section retires unconfirmed imports and backup disclosure', async () => {
+    await d.noReads(async () => {
+      await d.check(profiles,'Reveal private verification backup including literal queries');
+      const exported=JSON.parse(await d.value(backup));
+      await d.change(importBox,JSON.stringify({...exported,profiles:[newProfile('Pending profile')]}));
+      await d.button(profiles,'Review verification profile import');
+      await d.visible(importReview);
+      await d.check(importReview,'Pending profile · new');
+      await d.button(profiles,'Hide verification profiles');
+      await d.absent(backup);
+      await d.absent(importReview);
+      await d.button(profiles,'Manage verification profiles');
+      await d.contains(profiles,'1 / 12 profiles saved');
+      await d.absent(backup);
+      await d.absent(importReview);
+      await d.valueIs(importBox,'');
+      await d.button(profiles,'Review applying profile');
+      await d.button(profileReview,'Confirm verification profile change');
+      await d.valueIs(field(1,'query'),'needle');
+    });
+  });
+
   await step('verification restricted scope uses working buffer and never reads unrelated disk files', async () => {
     await d.reset();
     await openVerification(d);
