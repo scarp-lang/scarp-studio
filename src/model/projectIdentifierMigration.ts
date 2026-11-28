@@ -59,7 +59,7 @@ export interface MigrationInventory{
 export type MigrationScanExecution={readonly kind:'inventory';readonly value:MigrationInventory}|
   {readonly kind:'invalidated'|'cancelled'}|{readonly kind:'failed';readonly error:string};
 const failed=(error:string):MigrationScanExecution=>({kind:'failed',error});
-const interrupted=(control:InspectionControl)=>!control.isCurrent()?'invalidated':control.isCancelled()?'cancelled':null;
+const interrupted=(control:InspectionControl):'invalidated'|'cancelled'|null=>!control.isCurrent()?'invalidated':control.isCancelled()?'cancelled':null;
 function editorSnapshot(editor:EditorState):EditorState{
   return Object.freeze({...editor,documents:Object.freeze(editor.documents.map(doc=>Object.freeze({...doc}))) as unknown as StudioDocument[]});
 }
@@ -122,7 +122,8 @@ function sameEvidence(inventory:MigrationInventory):boolean{
   let bytes=0;
   for(const [index,snapshot] of inventory.snapshots.entries()){
     const source=inventory.review.inspection.sources[index];
-    if(snapshot.name!==source.name||snapshot.path!==source.path||snapshot.bytes!==utf8ByteLength(snapshot.content))return false;
+    if(snapshot.name!==source.name||snapshot.path!==source.path||snapshot.bytes!==utf8ByteLength(snapshot.content)||
+      snapshot.bytes>INSPECTION_READ_LIMITS.fileBytes||(snapshot.origin!=='open-buffer'&&snapshot.origin!=='disk'))return false;
     const matches=inventory.editor.documents.filter(doc=>doc.path!==null&&sameFilePath(doc.path,snapshot.path));
     if(matches.length>1||(snapshot.origin==='open-buffer')!==(matches.length===1)||
       (snapshot.document===null)!==(matches.length===0))return false;
