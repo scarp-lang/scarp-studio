@@ -36,7 +36,7 @@ function validText(text: string, maximum: number): boolean {
   catch { return false; }
 }
 /** Reject drive-qualified or invisible-format labels from observation exports. */
-function validRelativeLabel(label: string): boolean {
+export function validRelativeLabel(label: string): boolean {
   return validText(label, 1024) && !/^[A-Za-z]:/.test(label) &&
     !/[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(label);
 }
