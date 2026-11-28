@@ -153,8 +153,8 @@ export function ProjectExplorer({
               ? summary.direct + ' direct files; ' + summary.total + ' including subfolders; ' + summary.modified + ' modified'
               : undefined}>{group.sources.length}{!searching && scope.kind !== 'folder' && summary && summary.total !== summary.direct
                 ? ' / ' + summary.total : ''}</span>
-            {summary?.active && <span aria-label="Contains active source" title="Contains active source">•</span>}
-            {!!summary?.modified && <span aria-label={summary.modified + ' modified sources in folder tree'} title="Modified sources in folder tree">●</span>}
+            {summary?.active && <span className="explorer-folder-active" aria-label="Contains active source" title="Contains active source">•</span>}
+            {!!summary?.modified && <span className="explorer-folder-modified" aria-label={summary.modified + ' modified sources in folder tree'} title="Modified sources in folder tree">●</span>}
           </button>
           {manifestRoot && (currentProject
             ? <span className="explorer-project-selected" title="Current target for project commands">Project ✓</span>
