@@ -20,6 +20,7 @@ export const EXPLORER_TOOLS=[
   {id:'quality',category:'analysis',label:'Source quality',description:'Inspect whitespace, delimiters and lexical hints',keywords:'lint cleanup quality warnings'},
   {id:'imports',category:'analysis',label:'Imports and dependencies',description:'Inspect listed imports, paths and observed cycles',keywords:'module graph cycle alias dependents'},
   {id:'workspace-insights',category:'analysis',label:'Workspace insights',description:'Review open-buffer and Explorer inventory',keywords:'metrics file project workspace'},
+  {id:'workspace-architecture',category:'analysis',label:'Workspace architecture',description:'Review bounded call, import, metric and impact topology',keywords:'workspace architecture graph dependency impact route coupling metrics cycles calls imports'},
   {id:'tasks',category:'analysis',label:'Comment task board',description:'Review TODO and FIXME markers in open source',keywords:'todo fixme bug review comments'},
   {id:'listed-inspection',category:'analysis',label:'Listed source inspection',description:'Review project comment tasks and lexical quality across listed sources',keywords:'audit project files todo quality inspection'},
   {id:'project-verification',category:'analysis',label:'Literal source verification',description:'Check reviewed required or forbidden literal patterns across listed sources',keywords:'verify rule literal pattern audit project files'},

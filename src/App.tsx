@@ -125,6 +125,7 @@ import { WorkingChangesPanel } from './components/WorkingChangesPanel';
 import { SourceImportsPanel } from './components/SourceImportsPanel';
 import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
 import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
+import { WorkspaceArchitecturePanel } from './components/WorkspaceArchitecturePanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { ProjectInspectionPanel } from './components/ProjectInspectionPanel';
@@ -837,6 +838,8 @@ export default function App() {
     }
     const position = { lineNumber: target.line, column: target.column };
     editor.setPosition(position);
+    const actualPosition = editor.getPosition();
+    if (actualPosition) setCursor({ line: actualPosition.lineNumber, column: actualPosition.column });
     editor.revealPositionInCenter(position);
     editor.focus();
   }
@@ -4075,6 +4078,12 @@ export default function App() {
             roots={projectRoots} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting}
             onActivate={id => dispatch({ type: 'activate', id })} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="workspace-architecture">
+          <WorkspaceArchitecturePanel documents={documents} listed={folderEntries}
+            activeId={activeId}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onNavigate={jumpToSourceInsight} />
           </ExplorerToolSlot>
           <ExplorerToolSlot id="symbols">
           <WorkspaceSymbolsPanel documents={documents} activeId={activeId}

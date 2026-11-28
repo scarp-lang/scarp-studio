@@ -1,3 +1,4 @@
+import { workspaceArchitectureSmoke } from './settings-browser-workspace-architecture.mjs';
 import { sourceBreadcrumbsSmoke } from './settings-browser-source-breadcrumbs.mjs';
 import { referenceEditorSmoke } from './settings-browser-reference.mjs';
 import { editorViewStateSmoke } from './settings-browser-editor-view-state.mjs';
@@ -172,6 +173,7 @@ try {
   await editorViewStateSmoke({ evaluate, wait, visible, click, change, step, cdp });
   await referenceEditorSmoke({ evaluate, wait, visible, click, change, step, cdp });
   await sourceBreadcrumbsSmoke({ evaluate, wait, visible, click, change, step, cdp });
+  await workspaceArchitectureSmoke({ evaluate, wait, visible, click, change, step, cdp });
   assert.deepEqual(cdp.errors, [], 'uncaught browser exceptions');
   console.log('Settings browser smoke: ' + completed + ' checks passed.');
 } finally {
