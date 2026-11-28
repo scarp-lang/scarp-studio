@@ -19,6 +19,7 @@ export const EXPLORER_TOOLS=[
   {id:'imports',category:'analysis',label:'Imports and dependencies',description:'Inspect listed imports, paths and observed cycles',keywords:'module graph cycle alias dependents'},
   {id:'workspace-insights',category:'analysis',label:'Workspace insights',description:'Review open-buffer and Explorer inventory',keywords:'metrics file project workspace'},
   {id:'tasks',category:'analysis',label:'Comment task board',description:'Review TODO and FIXME markers in open source',keywords:'todo fixme bug review comments'},
+  {id:'listed-inspection',category:'analysis',label:'Listed source inspection',description:'Review project comment tasks and lexical quality across listed sources',keywords:'audit project files todo quality inspection'},
   {id:'identifier-edit',category:'editing',label:'Identifier edit',description:'Select literal code tokens for reviewed replacement',keywords:'rename replace identifier refactor'},
   {id:'line-tools',category:'editing',label:'Line tools',description:'Sort, reverse, indent or transform selected lines',keywords:'sort prefix suffix trim duplicate indentation'},
   {id:'selection-edit',category:'editing',label:'Selection editing',description:'Review literal transformations across editor selections',keywords:'multi cursor surround unwrap duplicate replace case delete'},
