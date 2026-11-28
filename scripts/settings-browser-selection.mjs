@@ -35,9 +35,11 @@ export async function selectionAndCommandSmoke({ evaluate, wait, visible, click,
     await wait(expected => document.querySelector('.monaco-editor .view-lines')?.textContent.replace(/\u00a0/g,' ').includes(expected),
       'test source visible',text.split('\n')[0]);
   };
-  const textContains = expected => wait(value =>
-    document.querySelector('.monaco-editor .view-lines')?.textContent.replace(/\u00a0/g,' ').includes(value),
-  'editor contains '+expected,expected);
+  // Wait for the exact rendering after both apply and undo. A substring
+  // check for "alpha" also accepts "(alpha)" before Monaco repaints.
+  const textEquals = expected => wait(value =>
+    document.querySelector('.monaco-editor .view-lines')?.textContent.replace(/\u00a0/g,' ')===value,
+  'editor equals '+expected,expected);
   const collectionChange = async value => {
     await change(collection,value);
     await wait(value=>document.querySelector('select[aria-label="Command palette collection"]')?.value===value,
@@ -126,9 +128,9 @@ export async function selectionAndCommandSmoke({ evaluate, wait, visible, click,
     assert.match(preview,/alpha/);
     assert.match(preview,/\(alpha\)/);
     await button('Confirm selection transformation',panel);
-    await textContains('(alpha)');
+    await textEquals('(alpha)');
     await button('Undo last selection transformation',panel);
-    await textContains('alpha');
+    await textEquals('alpha');
     assert.equal(await evaluate(()=>document.querySelector('.monaco-editor .view-lines')?.textContent),'alpha');
   });
   await step('changed live selection rejects confirmation without touching the source',async()=>{
