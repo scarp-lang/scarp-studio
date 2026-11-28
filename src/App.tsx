@@ -103,6 +103,11 @@ import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { ProjectInspectionPanel } from './components/ProjectInspectionPanel';
 import { ListedSymbolPanel } from './components/ListedSymbolPanel';
+import { ListedCodeReferencesPanel } from './components/ListedCodeReferencesPanel';
+import { scarpIdentifierAtCursor } from './model/openCodeReferences';
+import { confirmListedReferences, executeListedReferences, resolveListedReferencePath, recheckListedReference,
+  type ListedReferencePlan, type ListedReferenceQuery, type ListedReferenceExecution,
+  type ListedReferenceReport, type ListedReferenceSite } from './model/listedCodeReferences';
 import { executeListedSymbolIndex, resolveListedSymbolPath, recheckListedSymbolSite,
   type ListedSymbolExecution, type ListedSymbolReport, type ListedSymbolSite } from './model/listedSymbolIndex';
 import { ProjectVerificationPanel } from './components/ProjectVerificationPanel';
@@ -1695,39 +1700,80 @@ export default function App() {
     }finally{filePickerInProgress.current=false;setBusy(false);}
   }
 
-  async function navigateListedSymbol(report:ListedSymbolReport,site:ListedSymbolSite):Promise<void>{
+  async function runListedReferences(plan:ListedReferencePlan,settings:InspectionSettings,
+    query:ListedReferenceQuery,control:InspectionControl):Promise<ListedReferenceExecution>{
+    const selection=selectedFolderRef.current;
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return {kind:'invalidated'};
+    const checked=confirmListedReferences(plan,selection.files,{
+      ...settings,listingLimited:folderListingLimited||unavailableProjectFolders.length>0,
+    },query);
+    if(!checked.ok){setError(checked.error);return {kind:'invalidated'};}
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&start.sessionRevision===liveEditor.current.sessionRevision;
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const result=await executeListedReferences(checked.value,start.documents,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
+      if(result.kind==='report'&&current())setNotice('Listed reference search '+result.report.status+'. No files changed.');
+      return current()?result:{kind:'invalidated'};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  function currentReferenceIdentifier():string|null{
+    const doc=currentActiveDocument(liveEditor.current);
+    return doc?scarpIdentifierAtCursor(doc.content,cursor.line,cursor.column):null;
+  }
+
+  /** Historical reports grant neither native access nor navigation authority.
+   * Resolve the current unique listing, then recheck the actual lexical site.
+   */
+  async function navigateListedLexicalSite(label:string,
+    resolve:(listed:readonly FolderEntry[])=>string|null,
+    recheck:(doc:StudioDocument,path:string)=>InsightNavigation|null):Promise<void>{
     const selection=selectedFolderRef.current;
     if(!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)return;
-    const path=resolveListedSymbolPath(report,site,selection.files);
-    if(!path){setError('The observed source is no longer uniquely listed. Index again.');return;}
+    const path=resolve(selection.files);
+    if(!path){setError('The observed source is no longer uniquely listed. Run the analysis again.');return;}
     const matching=liveEditor.current.documents.filter(doc=>doc.path!==null&&sameFilePath(doc.path,path));
     if(matching.length>1){setError('Multiple tabs match that source. Resolve the ambiguous tabs first.');return;}
     if(matching.length===1){
-      const target=recheckListedSymbolSite(site,matching[0],path);
-      if(!target){setError('The current lexical site no longer matches. Index again.');return;}
+      const target=recheck(matching[0],path);
+      if(!target){setError('The current lexical site no longer matches. Run the analysis again.');return;}
       jumpToSourceInsight(target);setError(null);return;
     }
     if(!isTauri())return;
-    const start=liveEditor.current;
-    const epoch=projectResultEpoch.current;
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
     filePickerInProgress.current=true;setBusy(true);setError(null);
     try{
       const content=await readScarpSource(path,512*1024);
       if(selection!==selectedFolderRef.current||epoch!==projectResultEpoch.current||
         !hasUnchangedEditorSession(start,liveEditor.current)){
-        setError('Workspace changed during source recheck. Index again.');return;
+        setError('Workspace changed during source recheck. Run the analysis again.');return;
       }
-      const candidate={id:'listed-symbol-recheck',name:site.source,path,content,savedContent:content,revision:0};
-      if(!recheckListedSymbolSite(site,candidate,path)){
-        setError('The disk lexical site no longer matches. Index again.');return;
+      const candidate:StudioDocument={id:'listed-lexical-recheck',name:label,path,content,savedContent:content,revision:0};
+      if(!recheck(candidate,path)){
+        setError('The disk lexical site no longer matches. Run the analysis again.');return;
       }
       activateOpenedFile(path,content);
       const opened=currentActiveDocument(liveEditor.current);
-      const target=opened?recheckListedSymbolSite(site,opened,path):null;
+      const target=opened?recheck(opened,path):null;
       if(target)jumpToSourceInsight(target);
       else setError('The source opened but its current lexical site could not be verified.');
-    }catch{setError('Could not recheck the listed source. Refresh Explorer and index again.');}
+    }catch{setError('Could not recheck the listed source. Refresh Explorer and run the analysis again.');}
     finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  function navigateListedSymbol(report:ListedSymbolReport,site:ListedSymbolSite):Promise<void>{
+    return navigateListedLexicalSite(site.source,listed=>resolveListedSymbolPath(report,site,listed),
+      (doc,path)=>recheckListedSymbolSite(site,doc,path));
+  }
+
+  function navigateListedReference(report:ListedReferenceReport,hit:ListedReferenceSite):Promise<void>{
+    return navigateListedLexicalSite(hit.source,listed=>resolveListedReferencePath(report,hit,listed),
+      (doc,path)=>recheckListedReference(hit,doc,path));
   }
 
   async function runListedInspection(plan:ProjectInspectionPlan, settings:InspectionSettings, control:InspectionControl):Promise<InspectionExecution>{
@@ -3689,6 +3735,13 @@ export default function App() {
             listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
             available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
             onRun={runListedSymbols} onNavigate={(report,site)=>void navigateListedSymbol(report,site)}/>
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="listed-references">
+          <ListedCodeReferencesPanel key={'listed-references:'+folderPath} listed={folderEntries}
+            listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
+            available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            cursorIdentifier={currentReferenceIdentifier} onRun={runListedReferences}
+            onNavigate={(report,hit)=>void navigateListedReference(report,hit)}/>
           </ExplorerToolSlot>
           </ExplorerToolDirectory>
         </aside>
