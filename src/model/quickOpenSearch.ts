@@ -59,28 +59,32 @@ function positions(start: number, length: number): number[] {
  * consecutive letters, short gaps and word boundaries. No regex is built
  * from user input and the candidate length is limited before scoring. */
 function fuzzyMatch(value: string, term: string): Match | null {
-  let best: Match | null = null;
-  for (let start = 0; start < value.length; start++) {
-    if (value[start] !== term[0]) continue;
-    const found = [start];
-    let cursor = start + 1;
-    let gap = 0;
-    let adjacency = 0;
-    let boundaries = Number(boundary(value, start));
-    for (let index = 1; index < term.length; index++) {
-      const next = value.indexOf(term[index], cursor);
-      if (next < 0) break;
-      gap += next - cursor;
-      if (next === cursor) adjacency++;
-      if (boundary(value, next)) boundaries++;
-      found.push(next);
-      cursor = next + 1;
-    }
-    if (found.length !== term.length) continue;
-    const score = 100 + adjacency * 3 + boundaries * 5 - gap * 2 - start;
-    if (!best || score > best.score) best = { score, positions: found, kind: 'fuzzy' };
+  // First find a complete subsequence, then walk backward from its last
+  // character to remove leading gaps. Two bounded scans per candidate.
+  let cursor = 0;
+  let end = -1;
+  for (const unit of term.split('')) {
+    end = value.indexOf(unit, cursor);
+    if (end < 0) return null;
+    cursor = end + 1;
   }
-  return best;
+  const found = new Array<number>(term.length);
+  cursor = end;
+  for (let index = term.length - 1; index >= 0; index--) {
+    const position = value.lastIndexOf(term[index], cursor);
+    if (position < 0) return null;
+    found[index] = position;
+    cursor = position - 1;
+  }
+  let adjacency = 0;
+  let boundaries = 0;
+  for (let index = 0; index < found.length; index++) {
+    if (index > 0 && found[index] === found[index - 1] + 1) adjacency++;
+    if (boundary(value, found[index])) boundaries++;
+  }
+  const gap = found[found.length - 1] - found[0] + 1 - found.length;
+  const score = 100 + adjacency * 3 + boundaries * 5 - gap * 2 - found[0];
+  return { score, positions: found, kind: 'fuzzy' };
 }
 
 function matchTerm(value: string, term: string, mode: QuickOpenMatchMode): Match | null {
@@ -148,7 +152,7 @@ function scoreEntry(entry: QuickOpenEntry, terms: readonly string[], options: Qu
     });
     for (const [value, penalty] of [[relative, 80], [path, 160]] as const) {
       if (!value) continue;
-      const found = matchTerm(value, term, options.mode);
+      const found = matchTerm(value, term, 'literal');
       if (found) optionsForTerm.push({ score: found.score - penalty, positions: [], kind: 'path' });
     }
     if (!optionsForTerm.length) return null;
