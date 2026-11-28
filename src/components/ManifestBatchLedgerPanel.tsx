@@ -1,4 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
+import {ManifestLedgerComparisonPanel} from './ManifestLedgerComparisonPanel';
+import {captureLedgerComparisonBaseline} from '../model/manifestLedgerComparison';
 import {confirmManifestLedger,prepareManifestLedger,startManifestLedger,prepareLedgerBatch,recordManifestLedgerBatch,summarizeManifestLedger,
   ledgerDigestGroups,filterLedgerRows,manifestLedgerText,DEFAULT_LEDGER_FILTER,LEDGER_ROW_STATES,ledgerRowStateLabel,
   type ManifestLedger,type ManifestLedgerPlan,type LedgerFilter} from '../model/manifestBatchLedger';
@@ -90,6 +92,7 @@ export function ManifestBatchLedgerPanel({listed,scope,mode,listingLimited,visib
   const [expanded,setExpanded]=useState(false);
   const [review,setReview]=useState<ManifestLedgerPlan|null>(null);
   const [ledger,setLedger]=useState<ManifestLedger|null>(null);
+  const [comparisonBaseline,setComparisonBaseline]=useState<ManifestLedger|null>(null);
   const [batch,setBatch]=useState(1);
   const [batchReview,setBatchReview]=useState<ProjectInspectionPlan|null>(null);
   const [running,setRunning]=useState(false);
@@ -114,7 +117,7 @@ export function ManifestBatchLedgerPanel({listed,scope,mode,listingLimited,visib
     const checked=confirmManifestLedger(review,listed,scope,mode,listingLimited);
     setReview(null);
     if(!checked.ok){setNotice(checked.error);return;}
-    setLedger(startManifestLedger(checked.value));setBatch(1);setBatchReview(null);setNotice('Started ledger. No source reads yet.');
+    setLedger(startManifestLedger(checked.value));setComparisonBaseline(null);setBatch(1);setBatchReview(null);setNotice('Started ledger. No source reads yet.');
   }
   function reviewBatch(){
     if(blocked||!ledger)return;
@@ -158,7 +161,7 @@ export function ManifestBatchLedgerPanel({listed,scope,mode,listingLimited,visib
       <button type="button" disabled={blocked} onClick={preview}>{ledger?'Review replacement ledger':'Review new manifest ledger'}</button>
       {review&&<section aria-label="Review manifest ledger membership">
         <p>{review.sources.length} eligible labels across {review.batches.length} batches · {review.excluded} excluded · {review.withheld} withheld.</p>
-        <p>Mode: {review.mode}. {ledger?'Replacing the ledger discards existing receipt metadata.':'No files will be read yet.'}</p>
+        <p>Mode: {review.mode}. {ledger?'Replacing the ledger discards existing receipt metadata and the comparison baseline.':'No files will be read yet.'}</p>
         <div className="project-scope-inventory"><ol>{review.batches.map(item=><li key={item.index}>
           Batch {item.index} · {item.labels.length} labels<ul>{item.labels.map(label=><li key={label}><code dir="auto">{label}</code></li>)}</ul>
         </li>)}</ol></div>
@@ -187,6 +190,9 @@ export function ManifestBatchLedgerPanel({listed,scope,mode,listingLimited,visib
           </button>
         </div>}
         <LedgerObservations key={ledger.plan.sources.map(source=>source.name).join('|')+':'+ledger.nextSequence} ledger={ledger}/>
+        <ManifestLedgerComparisonPanel key={ledger.nextSequence} ledger={ledger} baseline={comparisonBaseline} busy={blocked}
+          onCapture={()=>{const result=captureLedgerComparisonBaseline(ledger);if(result.ok)setComparisonBaseline(result.value);else setNotice(result.error);}}
+          onClear={()=>setComparisonBaseline(null)}/>
       </>}
       {notice&&<p role="status">{notice}</p>}
     </>}
