@@ -206,7 +206,7 @@ export function ProjectVerificationPanel({listed,listingLimited,available,busy,o
   return <section className="sidebar-section" aria-label="Listed project verification">
     <div className="sidebar-heading">LITERAL SOURCE VERIFICATION</div>
     <button type="button" className="insights-toggle" aria-expanded={expanded} disabled={running}
-      onClick={()=>setExpanded(value=>!value)}>{expanded?'Hide literal source verification':'Verify literal project rules'}</button>
+      onClick={()=>{setExpanded(!expanded);if(expanded)setReview(null);}}>{expanded?'Hide literal source verification':'Verify literal project rules'}</button>
     {expanded&&<>
       <p>Run reviewed literal expectations across up to {INSPECTION_READ_LIMITS.files} listed files and
         {' '}{INSPECTION_READ_LIMITS.totalBytes/1024/1024} MiB. No compiler execution or file writes.</p>
@@ -225,12 +225,14 @@ export function ProjectVerificationPanel({listed,listingLimited,available,busy,o
           if(index<0||target<0||target>=drafts.length)return;
           const next=[...drafts];[next[index],next[target]]=[next[target],next[index]];updateDrafts(next);
         }}/>
-      <VerificationProfilesPanel current={drafts.map(draft=>draft.rule)} busy={blocked}
+    </>}
+    <VerificationProfilesPanel current={drafts.map(draft=>draft.rule)} busy={blocked} visible={expanded}
         onApply={rules=>{
           if(blocked)return false;
           updateDrafts(rules.map(rule=>({id:sequence.current++,rule})));
           return true;
         }}/>
+    {expanded&&<>
       <button type="button" disabled={blocked} onClick={preview}>Review project verification</button>
       {review&&<ProjectVerificationReview plan={review} busy={blocked} onConfirm={()=>void run()} onCancel={()=>setReview(null)}/>}
       {running&&<div role="status">
@@ -240,7 +242,9 @@ export function ProjectVerificationPanel({listed,listingLimited,available,busy,o
         </button>
       </div>}
       {error&&<p role="alert">{error}</p>}
-      <VerificationComparisonPanel current={baseline} busy={blocked}/>
+    </>}
+    <VerificationComparisonPanel current={baseline} busy={blocked} visible={expanded}/>
+    {expanded&&<>
       {result&&<><ProjectVerificationResults report={result}/><button type="button" disabled={running} onClick={()=>{setResult(null);setBaseline(null);}}>Dismiss verification results</button></>}
     </>}
   </section>;
