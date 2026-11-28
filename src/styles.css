@@ -537,7 +537,66 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
    the editor behind a fixed-height output panel. */
 .workspace { overflow-y: auto; }
 .editor-output-region { display: flex; flex-direction: column; flex: 1 0 300px; min-width: 0; min-height: 300px; }
-.editor-output-region > .editor-panel { flex: 1 1 0; min-height: 100px; }
+.editor-output-region > .editor-panes {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 100px;
+  min-width: 0;
+  overflow: hidden;
+}
+.editor-panes > .editor-panel { flex: 1 1 0; min-height: 0; min-width: 0; }
+.editor-panes.split-horizontal { flex-direction: row; }
+.editor-panes.split-vertical { flex-direction: column; }
+.editor-panes.split-horizontal > .editor-panel,
+.editor-panes.split-vertical > .editor-panel { flex: 1 1 auto; }
+.reference-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel);
+  border-inline-start: 1px solid var(--border);
+}
+.split-vertical > .reference-pane {
+  border-inline-start: 0;
+  border-block-start: 1px solid var(--border);
+}
+.reference-pane-header {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  max-height: 60%;
+  overflow: auto;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.reference-pane-title, .reference-pane-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.reference-pane-title > button { margin-inline-start: auto; }
+.reference-pane-title strong { font-size: 13px; }
+.reference-badge { color: var(--muted); border: 1px solid var(--border); padding: 2px 5px; border-radius: 4px; }
+.reference-pane-header label { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.reference-pane-header select { flex: 1; min-width: 0; max-width: 100%; }
+.reference-pane-header small { color: var(--muted); overflow-wrap: anywhere; }
+.reference-share-control { flex: 1 1 120px; }
+.reference-share-control input { width: 100%; min-width: 40px; accent-color: var(--accent); }
+.reference-share-control output { font-variant-numeric: tabular-nums; }
+.reference-pane-body { flex: 1 1 0; min-height: 0; min-width: 0; overflow: hidden; }
+.reference-pane-empty { padding: 16px; color: var(--muted); font-size: 13px; overflow: auto; height: 100%; }
+@media (max-width: 700px) {
+  .editor-panes.split-horizontal { flex-direction: column; }
+  .split-horizontal > .reference-pane { border-inline-start: 0; border-block-start: 1px solid var(--border); }
+}
 .editor-output-region > .compiler-panel.output-normal { max-height: none; }
 .editor-output-region > .compiler-panel.output-expanded { max-height: calc(100% - 100px); }
 .workspace-settings {
