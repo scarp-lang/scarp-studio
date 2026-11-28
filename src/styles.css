@@ -537,6 +537,22 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
    the editor behind a fixed-height output panel. */
 .workspace { overflow-y: auto; }
 .editor-output-region { display: flex; flex-direction: column; flex: 1 0 300px; min-width: 0; min-height: 300px; }
+.source-breadcrumbs { flex: 0 0 auto; min-width: 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.source-breadcrumb-row { display:flex; align-items:center; gap:5px; overflow-x:auto; padding:4px 8px; white-space:nowrap; }
+.source-breadcrumb-row button { max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.source-breadcrumb-file { font-weight:600; }
+.source-breadcrumb-segment { display:inline-flex; align-items:center; gap:5px; }
+.source-breadcrumb-muted { color:var(--muted); font-size:11px; }
+.source-breadcrumb-toggle { margin-inline-start:auto; }
+.source-breadcrumb-outline { max-height: min(260px,35vh); overflow:auto; padding:6px 10px; border-top:1px solid var(--border); }
+.source-breadcrumb-outline p { margin:4px 0; color:var(--muted); }
+.source-breadcrumb-filters { display:flex; gap:6px; flex-wrap:wrap; }
+.source-breadcrumb-filters input { flex:1 1 150px; min-width:0; }
+.source-breadcrumb-outline ul { list-style:none; padding:0; margin:5px 0; }
+.source-breadcrumb-outline li button { width:100%; display:flex; align-items:center; justify-content:space-between; gap:8px; text-align:start; }
+.source-breadcrumb-outline li strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.source-breadcrumb-outline li small { color:var(--muted); white-space:nowrap; }
+.source-breadcrumb-pages { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .editor-output-region > .editor-panes {
   display: flex;
   flex: 1 1 0;
