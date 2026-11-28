@@ -3,6 +3,7 @@ import {readInspectionSnapshot,INSPECTION_READ_LIMITS,type InspectionControl,typ
   type InspectionOrigin,type ProjectInspectionPlan} from './projectInspection';
 import {MAX_SCOPE_REPORT_UNITS} from './projectSearchScope';
 import {safeRelativeScarpSourceName} from './folderListing';
+import {assertWellFormedUtf16,utf8ByteLength} from './utf8Text';
 
 export const MANIFEST_PAGE_SIZE=20;
 export const MANIFEST_STATES=['hashed','read-failed','byte-limit','ambiguous-buffer','hash-failed','not-observed'] as const;
@@ -48,6 +49,8 @@ export function validSourceDigest(value:unknown):value is string{
 /** Hash exact UTF-8 source text, including all newline units, with local
  * Web Crypto. No upload, filesystem access, or compiler invocation. */
 export async function sha256SourceText(content:string):Promise<string>{
+  if(content.length>INSPECTION_READ_LIMITS.fileBytes||utf8ByteLength(content)>INSPECTION_READ_LIMITS.fileBytes)throw Error('Source exceeds digest byte budget');
+  assertWellFormedUtf16(content,'Source digest');
   if(!globalThis.crypto?.subtle)throw Error('Local SHA-256 unavailable');
   const digest=await globalThis.crypto.subtle.digest('SHA-256',new TextEncoder().encode(content));
   return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
