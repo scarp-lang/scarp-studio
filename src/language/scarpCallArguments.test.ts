@@ -44,7 +44,9 @@ describe('lexical argument observation',()=>{
   it('declines unbalanced delimiters, unsupported separators and incomplete literals',()=>{
     expect(count('funcra main() { f([1, 2)); }','f')).toMatchObject({ok:false});
     expect(count('funcra main() { f(name: 1); }','f')).toMatchObject({ok:false,issue:'unsupported-shape'});
-    expect(count('funcra main() { f("unfinished); }','f')).toMatchObject({ok:false,issue:'lexical-incomplete'});
+    const valid='funcra main() { f(1); }';
+    const indexed=indexSymbolFile({id:'test',name:'main.srp',path:null,content:valid,savedContent:valid,revision:0});
+    expect(captureScarpCallArguments('funcra main() { f("unfinished); }',indexed.calls)[0]?.evidence).toMatchObject({ok:false,issue:'lexical-incomplete'});
   });
   it('limits both token traversal and nesting',()=>{
     expect(count('funcra main() { f('+Array(MAX_ARGUMENT_SCAN_TOKENS).fill('1 + ').join('')+'1); }','f')).toMatchObject({ok:false,issue:'argument-limit'});
