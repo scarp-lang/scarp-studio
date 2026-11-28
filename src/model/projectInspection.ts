@@ -147,6 +147,7 @@ export interface InspectionControl {
   readonly isCurrent: () => boolean;
   readonly isCancelled: () => boolean;
   readonly onProgress?: (progress: InspectionProgress) => void;
+  readonly yieldBetweenFiles?: () => Promise<void>;
 }
 export type InspectionExecution = { readonly kind: 'report'; readonly report: ProjectInspectionReport } |
   { readonly kind: 'invalidated' };
@@ -182,8 +183,11 @@ export async function readInspectionSnapshot(source:ProjectSearchSource,document
     const content=open?open.content:await read(source.path,budget);
     if(stopped())return {kind:'stopped'};
     if(typeof content!=='string')throw Error('Invalid source text');
+    // UTF-16 units are a lower bound for the UTF-8 size of well-formed text.
+    // Reject an oversized adapter response before any linear validation scan.
+    if(content.length>budget)return {kind:'unavailable',state:'byte-limit',origin,dirtyTab};
     assertWellFormedUtf16(content,'Inspected source');
-    const bytes=content.length<=budget?utf8ByteLength(content):budget+1;
+    const bytes=utf8ByteLength(content);
     if(bytes>budget)return {kind:'unavailable',state:'byte-limit',origin,dirtyTab};
     return {kind:'available',content,bytes,origin,dirtyTab};
   }catch{
@@ -207,6 +211,8 @@ export async function executeProjectInspection(
   for (const source of plan.sources) {
     if (stopped()) break;
     control.onProgress?.({ observed: files.length, total: plan.selected });
+    if (stopped()) break;
+    if (control.yieldBetweenFiles) await control.yieldBetweenFiles();
     if (stopped()) break;
     const snapshot=await readInspectionSnapshot(source,documents,plan.settings.mode,MAX_PROJECT_SEARCH_TOTAL_BYTES-bytes,read,stopped);
     if(snapshot.kind==='stopped')break;
