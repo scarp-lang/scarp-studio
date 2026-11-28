@@ -69,6 +69,24 @@ export async function referenceEditorSmoke({evaluate,wait,visible,click,change,s
     await hasText(primary,'reference_alpha');
     await hasText(pane,'reference_beta');
   });
+  await step('Reference comparison reviews versions and marks edits historical',async()=>{
+    const comparison=pane+' [aria-label="Reference snapshot comparison"]';
+    const compareButton=pane+' [aria-label="Reference view"] button:nth-child(2)';
+    await click(compareButton);
+    await visible(comparison);
+    await click(comparison+' button');
+    await wait(s=>document.querySelector(s)?.textContent.includes('Current reviewed snapshots'),'current comparison',comparison);
+    await wait(s=>document.querySelector(s)?.textContent.includes('reference_beta'),'reference difference',comparison);
+    await change(comparison+' [aria-label="Compared reference version"]','saved');
+    await wait(s=>document.querySelector(s)?.textContent.includes('Historical preview'),'changed version',comparison);
+    await click(comparison+' button');
+    await wait(s=>document.querySelector(s)?.textContent.includes('Current reviewed snapshots'),'refreshed saved comparison',comparison);
+    await write('_edited');
+    await wait(s=>document.querySelector(s)?.textContent.includes('Historical preview'),'edited primary snapshot',comparison);
+    await click(pane+' [aria-label="Reference view"] button:first-child');
+    await visible(reference);
+    await hasText(pane,'reference_beta');
+  });
   await step('Closing a selected clean tab clears the reference without opening another source',async()=>{
     empty=await newTab();
     await click(tab(first));
