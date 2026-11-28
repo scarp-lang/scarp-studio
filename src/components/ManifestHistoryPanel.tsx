@@ -1,4 +1,4 @@
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {
   captureManifestBaseline,compareManifestBaselines,exportManifestBaseline,parseManifestBackup,
   filterManifestComparison,manifestComparisonReport,MANIFEST_CHANGES,MANIFEST_CHANGE_LABELS,
@@ -88,7 +88,7 @@ function ComparisonResults({comparison}:{comparison:ManifestComparison}){
     </>}
   </section>;
 }
-export function ManifestHistoryPanel({current,busy}:{current:ProjectSourceManifest|null;busy:boolean}){
+export function ManifestHistoryPanel({current,busy,visible}:{current:ProjectSourceManifest|null;busy:boolean;visible:boolean}){
   const [entries,setEntries]=useState<readonly Entry[]>([]);
   const [nextId,setNextId]=useState(1);
   const [revision,setRevision]=useState(0);
@@ -98,6 +98,7 @@ export function ManifestHistoryPanel({current,busy}:{current:ProjectSourceManife
   const [review,setReview]=useState<ImportReview|null>(null);
   const [reveal,setReveal]=useState(false);
   const [notice,setNotice]=useState('');
+  useEffect(()=>{if(!visible){setExpanded(false);setRaw('');setReview(null);setReveal(false);setNotice('');}},[visible]);
   const chosen=entries.find(entry=>entry.id===selected);
   const currentBaseline=useMemo(()=>current?captureManifestBaseline(current):null,[current]);
   const comparison=useMemo(()=>chosen&&currentBaseline?.ok?
@@ -126,6 +127,7 @@ export function ManifestHistoryPanel({current,busy}:{current:ProjectSourceManife
     setEntries(old=>old.filter(entry=>entry.id!==selected));setSelected(0);
     setRevision(revision+1);setReveal(false);setReview(null);setNotice('Selected baseline removed from session.');
   }
+  if(!visible)return null;
   return <section aria-label="Source manifest history" className="project-scope-coverage">
     <button type="button" aria-expanded={expanded} onClick={()=>{setExpanded(!expanded);setReview(null);setRaw('');setReveal(false);setNotice('');}}>
       {expanded?'Hide source manifest history':'Review source manifest history'}
