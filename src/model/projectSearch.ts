@@ -43,7 +43,17 @@ export interface ProjectSearchHit {
   match: OpenFileSearchHit;
 }
 
+export const PROJECT_SEARCH_FILE_STATES = ['scanned','file-limit','read-failed','byte-limit','content-limit','invalid-listing'] as const;
+export type ProjectSearchFileState = typeof PROJECT_SEARCH_FILE_STATES[number];
+export interface ProjectSearchFileEvidence {
+  readonly name:string;
+  readonly path:string;
+  readonly state:ProjectSearchFileState;
+  readonly origin:'open-buffer'|'disk'|null;
+}
 export interface ProjectSearchResult {
+  /** One row per bounded listing entry; absent on older or empty reports. */
+  fileEvidence?: readonly ProjectSearchFileEvidence[];
   hits: ProjectSearchHit[];
   /** Selected project sources scanned to completion in memory. */
   searchedFiles: number;
@@ -147,11 +157,28 @@ export async function searchListedProjectSources(
     openDocuments.filter((document) => document.path !== null && isDirty(document))
       .map((document) => document.path!),
   );
+  const evidence = listed.slice(0, MAX_LISTED_SOURCES).map(source => ({
+    name:source.name,path:source.path,
+    state:'file-limit' as ProjectSearchFileState,origin:null as ProjectSearchFileEvidence['origin'],
+  }));
+  // The selector returns original source objects. Keep row identity even
+  // when an old caller supplies duplicate labels or native path aliases.
+  const bySource=new Map<ProjectSearchSource,number>();
+  listed.slice(0,MAX_LISTED_SOURCES).forEach((source,index)=>{
+    if(!bySource.has(source))bySource.set(source,index);
+    if(!safeRelativeScarpSourceName(source.name)||!isScarpPath(source.path)||
+      listed.slice(0,index).some(other=>sameFilePath(other.path,source.path)))evidence[index].state='invalid-listing';
+  });
+  function mark(source:ProjectSearchSource,state:ProjectSearchFileState,origin:ProjectSearchFileEvidence['origin']=null){
+    const index=bySource.get(source);
+    if(index!==undefined)evidence[index]={name:source.name,path:source.path,state,origin};
+  }
   let skipped = listed.length - selected.length;
   let truncated = skipped > 0;
   let totalBytes = 0;
   const snapshots: StudioDocument[] = [];
   const mapping = new Map<string, { path: string; name: string; fromOpenTab: boolean }>();
+  const scannedSources=new Map<string,ProjectSearchSource>();
 
   for (let index = 0; index < selected.length; index++) {
     if (!isCurrent()) return null;
@@ -159,6 +186,7 @@ export async function searchListedProjectSources(
     const remainingBytes = MAX_PROJECT_SEARCH_TOTAL_BYTES - totalBytes;
     if (remainingBytes === 0) {
       skipped += selected.length - index;
+      for(const source of selected.slice(index))mark(source,'byte-limit');
       truncated = true;
       break;
     }
@@ -177,6 +205,7 @@ export async function searchListedProjectSources(
       } catch {
         if (!isCurrent()) return null;
         skipped++;
+        mark(source,'read-failed','disk');
         truncated = true;
         continue;
       }
@@ -188,6 +217,7 @@ export async function searchListedProjectSources(
       ? utf8ByteLength(content) : readLimit + 1;
     if (sourceBytes > readLimit) {
       // A later, smaller source may still fit within remaining capacity.
+      mark(source,'byte-limit',open?'open-buffer':'disk');
       skipped++;
       truncated = true;
       continue;
@@ -202,13 +232,20 @@ export async function searchListedProjectSources(
       revision: 0,
     };
     snapshots.push(document);
+    scannedSources.set(document.id,source);
+    mark(source,'content-limit',open?'open-buffer':'disk');
     mapping.set(document.id, {
       path: source.path, name: source.name, fromOpenTab: open !== undefined,
     });
   }
   if (!isCurrent()) return null;
-  const result = searchOpenFiles(snapshots, query, options);
+  const result = searchOpenFiles(snapshots, query, options, id=>{
+    const source=scannedSources.get(id);
+    const origin=mapping.get(id);
+    if(source&&origin)mark(source,'scanned',origin.fromOpenTab?'open-buffer':'disk');
+  });
   return {
+    fileEvidence:Object.freeze(evidence.map(row=>Object.freeze(row))),
     hits: result.hits.flatMap((hit) => {
       const source = mapping.get(hit.documentId);
       return source ? [{ ...source, match: hit }] : [];

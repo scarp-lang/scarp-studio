@@ -38,3 +38,26 @@ Scope and content-option changes invalidate the prior result and any
 replacement plan. Existing reviewed replacement behavior still stages only
 explicitly chosen visible occurrences and rechecks source snapshots before
 editing in memory. No automatic save occurs.
+
+
+## Per-file coverage
+
+When the coverage report is available, the file table includes every eligible
+source, even if no matching text was displayed. Filter for incomplete files or
+files with displayed matches. Each file receives one state from the bounded
+search operation:
+
+- **Fully scanned:** its in-memory source was searched to completion.
+- **File count limit:** it was outside the selected 24-file scan budget.
+- **Read unavailable:** the existing native reader failed. This can include
+  missing files, permission errors or the reader's own size/encoding guard.
+- **Byte budget:** the source did not fit the remaining source-byte budget.
+- **Content or match budget:** text was available but not fully searched,
+  including partially searched and unstarted in-memory scans.
+- **Invalid listing identity:** the entry was rejected by listing validation.
+
+The origin identifies an open working buffer, a disk read attempt, or an
+unread candidate. A source with zero displayed matches is not necessarily
+free of the query unless its coverage is complete. Counts-only reports include
+the state totals. With relative-label opt-in, reports include these states per
+file, without exposing native reader error strings or absolute paths.

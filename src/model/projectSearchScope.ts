@@ -1,6 +1,6 @@
 import { isScarpPath, sameFilePath } from './documents';
 import { MAX_DISPLAYED_SCARP_FILES, safeRelativeScarpDirectory, safeRelativeScarpSourceName } from './folderListing';
-import { MAX_PROJECT_SEARCH_FILES, type ProjectSearchSource, type ProjectSearchResult } from './projectSearch';
+import { MAX_PROJECT_SEARCH_FILES, PROJECT_SEARCH_FILE_STATES, type ProjectSearchFileEvidence, type ProjectSearchFileState, type ProjectSearchSource, type ProjectSearchResult } from './projectSearch';
 import { assertWellFormedUtf16 } from './utf8Text';
 
 export const MAX_SCOPE_NAME_QUERY=120;
@@ -109,7 +109,27 @@ export interface ScopedSearchFileRow{
   readonly hits:number;
   readonly openBuffer:boolean;
 }
+export interface ScopedFileCoverageRow{
+  readonly name:string;
+  readonly state:ProjectSearchFileState;
+  readonly origin:ProjectSearchFileEvidence['origin'];
+  readonly hits:number;
+}
+export const SEARCH_COVERAGE_LABELS:Readonly<Record<ProjectSearchFileState,string>>=Object.freeze({
+  scanned:'Fully scanned','file-limit':'File count limit','read-failed':'Read unavailable',
+  'byte-limit':'Byte budget','content-limit':'Content or match budget','invalid-listing':'Invalid listing identity',
+});
+/** Distinguish the origin of available text from a failed attempt to read it.
+ * An unavailable file never acquires a fictional disk snapshot label. */
+export function searchCoverageOrigin(row:ScopedFileCoverageRow):string{
+  if(row.origin==='open-buffer')return 'Open buffer';
+  if(row.origin==='disk'){
+    return row.state==='read-failed'||row.state==='byte-limit'?'Disk read attempt':'Disk snapshot';
+  }
+  return 'Not read';
+}
 export interface ScopedSearchSummary{
+  readonly fileCoverage?:readonly ScopedFileCoverageRow[];
   readonly scope:ProjectSearchScope;
   readonly listed:number;
   readonly inScope:number;
@@ -139,12 +159,36 @@ export function summarizeScopedSearch(plan:ScopedProjectSearchPlan,result:Projec
     }else groups.set(source.name,{name:source.name,hits:1,openBuffer:hit.fromOpenTab});
   }
   const rows=[...groups.values()].sort((a,b)=>b.hits-a.hits||a.name.localeCompare(b.name,'en',{numeric:true}));
+  let fileCoverage:readonly ScopedFileCoverageRow[]|undefined;
+  if(result.fileEvidence){
+    const evidence=result.fileEvidence;
+    if(evidence.length!==plan.sources.length||
+      evidence.filter(row=>row.state==='scanned').length!==result.searchedFiles)
+      return fail('Per-file coverage does not agree with search counts.');
+    const checked:ScopedFileCoverageRow[]=[];
+    for(const source of plan.sources){
+      const candidates=evidence.filter(row=>row.name===source.name&&sameFilePath(row.path,source.path));
+      if(candidates.length!==1)return fail('Per-file coverage does not match the selected source inventory.');
+      const row=candidates[0],group=groups.get(source.name);
+      if(!PROJECT_SEARCH_FILE_STATES.includes(row.state)||
+        (row.origin!==null&&row.origin!=='disk'&&row.origin!=='open-buffer')||
+        ((row.state==='scanned'||row.state==='content-limit')&&row.origin===null)||
+        (row.state==='read-failed'&&row.origin!=='disk')||
+        ((row.state==='file-limit'||row.state==='invalid-listing')&&row.origin!==null)||
+        (group&&(row.state!=='scanned'&&row.state!=='content-limit'||
+          row.origin!==(group.openBuffer?'open-buffer':'disk'))))
+        return fail('Per-file coverage contains inconsistent source evidence.');
+      checked.push(Object.freeze({name:source.name,state:row.state,origin:row.origin,hits:group?.hits??0}));
+    }
+    fileCoverage=Object.freeze(checked);
+  }
   const withheld=plan.invalid+plan.ambiguous+plan.uninspected;
   return {ok:true,value:Object.freeze({
     scope:plan.scope,listed:plan.listed,inScope:plan.sources.length,excluded:plan.excluded,
     withheld,searched:result.searchedFiles,skipped:result.skippedFiles,hits:result.hits.length,matchingFiles:rows.length,
     incomplete:result.truncated||result.skippedFiles>0||withheld>0,
     rows:Object.freeze(rows.map(row=>Object.freeze(row))),
+    ...(fileCoverage?{fileCoverage}:{}),
   })};
 }
 export interface ScopeReportOptions{
@@ -169,17 +213,34 @@ export function scopedSearchReport(summary:ScopedSearchSummary,options:ScopeRepo
     'Coverage: '+(summary.incomplete?'incomplete':'complete for selected listed sources'),
     'Read budget: at most '+MAX_PROJECT_SEARCH_FILES+' sources per search.',
   ];
+  if(summary.fileCoverage){
+    for(const state of PROJECT_SEARCH_FILE_STATES){
+      const count=summary.fileCoverage.filter(row=>row.state===state).length;
+      if(count&&state!=='scanned')lines.push(SEARCH_COVERAGE_LABELS[state]+': '+count);
+    }
+  }
+  if(options.includeFilenameQuery)lines.push('Filename substring: '+JSON.stringify(summary.scope.filename));
   if(options.includeLabels){
     lines.push('Directory label: '+JSON.stringify(summary.scope.directory||'(root)'));
     let length=lines.join('\n').length;
-    for(const row of summary.rows){
-      const line=JSON.stringify(row.name)+' — '+row.hits+' displayed match(es), '+(row.openBuffer?'open buffer':'disk snapshot');
+    // Legacy reports contain matching rows but no per-file completion proof.
+    // A displayed hit establishes its origin, not that its source was fully scanned.
+    const reportRows=summary.fileCoverage
+      ?summary.fileCoverage.map(row=>({
+        name:row.name,hits:row.hits,coverage:SEARCH_COVERAGE_LABELS[row.state],origin:searchCoverageOrigin(row),
+      }))
+      :summary.rows.map(row=>({
+        name:row.name,hits:row.hits,coverage:'Per-file coverage unavailable',
+        origin:row.openBuffer?'Open buffer':'Disk snapshot',
+      }));
+    for(const row of reportRows){
+      const line=JSON.stringify(row.name)+' — '+row.hits+' displayed match(es), '+row.coverage+
+        ', '+row.origin;
       if(length+line.length+1>MAX_SCOPE_REPORT_UNITS-100){
         lines.push('Additional file rows omitted from report due to size limit.');break;
       }
       lines.push(line);length+=line.length+1;
     }
   }
-  if(options.includeFilenameQuery)lines.push('Filename substring: '+JSON.stringify(summary.scope.filename));
   return lines.join('\n');
 }
