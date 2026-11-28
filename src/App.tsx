@@ -79,6 +79,10 @@ import { SelectionEditPanel } from './components/SelectionEditPanel';
 import { captureSelections, selectionMatchesLive, selectionEditIsCurrent, type SelectionEditPlan, type SelectionCapture, type SelectionResult } from './model/selectionEdit';
 import { LineRangeToolsPanel } from './components/LineRangeToolsPanel';
 import { IdentifierEditPanel } from './components/IdentifierEditPanel';
+import { ProjectIdentifierMigrationPanel } from './components/ProjectIdentifierMigrationPanel';
+import { confirmProjectMigration, scanProjectMigration, prepareMigrationApply, createMigrationUndo,
+  type ProjectMigrationReview,type MigrationScanExecution,type ProjectMigrationPlan,type MigrationOutcome } from './model/projectIdentifierMigration';
+import type { MigrationRule } from './model/migrationRules';
 import { OpenBufferComparisonPanel } from './components/OpenBufferComparisonPanel';
 import { ExplorerToolDirectory, ExplorerToolSlot } from './components/ExplorerToolDirectory';
 import { bufferTransferIsCurrent, type BufferTransferPlan } from './model/openBufferComparison';
@@ -423,6 +427,7 @@ export default function App() {
   const [selectionEditUndo, setSelectionEditUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [lineRangeUndo, setLineRangeUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [identifierUndo, setIdentifierUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [migrationUndo, setMigrationUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [bufferTransferUndo, setBufferTransferUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [checkpointUndo, setCheckpointUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
@@ -1678,6 +1683,67 @@ export default function App() {
     const path=resolveAuditFile(audit,id,selectedFolderRef.current,selectedProjectPath);
     if(path)void openFolderFile(path);
     else setError('The audited source is no longer uniquely listed.');
+  }
+
+  async function runProjectMigration(review:ProjectMigrationReview,scope:ProjectSearchScope,
+    rules:readonly MigrationRule[],control:InspectionControl):Promise<MigrationScanExecution>{
+    const selection=selectedFolderRef.current;
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return {kind:'invalidated'};
+    const checked=confirmProjectMigration(review,selection.files,scope,
+      folderListingLimited||unavailableProjectFolders.length>0,rules);
+    if(!checked.ok)return {kind:'failed',error:checked.error};
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&hasUnchangedEditorSession(start,liveEditor.current);
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const result=await scanProjectMigration(checked.value,start,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
+      return current()?result:{kind:'invalidated'};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  async function applyProjectMigration(plan:ProjectMigrationPlan,control:InspectionControl):Promise<MigrationOutcome>{
+    const selection=selectedFolderRef.current;
+    const fail=(error:string):MigrationOutcome=>({ok:false,error});
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return fail('Finish current native operations and choose a project.');
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&hasUnchangedEditorSession(start,liveEditor.current);
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const prepared=await prepareMigrationApply(plan,selection.files,
+        folderListingLimited||unavailableProjectFolders.length>0,start,readScarpSource,{
+          ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+        });
+      if(prepared.kind==='failed')return fail(prepared.error);
+      if(prepared.kind!=='prepared'||!current()||control.isCancelled())
+        return fail('Migration cancelled or invalidated. Nothing changed.');
+      // The pure reducer validates the whole transaction before dispatch.
+      // Construct the undo against this exact predicted result, then commit
+      // synchronously and hold changed tabs from automatic saving.
+      const predicted=editorReducer(start,prepared.action);
+      if(predicted===start)return fail('The editor declined the reviewed migration. Nothing changed.');
+      const undo=createMigrationUndo(prepared.changes,predicted);
+      if(!undo)return fail('Could not prepare reversible migration. Nothing changed.');
+      dispatch(prepared.action);
+      autoSaveReview.current.holdReplacements(liveEditor.current.documents,undo.changes.map(change=>change.id));
+      setMigrationUndo(undo);setNotice('Staged reviewed identifier migration. Review or Undo before Save.');
+      return {ok:true,replacements:plan.replacements,files:prepared.changes.length,newTabs:plan.newTabs};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  function undoProjectMigration():void{
+    if(recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning||!migrationUndo||
+      !canUndoOpenFileReplace(migrationUndo,liveEditor.current)){
+      setError('Migration undo is stale or a native operation is active. Nothing changed.');return;
+    }
+    dispatch({type:'replace-open-files',changes:migrationUndo.changes,allSnapshots:migrationUndo.after});
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents,migrationUndo.changes.map(change=>change.id));
+    setMigrationUndo(null);setError(null);setNotice('Restored pre-migration contents. Newly opened tabs remain open.');
   }
 
   async function openObservedSources(plan:AnalysisOpenPlan,candidates:readonly AnalysisSourceCandidate[],
@@ -3776,6 +3842,13 @@ export default function App() {
             sourceOpen={{editor:liveEditor.current,listed:folderEntries,onOpen:openObservedSources}}
             cursorIdentifier={currentReferenceIdentifier} onRun={runListedReferences}
             onNavigate={(report,hit)=>void navigateListedReference(report,hit)}/>
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="project-identifier-migration">
+          <ProjectIdentifierMigrationPanel key={'identifier-migration:'+folderPath} editor={editorState} listed={folderEntries}
+            listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
+            available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            onScan={runProjectMigration} onApply={applyProjectMigration}
+            undoAvailable={!!migrationUndo&&canUndoOpenFileReplace(migrationUndo,editorState)} onUndo={undoProjectMigration}/>
           </ExplorerToolSlot>
           </ExplorerToolDirectory>
         </aside>
