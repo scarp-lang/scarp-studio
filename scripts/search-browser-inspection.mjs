@@ -150,7 +150,6 @@ export async function inspectionScenarios(d, step) {
     await d.absent(comparison);
     const reads = await d.readPaths();
     assert.equal(reads.length, 19);
-    assert.ok(reads.at(-1) || reads.length);
     assert.equal(reads.filter(path => path.endsWith('/'+buffer)).length, 1);
     await d.noReads(async () => {
       await d.button(baseline, 'Clear inspection baselines');
