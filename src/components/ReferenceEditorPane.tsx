@@ -1,5 +1,6 @@
 import Editor from '@monaco-editor/react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { ReferenceComparisonPanel } from './ReferenceComparisonPanel';
 import type { StudioDocument } from '../model/documents';
 import {
   buildReferenceInventory, resolveReferenceSource, planReferenceSwap,
@@ -23,6 +24,7 @@ export function ReferenceEditorPane({
   documents, activeId, selectedId, layout, theme, busy,
   onSelect, onLayout, onSwap, onClose,
 }: ReferenceEditorPaneProps) {
+  const [mode,setMode]=useState<'source'|'comparison'>('source');
   const inventory = useMemo(() => buildReferenceInventory(documents, activeId, selectedId),
     [documents, activeId, selectedId]);
   const source = resolveReferenceSource(documents, activeId, selectedId);
@@ -80,8 +82,13 @@ export function ReferenceEditorPane({
           {choice?.modified ? 'Live unsaved buffer' : 'Live open buffer'} · edits belong in the primary editor
         </small>}
       </header>
+      <div className="reference-mode-switch" role="group" aria-label="Reference view">
+        <button type="button" aria-pressed={mode==='source'} onClick={()=>setMode('source')}>Source</button>
+        <button type="button" aria-pressed={mode==='comparison'} onClick={()=>setMode('comparison')}>Compare</button>
+      </div>
       <div className="reference-pane-body">
-        {source.kind === 'available' ? <Editor
+        {mode==='comparison'?<ReferenceComparisonPanel documents={documents} activeId={activeId}
+          selectedId={selectedId} busy={busy}/>:source.kind === 'available' ? <Editor
           key={source.document.id}
           language="scarp"
           theme={theme}
