@@ -2031,3 +2031,16 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
     justify-items: start;
   }
 }
+
+/* Migration previews are narrow-sidebar friendly and never rely on color
+   alone: explicit Before/After labels and marked lexical tokens remain. */
+.migration-preview-window { margin-block: 8px; padding: 6px; border: 1px solid var(--border); border-radius: 5px; }
+.migration-preview-pair { display: grid; grid-template-columns: minmax(0,1fr); gap: 5px; }
+.migration-preview-pair > div { display: grid; gap: 3px; min-width: 0; border-inline-start: 2px solid var(--border); padding: 4px 6px; }
+.migration-preview-pair > div:first-child { border-inline-start-color: #d96871; }
+.migration-preview-pair > div:last-child { border-inline-start-color: #42a67c; }
+.migration-preview-pair > div > span { color: var(--muted); font-size: 10px; }
+.migration-preview-code { display: block; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+.migration-preview-code mark { color: var(--text); border-radius: 2px; text-decoration: underline; text-underline-offset: 2px; }
+.migration-token-before { background: color-mix(in srgb, #d96871 24%, var(--surface)); }
+.migration-token-after { background: color-mix(in srgb, #42a67c 24%, var(--surface)); }
