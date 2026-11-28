@@ -84,8 +84,9 @@ function referenceRole(tokens:readonly InsightToken[],index:number):ListedRefere
   if(!qualified&&before?.kind==='identifier'&&declarationWords.has(before.text))return 'declaration-like';
   if(functionCallOpenIndex(tokens,index)!==null)return qualified?'qualified-call':'call-like';
   if(qualified)return 'qualified-member';
-  if(after?.kind==='operator'&&assignmentOperators.has(after.text))return 'assignment-like';
+  // A type annotation can immediately precede an initializer assignment.
   if(before?.kind==='operator'&&before.text===':')return 'type-position';
+  if(after?.kind==='operator'&&assignmentOperators.has(after.text))return 'assignment-like';
   return 'other-identifier';
 }
 
