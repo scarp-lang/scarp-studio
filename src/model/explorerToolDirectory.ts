@@ -15,6 +15,7 @@ export const EXPLORER_TOOLS=[
   {id:'listed-symbols',category:'navigation',label:'Listed project symbols',description:'Index declarations and call candidates across reviewed listed sources',keywords:'project lexical declaration function call symbol index'},
   {id:'trail',category:'navigation',label:'Navigation trail',description:'Replay reviewed editor jumps and marked positions',keywords:'back forward cursor history location'},
   {id:'references',category:'navigation',label:'Code references',description:'Find literal code-token occurrences',keywords:'find usage identifier references'},
+  {id:'listed-references',category:'navigation',label:'Listed code references',description:'Find lexical code identifier sites across reviewed listed sources',keywords:'project references identifier token usages declaration find'},
   {id:'insights',category:'analysis',label:'Source insights',description:'Inspect active-buffer lexical structure',keywords:'metrics source outline lexical'},
   {id:'quality',category:'analysis',label:'Source quality',description:'Inspect whitespace, delimiters and lexical hints',keywords:'lint cleanup quality warnings'},
   {id:'imports',category:'analysis',label:'Imports and dependencies',description:'Inspect listed imports, paths and observed cycles',keywords:'module graph cycle alias dependents'},
