@@ -80,6 +80,8 @@ import { captureSelections, selectionMatchesLive, selectionEditIsCurrent, type S
 import { LineRangeToolsPanel } from './components/LineRangeToolsPanel';
 import { IdentifierEditPanel } from './components/IdentifierEditPanel';
 import { ProjectIdentifierMigrationPanel } from './components/ProjectIdentifierMigrationPanel';
+import { ProjectSourceManifestPanel } from './components/ProjectSourceManifestPanel';
+import { executeSourceManifest,type ManifestExecution } from './model/projectSourceManifest';
 import { ProjectWhitespacePanel } from './components/ProjectWhitespacePanel';
 import { confirmProjectWhitespace,scanProjectWhitespace,prepareWhitespaceApply,
   type ProjectWhitespaceReview,type ProjectWhitespacePlan,type WhitespaceScanExecution,type WhitespaceApplyOutcome } from './model/projectWhitespace';
@@ -1836,6 +1838,28 @@ export default function App() {
       if(!analysisOpenSatisfied(checked.value,liveEditor.current))return fail('The editor rejected the reviewed source open.');
       setNotice('Opened '+checked.value.newCount+' observed source(s); preserved existing tabs.');
       return {ok:true,opened:checked.value.newCount,reused:checked.value.existingCount};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  async function runSourceManifest(plan:ProjectInspectionPlan,settings:InspectionSettings,control:InspectionControl):Promise<ManifestExecution>{
+    const selection=selectedFolderRef.current;
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return {kind:'invalidated'};
+    const checked=confirmProjectInspection(plan,selection.files,{
+      ...settings,listingLimited:folderListingLimited||unavailableProjectFolders.length>0,
+    });
+    if(!checked.ok){setError(checked.error);return {kind:'invalidated'};}
+    const start=liveEditor.current;
+    const epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&start.sessionRevision===liveEditor.current.sessionRevision;
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const result=await executeSourceManifest(checked.value,start.documents,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
+      if(result.kind==='report'&&current())setNotice('Source manifest '+result.report.status+'. No files changed.');
+      return current()?result:{kind:'invalidated'};
     }finally{filePickerInProgress.current=false;setBusy(false);}
   }
 
@@ -3919,6 +3943,12 @@ export default function App() {
             available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
             onScan={runProjectWhitespace} onApply={applyProjectWhitespace}
             undoAvailable={!!whitespaceUndo&&canUndoOpenFileReplace(whitespaceUndo,editorState)} onUndo={undoProjectWhitespace}/>
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="source-manifest">
+          <ProjectSourceManifestPanel key={'source-manifest:'+folderPath} listed={folderEntries}
+            listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
+            available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            onRun={runSourceManifest}/>
           </ExplorerToolSlot>
           </ExplorerToolDirectory>
         </aside>
