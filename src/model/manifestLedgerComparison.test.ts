@@ -141,6 +141,43 @@ describe('sequential manifest ledger comparisons', () => {
     expect(compareLedgerObservations(earlier, fork).ok).toBe(false);
   });
 
+  it('rejects a fork that has advanced beyond the baseline sequence', async () => {
+    const root = setup();
+    const baseline = await observe(root, 1);
+    const sibling = await observe(root, 2);
+    const laterSibling = await observe(sibling, 1);
+    expect(laterSibling.nextSequence).toBeGreaterThan(baseline.nextSequence);
+    expect(compareLedgerObservations(baseline, laterSibling).ok).toBe(false);
+    expect(compareLedgerObservations(sibling, laterSibling).ok).toBe(true);
+  });
+
+  it('rejects a later fork that replaces every divergent receipt', async () => {
+    const root = await observe(setup(), 1);
+    const baseline = await observe(root, 2);
+    const sibling = await observe(root, 3);
+    const replaced = await observe(await observe(sibling, 2), 1);
+    expect(compareLedgerObservations(baseline, replaced).ok).toBe(false);
+    expect(compareLedgerObservations(root, replaced).ok).toBe(true);
+  });
+
+  it('does not grant a copied ledger session identity', async () => {
+    const baseline = await observe(setup(), 1);
+    const copy = { ...baseline };
+    expect(captureLedgerComparisonBaseline(copy).ok).toBe(false);
+    expect(compareLedgerObservations(baseline, copy).ok).toBe(false);
+    expect(compareLedgerObservations(copy, baseline).ok).toBe(false);
+    const report = await scan(baseline, 2);
+    expect(recordManifestLedgerBatch(copy, report, false).ok).toBe(false);
+  });
+
+  it('recognizes an actual descendant through multiple receipt replacements', async () => {
+    const baseline = await observe(setup(), 1);
+    const later = await observe(await observe(await observe(baseline, 1), 2), 1);
+    expect(compare(baseline, later).refreshedBatches).toBe(2);
+    expect(compare(baseline, baseline).refreshedBatches).toBe(0);
+    expect(compareLedgerObservations(later, baseline).ok).toBe(false);
+  });
+
   it('does not produce deltas when equal digests carry inconsistent length evidence', async () => {
     const baseline = await observe(setup(), 1);
     const report = await scan(baseline, 1, async () => 'x');
