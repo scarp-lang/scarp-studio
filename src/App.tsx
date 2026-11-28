@@ -3743,7 +3743,7 @@ export default function App() {
                   <ProjectMatchExplorer key={'matches-'+projectSearchEpoch.current}
                     result={projectSearchResult.result} coverage={projectSearchResult.coverage}
                     busy={busy||compilerBusy||compilerSelecting||compilerScanning}
-                    onNavigate={hit=>void goToProjectSearchHit(hit,projectSearchResult.selection)}/></div>
+                    onNavigate={hit=>void goToProjectSearchHit(hit,projectSearchResult.selection)}/>
                 </section>
               )}
             </section>
