@@ -75,7 +75,8 @@ function validateBaseline(raw:unknown):Result<SourceManifestBaseline>{
     if(raw.complete&&item.state!=='hashed')return fail('Complete baseline contains unavailable observations.');
     seen.add(item.name);totalBytes+=item.bytes??0;
     if(totalBytes>INSPECTION_READ_LIMITS.totalBytes)return fail('Manifest source evidence exceeds its budget.');
-    files.push(Object.freeze({...item,metrics:item.metrics?Object.freeze({...item.metrics}):null}));
+    files.push(Object.freeze({...item,metrics:item.metrics?Object.freeze({units:item.metrics.units,lines:item.metrics.lines,blankLines:item.metrics.blankLines,
+      lf:item.metrics.lf,crlf:item.metrics.crlf,cr:item.metrics.cr,finalNewline:item.metrics.finalNewline,eol:item.metrics.eol}):null}));
   }
   return {ok:true,value:Object.freeze({scope:Object.freeze({...raw.scope}),mode:raw.mode,complete:raw.complete,files:Object.freeze(files)})};
 }
