@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   compareVerificationBaselines, filterVerificationComparison, pageVerificationComparison,
   verificationComparisonReport, verificationDeltaLabel, MAX_VERIFICATION_BASELINES,
@@ -74,12 +74,13 @@ function ComparisonResults({data}:{data:VerificationComparison}){
   </section>;
 }
 
-export function VerificationComparisonPanel({current,busy}:{current:VerificationBaseline|null;busy:boolean}){
+export function VerificationComparisonPanel({current,busy,visible=true}:{current:VerificationBaseline|null;busy:boolean;visible?:boolean}){
   const [expanded,setExpanded]=useState(false);
   const [saved,setSaved]=useState<readonly SavedBaseline[]>([]);
   const [selected,setSelected]=useState<number|null>(null);
   const [clearReview,setClearReview]=useState<readonly SavedBaseline[]|null>(null);
   const sequence=useRef(1);
+  useEffect(()=>{if(!visible){setExpanded(false);setClearReview(null);}},[visible]);
   const earlier=saved.find(item=>item.id===selected);
   const comparison=useMemo(()=>earlier&&current?compareVerificationBaselines(earlier.evidence,current):null,[earlier,current]);
   function capture(){
@@ -88,8 +89,9 @@ export function VerificationComparisonPanel({current,busy}:{current:Verification
     setSaved(previous=>[...previous,{id,evidence:current}]);
     setSelected(id);setClearReview(null);
   }
+  if(!visible)return null;
   return <section className="project-scope-coverage" aria-label="Verification history comparison">
-    <button type="button" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>
+    <button type="button" aria-expanded={expanded} onClick={()=>{setExpanded(!expanded);if(expanded)setClearReview(null);}}>
       {expanded?'Hide verification history':'Compare verification runs'}
     </button>
     {expanded&&<>
