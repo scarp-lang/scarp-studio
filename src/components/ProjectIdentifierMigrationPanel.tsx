@@ -1,4 +1,5 @@
 import {useMemo,useRef,useState} from 'react';
+import {MigrationImpactPanel} from './MigrationImpactPanel';
 import {ProjectSearchScopeControls} from './ProjectSearchScopeControls';
 import {DEFAULT_PROJECT_SEARCH_SCOPE,type ProjectSearchScope} from '../model/projectSearchScope';
 import type {ProjectSearchSource} from '../model/projectSearch';
@@ -147,6 +148,7 @@ function MigrationSelection({inventory,editor,busy,onApply,onDismiss}:{
       </li>)}</ul>
       <p>All closed-source snapshots from this scan will be read again. A mismatch cancels the operation.
         No disk writes; changed tabs are held from autosave until explicitly reviewed.</p>
+      <MigrationImpactPanel plan={plan}/>
       <button type="button" disabled={blocked} onClick={()=>onApply(plan)}>Confirm migration into open buffers</button>
       <button type="button" disabled={busy} onClick={()=>setPlan(null)}>Cancel selected migration review</button>
     </section>}
