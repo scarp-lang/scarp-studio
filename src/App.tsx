@@ -103,6 +103,8 @@ import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { ProjectInspectionPanel } from './components/ProjectInspectionPanel';
 import { ListedSymbolPanel } from './components/ListedSymbolPanel';
+import { confirmAnalysisOpen, readAnalysisOpenSources, analysisOpenSatisfied,
+  type AnalysisOpenPlan, type AnalysisSourceCandidate, type AnalysisOpenControl, type AnalysisOpenOutcome } from './model/analysisSourceOpen';
 import { ListedCodeReferencesPanel } from './components/ListedCodeReferencesPanel';
 import { scarpIdentifierAtCursor } from './model/openCodeReferences';
 import { confirmListedReferences, executeListedReferences, resolveListedReferencePath, recheckListedReference,
@@ -1676,6 +1678,36 @@ export default function App() {
     const path=resolveAuditFile(audit,id,selectedFolderRef.current,selectedProjectPath);
     if(path)void openFolderFile(path);
     else setError('The audited source is no longer uniquely listed.');
+  }
+
+  async function openObservedSources(plan:AnalysisOpenPlan,candidates:readonly AnalysisSourceCandidate[],
+    control:AnalysisOpenControl):Promise<AnalysisOpenOutcome>{
+    const selection=selectedFolderRef.current;
+    const fail=(error:string):AnalysisOpenOutcome=>({ok:false,error});
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return fail('Finish current native operations and choose a project.');
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
+    const checked=confirmAnalysisOpen(plan,candidates,selection.files,start);
+    if(!checked.ok)return checked;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&hasUnchangedEditorSession(start,liveEditor.current);
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const staged=await readAnalysisOpenSources(checked.value,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
+      if(staged.kind==='cancelled')return fail('Source open cancelled. No files opened.');
+      if(staged.kind==='failed')return fail(staged.error);
+      if(staged.kind!=='prepared'||!current()||control.isCancelled())return fail('Workspace or editor changed. No files opened.');
+      const latest=confirmAnalysisOpen(checked.value,candidates,selection.files,liveEditor.current);
+      if(!latest.ok)return latest;
+      if(staged.value.files.length||staged.value.activePath!==null){
+        dispatch({type:'restore-workspace-tabs',files:staged.value.files,activePath:staged.value.activePath});
+      }
+      if(!analysisOpenSatisfied(checked.value,liveEditor.current))return fail('The editor rejected the reviewed source open.');
+      setNotice('Opened '+checked.value.newCount+' observed source(s); preserved existing tabs.');
+      return {ok:true,opened:checked.value.newCount,reused:checked.value.existingCount};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
   }
 
   async function runListedSymbols(plan:ProjectInspectionPlan,settings:InspectionSettings,control:InspectionControl,captureInterfaces:boolean):Promise<ListedSymbolExecution>{
@@ -3734,12 +3766,14 @@ export default function App() {
           <ListedSymbolPanel key={'listed-symbols:'+folderPath} listed={folderEntries}
             listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
             available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            sourceOpen={{editor:liveEditor.current,listed:folderEntries,onOpen:openObservedSources}}
             onRun={runListedSymbols} onNavigate={(report,site)=>void navigateListedSymbol(report,site)}/>
           </ExplorerToolSlot>
           <ExplorerToolSlot id="listed-references">
           <ListedCodeReferencesPanel key={'listed-references:'+folderPath} listed={folderEntries}
             listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
             available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            sourceOpen={{editor:liveEditor.current,listed:folderEntries,onOpen:openObservedSources}}
             cursorIdentifier={currentReferenceIdentifier} onRun={runListedReferences}
             onNavigate={(report,hit)=>void navigateListedReference(report,hit)}/>
           </ExplorerToolSlot>
