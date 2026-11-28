@@ -1963,6 +1963,33 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   gap: 6px;
 }
 .nav-collection-controls select { min-width: 0; max-width: 100%; }
+.quick-open-controls label {
+  flex: 1 1 185px;
+  min-width: 0;
+  font-size: 12px;
+}
+.quick-open-controls select {
+  flex: 1 1 auto;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+}
+.quick-open-controls select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.quick-open-match {
+  background: transparent;
+  color: inherit;
+  font-weight: 750;
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 2px;
+}
+
 .command-library-settings { display: grid; gap: 8px; min-width: 0; }
 .command-pin-list {
   display: grid;
