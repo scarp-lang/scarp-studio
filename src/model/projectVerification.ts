@@ -120,9 +120,7 @@ export interface ProjectVerificationReport {
   readonly bytes: number;
   readonly rules: readonly VerificationRuleEvidence[];
 }
-export interface VerificationControl extends InspectionControl {
-  readonly yieldBetweenFiles?: () => Promise<void>;
-}
+export type VerificationControl = InspectionControl;
 export type VerificationExecution = { readonly kind: 'report'; readonly report: ProjectVerificationReport } |
   { readonly kind: 'invalidated' };
 
