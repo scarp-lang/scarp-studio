@@ -1,14 +1,13 @@
 import {describe,expect,it,vi} from 'vitest';
-import {createHash} from 'node:crypto';
 import {createUntitled} from './documents';
 import {DEFAULT_PROJECT_SEARCH_SCOPE} from './projectSearchScope';
 import {prepareProjectInspection,INSPECTION_READ_LIMITS,type InspectionSettings,type InspectionControl} from './projectInspection';
 import {executeSourceManifest,sourceTextMetrics,groupManifestDuplicates,filterManifestFiles,pageManifest,
-  summarizeManifest,manifestReportText,DEFAULT_MANIFEST_FILTER,validSourceDigest,type SourceDigest,type ProjectSourceManifest} from './projectSourceManifest';
+  summarizeManifest,manifestReportText,DEFAULT_MANIFEST_FILTER,validSourceDigest,sha256SourceText,type SourceDigest,type ProjectSourceManifest} from './projectSourceManifest';
 import {captureManifestBaseline,compareManifestBaselines,exportManifestBaseline,parseManifestBackup,
   filterManifestComparison,manifestComparisonReport,DEFAULT_MANIFEST_COMPARISON_FILTER,
   MAX_MANIFEST_BACKUP_UNITS,type SourceManifestBaseline} from './sourceManifestComparison';
-const digest:SourceDigest=async text=>createHash('sha256').update(text,'utf8').digest('hex');
+const digest:SourceDigest=sha256SourceText;
 const settings:InspectionSettings={scope:DEFAULT_PROJECT_SEARCH_SCOPE,mode:'working',listingLimited:false};
 const control:InspectionControl={isCurrent:()=>true,isCancelled:()=>false};
 const entries=['src/a.srp','src/b.srp','src/c.srp'].map(name=>({name,path:'C:/private-root/'+name}));
