@@ -36,6 +36,8 @@ import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuick
 import { searchQuickOpen, quickOpenLabelParts, QUICK_OPEN_SCOPES, QUICK_OPEN_SCOPE_LABELS,
   type QuickOpenScope, type QuickOpenMatchMode } from './model/quickOpenSearch';
 import { EMPTY_QUICK_OPEN_RECENCY, updateQuickOpenRecency } from './model/quickOpenRecency';
+import { MAX_QUICK_OPEN_LOCATION_UNITS, parseQuickOpenLocation, quickOpenLocationTarget,
+  type QuickOpenLocation } from './model/quickOpenLocation';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
   DEFAULT_EDITOR_PREFERENCES, editorDisplayOptions,
@@ -548,6 +550,8 @@ export default function App() {
   const [paletteIndex, setPaletteIndex] = useState(0);
   const [quickOpenScope, setQuickOpenScope] = useState<QuickOpenScope>('all');
   const [quickOpenMode, setQuickOpenMode] = useState<QuickOpenMatchMode>('fuzzy');
+  const [quickOpenLocationText, setQuickOpenLocationText] = useState('');
+  const quickOpenLocation = parseQuickOpenLocation(quickOpenLocationText);
   const [quickOpenRecency, setQuickOpenRecency] = useState(EMPTY_QUICK_OPEN_RECENCY);
   useEffect(() => {
     setQuickOpenRecency(previous => updateQuickOpenRecency(previous,
@@ -861,6 +865,7 @@ export default function App() {
     setCommandCollection('all');
     setQuickOpenScope('all');
     setQuickOpenMode('fuzzy');
+    setQuickOpenLocationText('');
     setPaletteQuery('');
     setPaletteIndex(0);
   }
@@ -868,6 +873,7 @@ export default function App() {
   function hidePalette(restoreFocus = true): void {
     paletteRestoreOnClose.current = restoreFocus;
     setPaletteMode(null);
+    setQuickOpenLocationText('');
     setPaletteQuery('');
     setPaletteIndex(0);
   }
@@ -919,21 +925,38 @@ export default function App() {
     setNotice('Jumped to line ' + position.line + ', column ' + position.column);
   }
 
+  function navigateQuickOpenLocation(document: StudioDocument, location: QuickOpenLocation): void {
+    const target = quickOpenLocationTarget(document, location);
+    if (!target) { setError('Could not resolve the requested location in the current source.'); return; }
+    jumpToSourceInsight(target);
+    setNotice('Quick Open: line ' + target.line + ', column ' + target.column +
+      (target.clamped ? ' (clamped to the current source)' : ''));
+    setError(null);
+  }
+
   function executePaletteEntry(entry: NavigationEntry): void {
     const mode = paletteMode;
+    if (mode === 'files' && quickOpenLocation.kind === 'invalid') return;
+    const location = mode === 'files' && quickOpenLocation.kind === 'valid' ? quickOpenLocation.location : undefined;
+    if (location && recoveryOperationsBlocked()) {
+      setError('Finish current native operations before navigating to a source location.');
+      return;
+    }
     hidePalette(false);
     if (mode === 'files') {
       const target = entry as QuickOpenEntry;
       if (target.kind === 'tab') {
-        if (liveEditor.current.documents.some((document) => document.id === target.documentId)) {
-          dispatch({ type: 'activate', id: target.documentId });
+        const document = liveEditor.current.documents.find(item => item.id === target.documentId);
+        if (document) {
+          if (location) navigateQuickOpenLocation(document, location);
+          else dispatch({ type: 'activate', id: target.documentId });
         } else {
           setError('That Scarp tab is no longer open.');
         }
       } else if (target.kind === 'project') {
         const selected = selectedFolderRef.current;
         if (selected?.files.some((file) => sameFilePath(file.path, target.sourcePath))) {
-          void openFolderFile(target.sourcePath);
+          void openFolderFile(target.sourcePath, location);
         } else {
           setError('The selected project changed. Reopen Quick Open and choose the file again.');
         }
@@ -1615,7 +1638,7 @@ export default function App() {
     }
   }
 
-  async function openFolderFile(path: string): Promise<void> {
+  async function openFolderFile(path: string, location?: QuickOpenLocation): Promise<void> {
     const selection = selectedFolderRef.current;
     if (!selection) {
       setError('Choose a Scarp project folder before opening a project source.');
@@ -1635,8 +1658,10 @@ export default function App() {
       return;
     }
     if (decision.kind === 'activate') {
-      dispatch({ type: 'activate', id: decision.documentId });
-      setError(null);
+      const document = liveEditor.current.documents.find(item => item.id === decision.documentId);
+      if (location && document) navigateQuickOpenLocation(document, location);
+      else if (document) { dispatch({ type: 'activate', id: decision.documentId }); setError(null); }
+      else setError('The source tab is no longer open.');
       return;
     }
     const editorAtStart = liveEditor.current;
@@ -1656,6 +1681,11 @@ export default function App() {
         return;
       }
       activateOpenedFile(decision.path, content);
+      if (location) {
+        const opened = currentActiveDocument(liveEditor.current);
+        if (opened?.path && sameFilePath(opened.path, decision.path)) navigateQuickOpenLocation(opened, location);
+        else setError('The source opened but the requested location could not be resolved.');
+      }
     } catch (caught) {
       setError('Could not read folder file: ' + toMessage(caught));
     } finally {
@@ -4719,6 +4749,19 @@ export default function App() {
                 <option value="fuzzy">Fuzzy filename</option>
                 <option value="literal">Literal substring</option>
               </select></label>
+              <label>Line (optional)
+                <input aria-label="Quick Open line and column" maxLength={MAX_QUICK_OPEN_LOCATION_UNITS}
+                  placeholder="12:4" value={quickOpenLocationText}
+                  aria-invalid={quickOpenLocation.kind === 'invalid'}
+                  onChange={event => setQuickOpenLocationText(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+                    event.preventDefault();
+                    const entry = paletteResults[selectedPaletteIndex];
+                    if (entry && quickOpenLocation.kind !== 'invalid') executePaletteEntry(entry);
+                  }}/>
+              </label>
+              {quickOpenLocation.kind === 'invalid' && <p role="alert" className="quick-open-location-error">{quickOpenLocation.error}</p>}
             </div>}
             {paletteMode==='commands'&&<div className="nav-collection-controls">
               <label>Collection <select aria-label="Command palette collection" value={commandCollection} onChange={event=>{
@@ -4745,6 +4788,7 @@ export default function App() {
                     key={item.id} className={'nav-result' + (index === selectedPaletteIndex ? ' selected' : '')}
                     onMouseDown={event => event.preventDefault()}
                     onMouseEnter={() => setPaletteIndex(index)}
+                    disabled={paletteMode === 'files' && quickOpenLocation.kind === 'invalid'}
                     onClick={() => executePaletteEntry(item)}>
                     <span className="nav-result-name">{paletteMode === 'files'
                       ? quickOpenLabelParts(item.label, quickOpenResults.matches[index]?.labelPositions ?? []).map((part, partIndex) =>
