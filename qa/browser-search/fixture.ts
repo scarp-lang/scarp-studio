@@ -164,3 +164,33 @@ export function failLexicalLeaf(workspace:FixtureWorkspace):FixtureWorkspace{
 export function removeLexicalEntry(workspace:FixtureWorkspace):FixtureWorkspace{
   return {...workspace,files:workspace.files.filter(item=>item.name!==LEXICAL_ENTRY)};
 }
+
+export const TRANSACTION_ENTRY='src/a-entry.srp';
+export const TRANSACTION_HELPER='src/b-helper.srp';
+export const TRANSACTION_COPY='src/c-copy.srp';
+export const TRANSACTION_TEST='tests/d-check.srp';
+export const TRANSACTION_SECRET='private transaction fixture literal';
+export const TRANSACTION_SAVED='bind oldName = 1;\r\nprint(oldName);\r\n';
+export const TRANSACTION_WORKING='bind oldName = 2;  \r\n\tprint(oldName);\r\n// oldName '+TRANSACTION_SECRET+'  ';
+export const TRANSACTION_HELPER_TEXT='pub funcra oldName() -> integer { return 3; }\r\nprint(oldName());  \r\n';
+export const TRANSACTION_TEST_TEXT='bind caption = "oldName";\r\nprint(oldName());\r\n';
+export function createTransactionFixture():FixtureWorkspace{
+  return Object.freeze({
+    files:Object.freeze([file(TRANSACTION_ENTRY,TRANSACTION_SAVED),file(TRANSACTION_HELPER,TRANSACTION_HELPER_TEXT),
+      file(TRANSACTION_COPY,TRANSACTION_HELPER_TEXT),file(TRANSACTION_TEST,TRANSACTION_TEST_TEXT)]),
+    unavailable:Object.freeze([]),
+    documents:Object.freeze([{
+      id:'fixture-transaction-entry',name:TRANSACTION_ENTRY,path:ROOT+'/'+TRANSACTION_ENTRY,
+      content:TRANSACTION_WORKING,savedContent:TRANSACTION_SAVED,revision:1,
+    }]),
+  });
+}
+/** A simulated external disk mutation does not alter the editor generation.
+ * The apply phase must discover this by reading the reviewed disk snapshots. */
+export function changeTransactionDisk(workspace:FixtureWorkspace):FixtureWorkspace{
+  return {...workspace,files:workspace.files.map(item=>item.name===TRANSACTION_TEST?
+    {...item,content:item.content+'// externally changed\r\n'}:item)};
+}
+export function failTransactionCopy(workspace:FixtureWorkspace):FixtureWorkspace{
+  return {...workspace,unavailable:[...new Set([...workspace.unavailable,TRANSACTION_COPY])]};
+}
