@@ -2,12 +2,12 @@ import { useMemo, useState } from 'react';
 import type { ProjectSearchSource } from '../model/projectSearch';
 import { buildProjectScopeInventory, scopeLabel } from '../model/projectSearchScope';
 import {
-  addSearchPreset, renameSearchPreset, replaceSearchPresetSettings, removeSearchPreset, clearSearchPresets,
+  addSearchPreset, renameSearchPreset, prepareSearchPresetReplace, confirmSearchPresetReplace, removeSearchPreset, clearSearchPresets,
   createSearchPresetLibrary, prepareSearchPresetApply, confirmSearchPresetApply, sameProjectSearchSettings,
   exportSearchPresetBackup, reviewSearchPresetImport, applySearchPresetImport,
   MAX_SEARCH_PRESETS, MAX_SEARCH_PRESET_NAME, MAX_SEARCH_PRESET_BACKUP,
   type ProjectSearchSettings, type SearchPresetLibrary, type SearchPresetApplyReview,
-  type PresetImportReview, type PresetResult,
+  type PresetImportReview, type PresetResult, type SearchPresetReplaceReview,
 } from '../model/projectSearchPresets';
 
 interface Props {
@@ -70,20 +70,24 @@ export function SearchPresetImportDetails({ review, selected, busy, onSelect, on
   readonly onApply: () => void;
   readonly onCancel: () => void;
 }) {
+  const [detail, setDetail] = useState<number | null>(null);
   return <div role="group" aria-label="Review importing search presets" className="project-scope-coverage">
     <p>Choose new presets to merge. Existing presets are never overwritten, even when their names conflict.</p>
     <p>{selected.length} selected · {review.remainingCapacity} remaining library slots.</p>
     <div className="project-scope-inventory"><table>
       <caption>Preset import review</caption>
-      <thead><tr><th>Import</th><th>Preset name</th><th>Status</th></tr></thead>
+      <thead><tr><th>Import</th><th>Preset name</th><th>Status</th><th>Settings</th></tr></thead>
       <tbody>{review.rows.map(row => <tr key={row.index}>
         <td><input type="checkbox" aria-label={'Import preset ' + row.name}
           checked={selected.includes(row.index)}
           disabled={busy || row.status !== 'new' || (!selected.includes(row.index) && selected.length >= review.remainingCapacity)}
           onChange={event => onSelect(row.index, event.target.checked)}/></td>
         <td><code dir="auto">{row.name}</code></td><td>{importLabels[row.status]}</td>
+        <td><button type="button" aria-expanded={detail===row.index} onClick={()=>setDetail(value=>value===row.index?null:row.index)}>
+          {detail===row.index?'Hide settings':'Review settings'}</button></td>
       </tr>)}</tbody>
     </table></div>
+    {detail!==null&&review.rows[detail]&&<div aria-label="Imported preset settings"><SearchPresetSettingsView settings={review.rows[detail].settings}/></div>}
     {!review.rows.length && <p>The backup contains no presets.</p>}
     <button type="button" disabled={busy || !selected.length || selected.length > review.remainingCapacity}
       onClick={onApply}>Import selected new presets</button>
@@ -98,7 +102,7 @@ export function ProjectSearchPresetsPanel({ listed, current, busy, onApply }: Pr
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [review, setReview] = useState<SearchPresetApplyReview | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [confirmReplace, setConfirmReplace] = useState(false);
+  const [replaceReview, setReplaceReview] = useState<SearchPresetReplaceReview | null>(null);
   const [showBackup, setShowBackup] = useState(false);
   const [importText, setImportText] = useState('');
   const [importReview, setImportReview] = useState<PresetImportReview | null>(null);
@@ -110,7 +114,7 @@ export function ProjectSearchPresetsPanel({ listed, current, busy, onApply }: Pr
   const backup = useMemo(() => showBackup ? exportSearchPresetBackup(library) : null, [showBackup, library]);
 
   function clearReviews() {
-    setReview(null); setConfirmClear(false); setConfirmReplace(false);
+    setReview(null); setConfirmClear(false); setReplaceReview(null);
     setImportReview(null); setImportSelected([]);
   }
   function commit(result: PresetResult<SearchPresetLibrary>, message: string, preferId?: number) {
@@ -178,16 +182,20 @@ export function ProjectSearchPresetsPanel({ listed, current, busy, onApply }: Pr
             onClick={() => commit(renameSearchPreset(library, selected.id, name), 'Updated preset name.', selected.id)}>
             Rename selected preset
           </button>
-          <button type="button" disabled={busy || confirmReplace || sameProjectSearchSettings(selected.settings, current)}
-            onClick={() => { setConfirmReplace(true); setReview(null); }}>Review replacing selected preset settings</button>
-          {confirmReplace && <div role="group" aria-label="Review replacing search preset settings">
-            <p>Replace the stored search settings for {selected.name} with these current controls?</p>
-            <SearchPresetSettingsView settings={current}/>
+          <button type="button" disabled={busy || !!replaceReview || sameProjectSearchSettings(selected.settings, current)}
+            onClick={() => {
+              const result=prepareSearchPresetReplace(library,selected.id,current);
+              if(!result.ok){setError(result.error);return;}
+              setReplaceReview(result.value);setReview(null);setError('');
+            }}>Review replacing selected preset settings</button>
+          {replaceReview && <div role="group" aria-label="Review replacing search preset settings">
+            <p>Replace the stored search settings for {replaceReview.preset.name} with these reviewed controls?</p>
+            <SearchPresetSettingsView settings={replaceReview.proposed}/>
             <button type="button" disabled={busy}
-              onClick={() => commit(replaceSearchPresetSettings(library, selected.id, current), 'Replaced preset settings.', selected.id)}>
+              onClick={() => commit(confirmSearchPresetReplace(library, replaceReview, current), 'Replaced preset settings.', selected.id)}>
               Confirm replace preset settings
             </button>
-            <button type="button" onClick={() => setConfirmReplace(false)}>Cancel replace preset</button>
+            <button type="button" onClick={() => setReplaceReview(null)}>Cancel replace preset</button>
           </div>}
           <button type="button" disabled={busy}
             onClick={() => commit(removeSearchPreset(library, selected.id), 'Removed selected preset.')}>Remove selected preset</button>
