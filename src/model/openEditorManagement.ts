@@ -3,7 +3,7 @@ import { isDirty, type StudioDocument } from './documents';
 
 export const MAX_MANAGED_TABS = 200;
 export const MAX_TAB_QUERY = 160;
-export type TabFilter = 'all' | 'modified' | 'saved' | 'untitled';
+export type TabFilter = 'all' | 'modified' | 'saved' | 'untitled' | 'pinned';
 export type TabSort = 'tab-order' | 'name' | 'modified';
 export interface TabEntry {
   document: StudioDocument;
@@ -11,6 +11,7 @@ export interface TabEntry {
   active: boolean;
   modified: boolean;
   closeEligible: boolean;
+  pinned: boolean;
 }
 export interface TabInventory {
   entries: TabEntry[];
@@ -18,6 +19,7 @@ export interface TabInventory {
   modified: number;
   untitled: number;
   closeEligible: number;
+  pinned: number;
   limited: boolean;
 }
 export interface TabSelection {
@@ -34,9 +36,10 @@ export function canBulkClose(document: StudioDocument): boolean {
 
 /** Metadata-only view, bounded independently of source length. */
 export function buildTabInventory(
-  documents: readonly StudioDocument[], activeId: string | null,
+  documents: readonly StudioDocument[], activeId: string | null, pinnedIds: readonly string[] = [],
 ): TabInventory {
   const visible = documents.slice(0, MAX_MANAGED_TABS);
+  const pins = new Set(pinnedIds);
   const labels = disambiguateDocumentNames(visible);
   return {
     entries: visible.map(document => ({
@@ -44,12 +47,14 @@ export function buildTabInventory(
       label: labels.get(document.id) ?? document.name,
       active: document.id === activeId,
       modified: isDirty(document),
-      closeEligible: canBulkClose(document),
+      closeEligible: canBulkClose(document) && !pins.has(document.id),
+      pinned: pins.has(document.id),
     })),
     total: documents.length,
     modified: documents.filter(isDirty).length,
     untitled: documents.filter(document => document.path === null).length,
-    closeEligible: visible.filter(canBulkClose).length,
+    closeEligible: visible.filter(document => canBulkClose(document) && !pins.has(document.id)).length,
+    pinned: documents.filter(document => pins.has(document.id)).length,
     limited: documents.length > visible.length,
   };
 }
@@ -60,7 +65,8 @@ export function filterTabInventory(
   const terms = query.slice(0, MAX_TAB_QUERY).toLowerCase().trim().split(/\s+/).filter(Boolean);
   const result = entries.filter(entry => {
     if (filter === 'modified' && !entry.modified) return false;
-    if (filter === 'saved' && !entry.closeEligible) return false;
+    if (filter === 'saved' && !canBulkClose(entry.document)) return false;
+    if (filter === 'pinned' && !entry.pinned) return false;
     if (filter === 'untitled' && entry.document.path !== null) return false;
     const haystack = (entry.label + ' ' + (entry.document.path ?? '')).toLowerCase();
     return terms.every(term => haystack.includes(term));
@@ -84,12 +90,13 @@ export function matchesTabSelection(selection: TabSelection, document: StudioDoc
 }
 
 export function currentTabSelection(
-  selections: readonly TabSelection[], documents: readonly StudioDocument[],
+  selections: readonly TabSelection[], documents: readonly StudioDocument[], pinnedIds: readonly string[] = [],
 ): TabSelection[] {
   const current = new Map(documents.map(document => [document.id, document]));
   const seen = new Set<string>();
+  const pins = new Set(pinnedIds);
   return selections.slice(0, MAX_MANAGED_TABS).filter(selection => {
-    if (seen.has(selection.id)) return false;
+    if (seen.has(selection.id) || pins.has(selection.id)) return false;
     seen.add(selection.id);
     const document = current.get(selection.id);
     return document !== undefined && matchesTabSelection(selection, document);
@@ -99,17 +106,17 @@ export function currentTabSelection(
 /** Select visible clean rows, without retaining hidden selections. */
 export function selectVisibleTabs(entries: readonly TabEntry[]): TabSelection[] {
   return entries.slice(0, MAX_MANAGED_TABS).flatMap(entry => {
-    const selection = tabSelection(entry.document);
+    const selection = entry.closeEligible ? tabSelection(entry.document) : null;
     return selection ? [selection] : [];
   });
 }
 
 /** Fail closed if any requested tab has become invalid. No partial close. */
 export function resolveBulkClose(
-  selections: readonly TabSelection[], documents: readonly StudioDocument[],
+  selections: readonly TabSelection[], documents: readonly StudioDocument[], pinnedIds: readonly string[] = [],
 ): StudioDocument[] | null {
   if (!selections.length || selections.length > MAX_MANAGED_TABS) return null;
-  const valid = currentTabSelection(selections, documents);
+  const valid = currentTabSelection(selections, documents, pinnedIds);
   if (valid.length !== selections.length) return null;
   const requested = new Set(valid.map(selection => selection.id));
   const targets = documents.filter(document => requested.has(document.id));
