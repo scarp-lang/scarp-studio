@@ -1,5 +1,6 @@
 import {useMemo,useRef,useState} from 'react';
 import {ProjectSearchScopeControls} from './ProjectSearchScopeControls';
+import {ManifestBatchLedgerPanel} from './ManifestBatchLedgerPanel';
 import {ManifestHistoryPanel} from './ManifestHistoryPanel';
 import {DEFAULT_PROJECT_SEARCH_SCOPE,type ProjectSearchScope} from '../model/projectSearchScope';
 import {
@@ -189,6 +190,7 @@ export function ProjectSourceManifestPanel({listed,listingLimited,available,busy
       </div>}
       {notice&&<p role="alert">{notice}</p>}
     </>}
+    <ManifestBatchLedgerPanel listed={listed} scope={scope} mode={mode} listingLimited={listingLimited} visible={expanded} busy={blocked} onRun={onRun}/>
     <ManifestHistoryPanel current={report} busy={blocked} visible={expanded}/>
     {expanded&&report&&<>
       <ProjectSourceManifestResults report={report}/>
