@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
+import { VerificationComparisonPanel } from './VerificationComparisonPanel';
+import { captureVerificationBaseline, type VerificationBaseline } from '../model/verificationComparison';
 import { VerificationProfilesPanel } from './VerificationProfilesPanel';
 import { ProjectSearchScopeControls } from './ProjectSearchScopeControls';
 import { DEFAULT_PROJECT_SEARCH_SCOPE, type ProjectSearchScope } from '../model/projectSearchScope';
@@ -166,6 +168,7 @@ export function ProjectVerificationPanel({listed,listingLimited,available,busy,o
   const sequence=useRef(2);
   const [review,setReview]=useState<ProjectVerificationPlan|null>(null);
   const [result,setResult]=useState<ProjectVerificationReport|null>(null);
+  const [baseline,setBaseline]=useState<VerificationBaseline|null>(null);
   const [running,setRunning]=useState(false);
   const [cancelled,setCancelled]=useState(false);
   const [progress,setProgress]=useState<InspectionProgress|null>(null);
@@ -184,13 +187,18 @@ export function ProjectVerificationPanel({listed,listingLimited,available,busy,o
     if(blocked||!review||active.current)return;
     const token={cancelled:false};active.current=token;
     const plan=review;
-    setRunning(true);setCancelled(false);setResult(null);setReview(null);setError('');setProgress(null);
+    setRunning(true);setCancelled(false);setResult(null);setBaseline(null);setReview(null);setError('');setProgress(null);
     try{
       const response=await onRun(plan,settings,drafts.map(draft=>draft.rule),{
         isCurrent:()=>active.current===token,isCancelled:()=>token.cancelled,
         onProgress:value=>{if(active.current===token)setProgress(value);},
       });
-      if(response.kind==='report')setResult(response.report);
+      if(response.kind==='report'){
+        setResult(response.report);
+        const captured=captureVerificationBaseline(plan,response.report);
+        if(captured.ok)setBaseline(captured.value);
+        else setError(captured.error);
+      }
       else setError('Verification invalidated. Review the current source scope again.');
     }catch{setError('Verification could not complete. Review the rules and source scope again.');}
     finally{active.current=null;setRunning(false);setCancelled(false);setProgress(null);}
@@ -232,7 +240,8 @@ export function ProjectVerificationPanel({listed,listingLimited,available,busy,o
         </button>
       </div>}
       {error&&<p role="alert">{error}</p>}
-      {result&&<><ProjectVerificationResults report={result}/><button type="button" disabled={running} onClick={()=>setResult(null)}>Dismiss verification results</button></>}
+      <VerificationComparisonPanel current={baseline} busy={blocked}/>
+      {result&&<><ProjectVerificationResults report={result}/><button type="button" disabled={running} onClick={()=>{setResult(null);setBaseline(null);}}>Dismiss verification results</button></>}
     </>}
   </section>;
 }
