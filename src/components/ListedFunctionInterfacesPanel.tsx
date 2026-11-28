@@ -1,4 +1,4 @@
-import {useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import type {ListedSymbolReport,ListedSymbolSite} from '../model/listedSymbolIndex';
 import {displayInterfaceShape,INTERFACE_ISSUE_LABELS} from '../language/scarpFunctionInterfaces';
 import {captureInterfaceBaseline,compareInterfaceBaselines,filterInterfaces,filterInterfaceComparison,
@@ -108,6 +108,8 @@ export function ListedFunctionInterfacesPanel({report,busy,onNavigate,visible=tr
   const [selected,setSelected]=useState<number|null>(null);
   const [clearReview,setClearReview]=useState<readonly Saved[]|null>(null);
   const sequence=useRef(1);
+  useEffect(()=>{if(!visible){setExpanded(false);setShowInventoryReport(false);setOptions(PRIVATE_EXPORT);setClearReview(null);}},[visible]);
+  useEffect(()=>{setShowInventoryReport(false);setOptions(PRIVATE_EXPORT);},[report]);
   const candidate=useMemo(()=>report?captureInterfaceBaseline(report):null,[report]);
   const chosen=saved.find(item=>item.id===selected);
   const comparison=useMemo(()=>chosen&&candidate?.ok?compareInterfaceBaselines(chosen.baseline,candidate.value):null,[chosen,candidate]);
