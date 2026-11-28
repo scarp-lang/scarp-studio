@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  explorerFolderKey, explorerSourceKey, explorerNavigationRows,
+  isExplorerNavigationKey, resolveExplorerNavigation,
+} from '../model/explorerKeyboardNavigation';
 import {
   buildExplorerFolderIndex, completeExplorerHierarchy, folderScopeIsAvailable,
   folderScopeLabel, revealExplorerSource, scopeExplorerCount, scopeExplorerGroups,
@@ -63,6 +67,32 @@ export function ProjectExplorer({
     setFilter('all');
     setCollapsed(previous => revealExplorerSource(previous, source));
     setRevealRequest(previous => previous + 1);
+  }
+
+  function navigateRows(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+        !isExplorerNavigationKey(event.key) || !(event.target instanceof HTMLButtonElement)) return;
+    const key = event.target.dataset.explorerRow;
+    if (key === undefined || event.target.disabled) return;
+    const rows = explorerNavigationRows(visibleGroups, collapsed, searching, busy);
+    if (!rows.some(row => row.key === key)) return;
+    const action = resolveExplorerNavigation(rows, key, event.key);
+    event.preventDefault();
+    if (action.kind === 'expand' || action.kind === 'collapse') {
+      setCollapsed(previous => {
+        const next = new Set(previous);
+        if (action.kind === 'expand') next.delete(action.directory);
+        else next.add(action.directory);
+        return next;
+      });
+    } else if (action.kind === 'focus') {
+      const target = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-explorer-row]'))
+        .find(button => button.dataset.explorerRow === action.key && !button.disabled);
+      if (target) {
+        target.focus({ preventScroll: true });
+        target.scrollIntoView?.({ block: 'nearest' });
+      }
+    }
   }
 
   function toggle(directory: ExplorerDirectory) {
@@ -133,6 +163,8 @@ export function ProjectExplorer({
       })}>Expand all</button>
       <button type="button" disabled={searching} onClick={() => setCollapsed(previous => new Set([...previous, ...scoped.map(group => group.directory)]))}>Collapse all</button>
     </div>
+    <p className="explorer-keyboard-hint">On a file or folder: ↑ ↓ move, ← → navigate folders, Home / End jump.</p>
+    <div aria-label="Listed workspace files and folders" onKeyDown={navigateRows}>
     {visibleGroups.map((group, index) => {
       const expanded = searching || !collapsed.has(group.directory);
       const groupId = 'studio-explorer-group-' + index;
@@ -144,6 +176,7 @@ export function ProjectExplorer({
         <div className="explorer-group-header">
           <button type="button" className="explorer-group-heading"
             aria-expanded={expanded} aria-controls={groupId}
+            data-explorer-row={explorerFolderKey(group.directory)}
             title={folderName} aria-label={'Folder ' + folderName}
             style={{ paddingLeft: explorerHeadingIndent(group.directory) }}
             disabled={searching} onClick={() => toggle(group.directory)}>
@@ -167,7 +200,7 @@ export function ProjectExplorer({
         </div>
         <div id={groupId} hidden={!expanded}>
           {group.sources.map(source => <button type="button" className={'file-row explorer-source' + (source.active ? ' selected' : '')}
-            key={source.path} ref={source.active ? activeRow : undefined} aria-current={source.active ? 'true' : undefined} title={source.path}
+            key={source.path} data-explorer-row={explorerSourceKey(source.path)} ref={source.active ? activeRow : undefined} aria-current={source.active ? 'true' : undefined} title={source.path}
             style={{ paddingLeft: explorerSourceIndent(group.directory) }}
             disabled={busy} onClick={() => onOpen(source.path)}>
             <span aria-hidden="true" className="file-glyph">S</span>
@@ -179,6 +212,7 @@ export function ProjectExplorer({
         </div>
       </section>;
     })}
+    </div>
     {!shown && <p className="sidebar-note">{searching ? 'No listed sources match the filters.' : groups.length ? 'No .srp files found in these folders.' : 'No .srp files or folders found.'}</p>}
   </div>;
 }
