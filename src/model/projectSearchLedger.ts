@@ -4,7 +4,7 @@ import {
   SEARCH_COVERAGE_LABELS, searchCoverageOrigin,
   type ProjectSearchScope, type ProjectScopeInventory, type ScopedFileCoverageRow,
 } from './projectSearchScope';
-import type { SearchObservation, ObservationResult } from './projectSearchComparison';
+import { validRelativeLabel, type SearchObservation, type ObservationResult } from './projectSearchComparison';
 
 export interface SearchLedgerBatch {
   readonly index: number;
@@ -69,6 +69,7 @@ function inventoryLabels(inventory: ProjectScopeInventory, scope: ProjectSearchS
   const plan = planScopedProjectSearch(inventory, baseScope(scope));
   if (!plan.ok) return plan;
   const labels = plan.value.sources.map(source => source.name).sort();
+  if (!labels.every(validRelativeLabel)) return fail('The scope contains source labels that are unsafe to record.');
   return { ok: true as const, value: {
     labels, listed: plan.value.listed, excluded: plan.value.excluded,
     withheld: plan.value.invalid + plan.value.ambiguous + plan.value.uninspected,
