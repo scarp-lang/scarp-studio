@@ -1678,7 +1678,7 @@ export default function App() {
     else setError('The audited source is no longer uniquely listed.');
   }
 
-  async function runListedSymbols(plan:ProjectInspectionPlan,settings:InspectionSettings,control:InspectionControl):Promise<ListedSymbolExecution>{
+  async function runListedSymbols(plan:ProjectInspectionPlan,settings:InspectionSettings,control:InspectionControl,captureInterfaces:boolean):Promise<ListedSymbolExecution>{
     const selection=selectedFolderRef.current;
     if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
       return {kind:'invalidated'};
@@ -1694,7 +1694,7 @@ export default function App() {
     try{
       const result=await executeListedSymbolIndex(checked.value,start.documents,readScarpSource,{
         ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
-      });
+      },captureInterfaces);
       if(result.kind==='report'&&current())setNotice('Listed symbol index '+result.report.status+'. No files changed.');
       return current()?result:{kind:'invalidated'};
     }finally{filePickerInProgress.current=false;setBusy(false);}

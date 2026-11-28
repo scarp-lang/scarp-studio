@@ -1,4 +1,5 @@
 import {useMemo,useRef,useState} from 'react';
+import {ListedFunctionInterfacesPanel} from './ListedFunctionInterfacesPanel';
 import {ListedCallTopologyPanel} from './ListedCallTopologyPanel';
 import {ProjectSearchScopeControls} from './ProjectSearchScopeControls';
 import {DEFAULT_PROJECT_SEARCH_SCOPE,type ProjectSearchScope} from '../model/projectSearchScope';
@@ -18,7 +19,7 @@ interface Props{
   listingLimited:boolean;
   available:boolean;
   busy:boolean;
-  onRun:(plan:ProjectInspectionPlan,settings:InspectionSettings,control:InspectionControl)=>Promise<ListedSymbolExecution>;
+  onRun:(plan:ProjectInspectionPlan,settings:InspectionSettings,control:InspectionControl,captureInterfaces:boolean)=>Promise<ListedSymbolExecution>;
   onNavigate:(report:ListedSymbolReport,site:ListedSymbolSite)=>void;
 }
 type View='sites'|'calls'|'repeated'|'coverage';
@@ -26,8 +27,8 @@ const VIEW_LABELS:Record<View,string>={sites:'Declaration and call sites',calls:
   repeated:'Repeated declaration names',coverage:'File coverage'};
 const CALL_STATUSES=Object.keys(LISTED_CANDIDATE_LABELS) as ListedCandidateStatus[];
 
-export function ListedSymbolReview({plan,busy,onConfirm,onCancel}:{
-  plan:ProjectInspectionPlan;busy:boolean;onConfirm:()=>void;onCancel:()=>void;
+export function ListedSymbolReview({plan,busy,onConfirm,onCancel,captureInterfaces=false}:{
+  plan:ProjectInspectionPlan;busy:boolean;onConfirm:()=>void;onCancel:()=>void;captureInterfaces?:boolean;
 }){
   const [labels,setLabels]=useState(false);
   return <section className="project-scope-coverage" aria-label="Review listed symbol index">
@@ -38,6 +39,7 @@ export function ListedSymbolReview({plan,busy,onConfirm,onCancel}:{
       {plan.settings.listingLimited?' Explorer listing is known to be limited.':''}</p>
     <p>Names are lexical observations. Imported modules, types and language scopes are not resolved.
       No source modifications or compiler execution occur.</p>
+    <p>{captureInterfaces?'Capture canonical function interface tokens, including private parameter and type names. Bodies and contract expressions are excluded.':'Do not capture function interface shapes.'}</p>
     <button type="button" aria-expanded={labels} onClick={()=>setLabels(v=>!v)}>
       {labels?'Hide symbol source labels':'Review symbol source labels'}
     </button>
@@ -191,6 +193,7 @@ export function ListedSymbolPanel({listed,listingLimited,available,busy,onRun,on
   const [expanded,setExpanded]=useState(false);
   const [scope,setScope]=useState<ProjectSearchScope>(DEFAULT_PROJECT_SEARCH_SCOPE);
   const [mode,setMode]=useState<InspectionMode>('working');
+  const [captureInterfaces,setCaptureInterfaces]=useState(false);
   const [review,setReview]=useState<ProjectInspectionPlan|null>(null);
   const [report,setReport]=useState<ListedSymbolReport|null>(null);
   const [running,setRunning]=useState(false);
@@ -215,7 +218,7 @@ export function ListedSymbolPanel({listed,listingLimited,available,busy,onRun,on
       const response=await onRun(plan,settings,{
         isCurrent:()=>active.current===token,isCancelled:()=>token.cancelled,
         onProgress:value=>{if(active.current===token)setProgress(value);},
-      });
+      },captureInterfaces);
       if(response.kind==='report')setReport(response.report);
       else setError('Symbol index invalidated. Review the current listing again.');
     }catch{setError('Symbol index could not complete. Review the scope again.');}
@@ -234,8 +237,11 @@ export function ListedSymbolPanel({listed,listingLimited,available,busy,onRun,on
         const value=event.target.value;if(value==='working'||value==='saved'){setMode(value);setReview(null);}
       }}><option value="working">Working buffers and disk</option><option value="saved">Saved disk only</option></select></label>
       <ProjectSearchScopeControls listed={listed} scope={scope} busy={blocked} onChange={next=>{setScope(next);setReview(null);}}/>
+      <label><input type="checkbox" checked={captureInterfaces} disabled={blocked} onChange={event=>{
+        setCaptureInterfaces(event.target.checked);setReview(null);
+      }}/>Capture lexical function interface shapes</label>
       <button type="button" disabled={blocked} onClick={preview}>Review listed symbol index</button>
-      {review&&<ListedSymbolReview plan={review} busy={blocked} onConfirm={()=>void run()} onCancel={()=>setReview(null)}/>}
+      {review&&<ListedSymbolReview plan={review} captureInterfaces={captureInterfaces} busy={blocked} onConfirm={()=>void run()} onCancel={()=>setReview(null)}/>}
       {running&&<div role="status">
         <p>{progress?progress.observed+' / '+progress.total+' source observations':'Starting index'}</p>
         <button type="button" disabled={cancelRequested} onClick={()=>{if(active.current)active.current.cancelled=true;setCancelRequested(true);}}>
@@ -243,6 +249,9 @@ export function ListedSymbolPanel({listed,listingLimited,available,busy,onRun,on
         </button>
       </div>}
       {error&&<p role="alert">{error}</p>}
+    </>}
+    <ListedFunctionInterfacesPanel report={report} busy={blocked} onNavigate={onNavigate} visible={expanded}/>
+    {expanded&&<>
       {report&&<><ListedSymbolResults report={report} busy={blocked} onNavigate={site=>onNavigate(report,site)}/>
         <button type="button" disabled={running} onClick={()=>setReport(null)}>Dismiss listed symbol results</button></>}
     </>}
