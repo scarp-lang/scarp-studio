@@ -2,6 +2,7 @@ import {useMemo,useRef,useState} from 'react';
 import {AnalysisSourceOpenPanel,type AnalysisSourceOpenContext} from './AnalysisSourceOpenPanel';
 import {analysisSourceCandidates} from '../model/analysisSourceOpen';
 import {ListedFunctionInterfacesPanel} from './ListedFunctionInterfacesPanel';
+import {ListedCallArityPanel} from './ListedCallArityPanel';
 import {ListedCallTopologyPanel} from './ListedCallTopologyPanel';
 import {ProjectSearchScopeControls} from './ProjectSearchScopeControls';
 import {DEFAULT_PROJECT_SEARCH_SCOPE,type ProjectSearchScope} from '../model/projectSearchScope';
@@ -42,7 +43,7 @@ export function ListedSymbolReview({plan,busy,onConfirm,onCancel,captureInterfac
       {plan.settings.listingLimited?' Explorer listing is known to be limited.':''}</p>
     <p>Names are lexical observations. Imported modules, types and language scopes are not resolved.
       No source modifications or compiler execution occur.</p>
-    <p>{captureInterfaces?'Capture canonical function interface tokens, including private parameter and type names. Bodies and contract expressions are excluded.':'Do not capture function interface shapes.'}</p>
+    <p>{captureInterfaces?'Capture canonical function interface tokens, including private parameter and type names. Bodies and contract expressions are excluded. Capture call argument counts without expressions.':'Do not capture function interface shapes.'}</p>
     <button type="button" aria-expanded={labels} onClick={()=>setLabels(v=>!v)}>
       {labels?'Hide symbol source labels':'Review symbol source labels'}
     </button>
@@ -180,6 +181,7 @@ export function ListedSymbolResults({report,busy,onNavigate}:{
       <button type="button" onClick={()=>setDetail(null)}>Close symbol group</button>
     </section>}
     <ListedCallTopologyPanel report={report} busy={busy} onNavigate={onNavigate}/>
+    <ListedCallArityPanel key={report.files.map(file=>file.name).join('|')} report={report} busy={busy} onNavigate={onNavigate}/>
     <button type="button" aria-expanded={showReport} onClick={()=>{setShowReport(!showReport);if(showReport){setLabels(false);setNames(false);}}}>
       {showReport?'Hide listed symbol report':'Review listed symbol report'}
     </button>
