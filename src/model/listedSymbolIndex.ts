@@ -29,6 +29,8 @@ export interface ListedSymbolSite {
   readonly visibility: SymbolVisibility | null;
   readonly pure: boolean;
   readonly enclosing: string | null;
+  /** Retained exact declaration identity; null when unavailable or at file level. */
+  readonly enclosingId: string | null;
 }
 export type ListedSymbolState = 'scanned' | 'partial' | 'read-failed' | 'byte-limit' |
   'ambiguous-buffer' | 'not-observed';
@@ -102,16 +104,19 @@ export async function executeListedSymbolIndex(plan:ProjectInspectionPlan,docume
     });
     const keptSymbols=index.symbols.slice(0,Math.max(0,MAX_WORKSPACE_SYMBOLS-declarations.length));
     const keptCalls=index.calls.slice(0,Math.max(0,MAX_WORKSPACE_CALLS-calls.length));
-    const functions=new Map(keptSymbols.filter(symbol=>symbol.kind==='function').map(symbol=>[symbol.id,symbol.name]));
+    const functions=new Map(keptSymbols.filter(symbol=>symbol.kind==='function').map(symbol=>[symbol.id,symbol]));
     for(const symbol of keptSymbols)declarations.push(Object.freeze({
       id:siteId(source.name,symbol.kind,symbol.offset),source:source.name,name:symbol.name,
       kind:symbol.kind,line:symbol.line,column:symbol.column,offset:symbol.offset,end:symbol.end,
-      scope:symbol.scope,visibility:symbol.visibility,pure:symbol.pure,enclosing:null,
+      scope:symbol.scope,visibility:symbol.visibility,pure:symbol.pure,enclosing:null,enclosingId:null,
     }));
     for(const call of keptCalls)calls.push(Object.freeze({
       id:siteId(source.name,'call',call.offset),source:source.name,name:call.name,kind:'call',
       line:call.line,column:call.column,offset:call.offset,end:call.end,
-      scope:null,visibility:null,pure:false,enclosing:call.enclosingSymbolId?functions.get(call.enclosingSymbolId)??null:null,
+      scope:null,visibility:null,pure:false,
+      enclosing:call.enclosingSymbolId?functions.get(call.enclosingSymbolId)?.name??null:null,
+      enclosingId:call.enclosingSymbolId&&functions.has(call.enclosingSymbolId)?
+        siteId(source.name,'function',functions.get(call.enclosingSymbolId)!.offset):null,
     }));
     const reasons=[...index.reasons];
     if(keptSymbols.length!==index.symbols.length)reasons.push('workspace-symbol-limit');
