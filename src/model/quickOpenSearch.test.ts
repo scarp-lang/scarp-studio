@@ -113,7 +113,7 @@ describe('ranked workspace Quick Open', () => {
 
   it('includes only live entries for each explicit source scope', () => {
     const expected = {
-      all: 9, open: 4, modified: 2, untitled: 1, listed: 7, closed: 5,
+      all: 9, open: 4, recent: 0, modified: 2, untitled: 1, listed: 7, closed: 5,
     };
     for (const scope of QUICK_OPEN_SCOPES) {
       const result = results('', { scope });
@@ -125,6 +125,14 @@ describe('ranked workspace Quick Open', () => {
     expect(ids(results('', { scope: 'listed' }))).not.toContain('tab:outside');
     expect(ids(results('', { scope: 'listed' }))).not.toContain('tab:untitled');
     expect(results('', { scope: 'closed' }).matches.every(match => match.entry.kind === 'project')).toBe(true);
+  });
+
+  it('limits recent search to live activated tabs and uses recency for tied matches', () => {
+    const recency = { ids: ['loop-main', 'tuple-main', 'closed-tab'] };
+    expect(ids(results('', { scope: 'recent', recency }))).toEqual(['tab:loop-main', 'tab:tuple-main']);
+    expect(ids(results('main.srp', { recency })).slice(0, 2)).toEqual(['tab:loop-main', 'tab:tuple-main']);
+    expect(ids(results('outside.srp', { recency }))[0]).toBe('tab:outside');
+    expect(results('outside.srp', { scope: 'recent', recency }).matched).toBe(0);
   });
 
   it('does not widen a restricted search when it has no matches', () => {
