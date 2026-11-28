@@ -1,3 +1,4 @@
+import { explorerScenarios } from './search-browser-explorer.mjs';
 import assert from 'node:assert/strict';
 import {transactionScenarios} from './search-browser-transactions.mjs';
 import {listedSymbolScenarios} from './search-browser-listed-symbols.mjs';
@@ -32,6 +33,7 @@ try {
       throw new Error('Search browser scenario failed: ' + name, { cause });
     }
   };
+  await explorerScenarios(d, step);
   await scopeScenarios(d, step);
   await observationScenarios(d, step);
   await ledgerScenarios(d, step);
