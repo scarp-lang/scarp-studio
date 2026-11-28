@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import {listedSymbolScenarios} from './search-browser-listed-symbols.mjs';
+import {listedReferenceScenarios} from './search-browser-listed-references.mjs';
+import {analysisOpenScenarios} from './search-browser-analysis-open.mjs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchBrowser, serveBuild } from './settings-browser-harness.mjs';
@@ -36,6 +39,9 @@ try {
   await sweepScenarios(d, step);
   await inspectionScenarios(d, step);
   await verificationScenarios(d, step);
+  await listedSymbolScenarios(d,step);
+  await listedReferenceScenarios(d,step);
+  await analysisOpenScenarios(d,step);
   assert.deepEqual(browser.cdp.errors, [], 'Unexpected browser runtime exceptions');
   console.log('Completed ' + passed + ' independent search browser scenarios.');
 } finally {
