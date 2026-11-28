@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { VERIFICATION_EXPECTATION_LABELS, type VerificationRule } from '../model/projectVerification';
 import {
   createVerificationProfileLibrary, addVerificationProfile, renameVerificationProfile,
@@ -11,6 +11,8 @@ import {
 
 interface Props {
   current: readonly VerificationRule[];
+  /** Hidden workbenches keep the saved library, not transient private previews. */
+  visible?: boolean;
   busy: boolean;
   onApply: (rules: readonly VerificationRule[]) => boolean;
 }
@@ -22,7 +24,7 @@ function RuleList({rules}:{rules:readonly VerificationRule[]}){
   </li>)}</ol>;
 }
 
-export function VerificationProfilesPanel({current,busy,onApply}:Props){
+export function VerificationProfilesPanel({current,busy,onApply,visible=true}:Props){
   const [expanded,setExpanded]=useState(false);
   const [library,setLibrary]=useState(createVerificationProfileLibrary);
   const [name,setName]=useState('');
@@ -37,6 +39,12 @@ export function VerificationProfilesPanel({current,busy,onApply}:Props){
   const [clearReview,setClearReview]=useState<VerificationProfileLibrary|null>(null);
   const [notice,setNotice]=useState('');
   const [error,setError]=useState('');
+  const closePreview=useCallback(()=>{
+    setExpanded(false);setReview(null);setShowBackup(false);setImportText('');
+    setImportReview(null);setImportSelection([]);setShowRules(false);setShowImportRules(null);
+    setClearReview(null);setNotice('');setError('');setName('');
+  },[]);
+  useEffect(()=>{if(!visible)closePreview();},[visible,closePreview]);
   const chosen=library.profiles.find(item=>item.id===selected);
   const backup=useMemo(()=>showBackup?exportVerificationProfiles(library):null,[showBackup,library]);
   function commit(next:VerificationProfileLibrary,message:string){
@@ -104,8 +112,9 @@ export function VerificationProfilesPanel({current,busy,onApply}:Props){
     commit(result.value,'Imported '+importSelection.length+' verification profile(s).');
     setImportText('');
   }
+  if(!visible)return null;
   return <section className="project-scope-coverage" aria-label="Verification profiles">
-    <button type="button" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>
+    <button type="button" aria-expanded={expanded} onClick={()=>expanded?closePreview():setExpanded(true)}>
       {expanded?'Hide verification profiles':'Manage verification profiles'}
     </button>
     {expanded&&<>
