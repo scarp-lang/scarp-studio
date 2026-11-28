@@ -5,6 +5,8 @@ import { ProjectSearchComparisonPanel } from '../../src/components/ProjectSearch
 import { ProjectSearchLedgerPanel } from '../../src/components/ProjectSearchLedgerPanel';
 import { ProjectSearchPresetsPanel } from '../../src/components/ProjectSearchPresetsPanel';
 import { ProjectMatchExplorer } from '../../src/components/ProjectMatchExplorer';
+import { ProjectSearchSweepPanel } from '../../src/components/ProjectSearchSweepPanel';
+import { confirmSearchSweep, executeSearchSweep, type SearchSweepPlan, type SweepControl, type SweepExecution } from '../../src/model/projectSearchSweep';
 import { searchListedProjectSources, type ProjectSearchResult, type ProjectSearchHit } from '../../src/model/projectSearch';
 import {
   DEFAULT_PROJECT_SEARCH_SCOPE, buildProjectScopeInventory, planScopedProjectSearch,
@@ -129,6 +131,31 @@ function Workbench() {
     }
   }
 
+  async function runSweep(plan: SearchSweepPlan, control: SweepControl): Promise<SweepExecution> {
+    if (busy) return {kind:'invalidated'};
+    const checked = confirmSearchSweep(plan, listed, settings);
+    if (!checked.ok) return {kind:'invalidated'};
+    retire();
+    const id = ++generation.current;
+    setBusy(true);
+    setSearches(value => value + 1);
+    let blocked = paused;
+    const reader = createFixtureReader(workspace, async () => {
+      if (!blocked) return;
+      blocked = false;
+      await new Promise<void>(resolve => { releaseRead.current = resolve; });
+      releaseRead.current = null;
+    });
+    try {
+      const result = await executeSearchSweep(checked.value, workspace.documents, reader.read,
+        {...control,isCurrent:()=>generation.current===id&&control.isCurrent()});
+      if (generation.current===id) setReadPaths(previous=>[...previous,...reader.paths()]);
+      return generation.current===id?result:{kind:'invalidated'};
+    } finally {
+      if(generation.current===id)setBusy(false);
+    }
+  }
+
   function navigate(hit: ProjectSearchHit) {
     // Capture the callback arguments only. Real native navigation and its
     // filesystem revalidation belong to desktop acceptance, not this fixture.
@@ -186,6 +213,7 @@ function Workbench() {
       }}/>
       <ProjectSearchLedgerPanel listed={listed} query={settings.query} options={settings.options}
         scope={settings.scope} current={completed?.summary ?? null} busy={busy} onScopeChange={updateScope}/>
+      <ProjectSearchSweepPanel listed={listed} settings={settings} busy={busy} available onRun={runSweep}/>
       <ProjectSearchComparisonPanel current={completed ? {
         query: completed.settings.query,
         options: completed.settings.options,
