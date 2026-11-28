@@ -121,6 +121,7 @@ export interface InspectionFile {
 export interface ProjectInspectionReport {
   readonly status: 'completed' | 'cancelled';
   readonly mode: InspectionMode;
+  readonly scope: ProjectSearchScope;
   readonly listed: number;
   readonly selected: number;
   readonly deferred: number;
@@ -251,7 +252,7 @@ export async function executeProjectInspection(
   const unread = files.length - fullyInspected - partial;
   const status = control.isCancelled() ? 'cancelled' : 'completed';
   return { kind: 'report', report: Object.freeze({
-    status, mode: plan.settings.mode, listed: plan.listed, selected: plan.selected,
+    status, mode: plan.settings.mode, scope: plan.settings.scope, listed: plan.listed, selected: plan.selected,
     deferred: plan.deferred, excluded: plan.excluded, withheld: plan.withheld,
     listingLimited: plan.settings.listingLimited, bytes,
     files: Object.freeze(files), tasks: Object.freeze(tasks), findings: Object.freeze(findings),
