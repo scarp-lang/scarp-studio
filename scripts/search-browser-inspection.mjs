@@ -174,7 +174,7 @@ export async function inspectionScenarios(d, step) {
     await d.noReads(async () => {
       await d.button(results, 'Open current listed source');
       assert.equal(JSON.parse(await d.text(testId('navigation'))).name, buffer);
-      await d.button(results, 'Dismiss inspection results');
+      await d.button(inspection, 'Dismiss inspection results');
       await d.absent(results);
     });
   });
