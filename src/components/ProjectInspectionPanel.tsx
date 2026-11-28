@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { ProjectSearchScopeControls } from './ProjectSearchScopeControls';
+import { ProjectInspectionComparisonPanel } from './ProjectInspectionComparisonPanel';
 import { DEFAULT_PROJECT_SEARCH_SCOPE, type ProjectSearchScope } from '../model/projectSearchScope';
 import { QUALITY_LABELS, QUALITY_RULES, type QualityRule } from '../model/sourceQuality';
 import type { ScarpTaskKind, ScarpTaskPriority } from '../model/commentTasks';
@@ -248,6 +249,7 @@ export function ProjectInspectionPanel({ listed, listingLimited, available, busy
         }}>{cancelRequested ? 'Inspection cancellation requested' : 'Cancel source inspection'}</button>
       </div>}
       {notice && <p role="alert">{notice}</p>}
+      <ProjectInspectionComparisonPanel current={result} busy={blocked}/>
       {result && <><ProjectInspectionResults report={result} busy={blocked} onOpen={label => onOpen(result, label)}/>
         <button type="button" disabled={running} onClick={() => setResult(null)}>Dismiss inspection results</button></>}
     </>}
