@@ -38,7 +38,7 @@ describe('per-source search evidence',()=>{
       {name:'c.srp',state:'scanned',origin:'disk',hits:0},
     ]);
     const report=scopedSearchReport(summary);
-    expect(report).toContain('Fully scanned: 2');
+    expect(report.split('\n')).toContain('Fully scanned sources: 2');
     expect(report).toContain('Read unavailable: 1');
     expect(report).not.toContain('C:/secret');
     expect(report).not.toContain('a.srp');
