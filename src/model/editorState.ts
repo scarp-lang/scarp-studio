@@ -38,9 +38,17 @@ export function canApplyReplacementSnapshots(
   });
 }
 
+export interface StagedSourceReplacement {
+  readonly path:string;
+  readonly document:StudioDocument|null;
+  readonly before:string;
+  readonly after:string;
+}
+
 export type EditorAction =
   | { type: 'new' }
   | { type: 'restore-drafts'; drafts: readonly RecoveryDraft[] }
+  | { type: 'stage-source-replacements'; sessionRevision:number; activeId:string|null; allSnapshots:readonly StudioDocument[]; changes:readonly StagedSourceReplacement[] }
   | { type: 'restore-workspace-tabs'; files: readonly { path: string; content: string }[]; activePath: string | null }
   | { type: 'open'; path: string; content: string }
   | { type: 'edit'; id: string; content: string }
@@ -150,6 +158,43 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
         activeId: restored[0].id,
         nextUntitled: state.nextUntitled + restored.length,
       };
+    }
+    case 'stage-source-replacements': {
+      // Validate all sources and editor snapshots before creating any tab.
+      // Closed sources enter the editor as unsaved changes against the
+      // separately revalidated disk snapshot. This is never a disk write.
+      if (action.sessionRevision !== state.sessionRevision || action.activeId !== state.activeId ||
+          !sameOpenDocumentSnapshots(action.allSnapshots,state.documents) ||
+          !action.changes.length || action.changes.length > MAX_WORKSPACE_SESSION_TABS) return state;
+      const paths:string[]=[];
+      let originalBytes=0, outputBytes=0;
+      for (const change of action.changes) {
+        if (!validWorkspaceRoot(change.path) || !isScarpPath(change.path) ||
+            paths.some(path=>sameFilePath(path,change.path)) || change.before===change.after) return state;
+        paths.push(change.path);
+        const current=state.documents.filter(doc=>doc.path!==null&&sameFilePath(doc.path,change.path));
+        if (change.document===null ? current.length!==0 :
+            current.length!==1 || !isUnchangedSnapshot(current[0],change.document) ||
+            change.document.content!==change.before) return state;
+        try { assertScarpSourceText(change.before); assertScarpSourceText(change.after); }
+        catch { return state; }
+        originalBytes+=utf8ByteLength(change.before);
+        outputBytes+=utf8ByteLength(change.after);
+        if(originalBytes>MAX_WORKSPACE_RESTORE_BYTES||outputBytes>MAX_WORKSPACE_RESTORE_BYTES) return state;
+      }
+      let documents=state.documents;
+      let firstNew:string|null=null;
+      for(const change of action.changes){
+        if(change.document){
+          documents=updateContent(documents,change.document.id,change.after);
+        }else{
+          const opened=openedDocument(documents,change.path,change.before,state.sessionRevision+1);
+          if(opened.documents===documents)return state;
+          documents=updateContent(opened.documents,opened.id,change.after);
+          if(firstNew===null)firstNew=opened.id;
+        }
+      }
+      return {...state,documents,activeId:state.activeId??firstNew};
     }
     case 'restore-workspace-tabs': {
       if (action.files.length > MAX_WORKSPACE_SESSION_TABS) return state;
