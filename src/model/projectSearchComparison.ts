@@ -35,8 +35,13 @@ function validText(text: string, maximum: number): boolean {
   try { assertWellFormedUtf16(text, 'Search observation'); return true; }
   catch { return false; }
 }
+/** Reject drive-qualified or invisible-format labels from observation exports. */
+function validRelativeLabel(label: string): boolean {
+  return validText(label, 1024) && !/^[A-Za-z]:/.test(label) &&
+    !/[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(label);
+}
 function validRow(row: ScopedFileCoverageRow): boolean {
-  if (!safeRelativeScarpSourceName(row.name) || !validText(row.name, 1024) ||
+  if (!safeRelativeScarpSourceName(row.name) || !validRelativeLabel(row.name) ||
       !validCount(row.hits, MAX_SEARCH_RESULTS) || !PROJECT_SEARCH_FILE_STATES.includes(row.state)) return false;
   const origin = row.origin;
   if (origin !== null && origin !== 'disk' && origin !== 'open-buffer') return false;
@@ -47,7 +52,7 @@ function validRow(row: ScopedFileCoverageRow): boolean {
 }
 function validScope(scope: ProjectSearchScope): boolean {
   return (scope.directory === '' || safeRelativeScarpDirectory(scope.directory)) &&
-    validText(scope.directory, 1024) && typeof scope.descendants === 'boolean' &&
+    validRelativeLabel(scope.directory) && typeof scope.descendants === 'boolean' &&
     validText(scope.filename, MAX_SCOPE_NAME_QUERY) &&
     !/[/\\\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(scope.filename) &&
     (scope.batch === undefined || (Number.isSafeInteger(scope.batch) && scope.batch > 0));
