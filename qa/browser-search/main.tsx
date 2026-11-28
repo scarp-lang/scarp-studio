@@ -1,3 +1,4 @@
+import { ExplorerFixture } from './ExplorerFixture';
 import { useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ProjectSearchScopeControls, ProjectSearchCoverage } from '../../src/components/ProjectSearchScopeControls';
@@ -509,6 +510,7 @@ function Workbench() {
       <button disabled={busy || !settings.query} onClick={() => void run()}>Search Project</button>
       {error && <p role="alert">{error}</p>}
     </section>
+    <ExplorerFixture/>
     <div key={session}>
       <ProjectSearchScopeControls listed={listed} scope={settings.scope} busy={busy} onChange={updateScope}/>
       <ProjectSearchPresetsPanel listed={listed} current={settings} busy={busy} onApply={next => {
