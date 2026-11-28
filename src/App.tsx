@@ -69,6 +69,8 @@ import { recheckDiskReconciliation,type DiskReconciliationPlan,type Reconciliati
 import { WorkspaceDiskReviewPanel } from './components/WorkspaceDiskReviewPanel';
 import { diskOperationCurrent, inspectWorkspaceDisk, prepareWorkspaceDiskReload, type WorkspaceDiskReview, type WorkspaceDiskResult } from './model/workspaceDiskReview';
 import { OpenEditorManager } from './components/OpenEditorManager';
+import { TabOrganizationPanel } from './components/TabOrganizationPanel';
+import { organizeEditorTabs, type TabOrganizationOperation } from './model/tabOrganization';
 import { resolveBulkClose, type TabSelection } from './model/openEditorManagement';
 import { ProjectDependencyAuditPanel } from './components/ProjectDependencyAuditPanel';
 import { auditListedProjectDependencies,resolveAuditFile,type AuditMode,type AuditResult,type ProjectDependencyAudit } from './model/projectDependencyAudit';
@@ -901,7 +903,7 @@ export default function App() {
 
   useEffect(() => {
     activeTabElement.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [activeId]);
+  }, [activeId, editorState.pinnedTabIds]);
 
   function cycleTab(direction: 1 | -1): void {
     const state = liveEditor.current;
@@ -3537,6 +3539,25 @@ export default function App() {
     }
   }
 
+  function applyTabOrganization(operation: TabOrganizationOperation, expectedRevision: number): boolean {
+    if (recoveryOperationsBlocked() || compilerScanning) {
+      setError('Finish the current operation before organizing tabs.');
+      return false;
+    }
+    const before = liveEditor.current;
+    if (before.sessionRevision !== expectedRevision) {
+      setError('The editor changed after review. Review the current tabs again.');
+      return false;
+    }
+    const plan = organizeEditorTabs(before.documents, before.pinnedTabIds ?? [], operation);
+    if (!plan.ok) { setError(plan.error); return false; }
+    dispatch({ type: 'organize-tabs', operation, expectedSessionRevision: expectedRevision });
+    if (liveEditor.current === before) { setError('The tab organization request was rejected.'); return false; }
+    setError(null);
+    setNotice('Updated tab organization. No source content changed.');
+    return true;
+  }
+
   function closeSelectedCleanTabs(selections: readonly TabSelection[]): boolean {
     // Share the live native-operation guards; never interfere with pending
     // writes, compiler reads, picker operations or discard confirmations.
@@ -3547,7 +3568,7 @@ export default function App() {
       return false;
     }
     const before = liveEditor.current;
-    const snapshots = resolveBulkClose(selections, before.documents);
+    const snapshots = resolveBulkClose(selections, before.documents, before.pinnedTabIds ?? []);
     if (!snapshots) {
       setError('The selected tabs changed. Review your selection and try again.');
       return false;
@@ -3572,6 +3593,10 @@ export default function App() {
   }
 
   async function closeFile(id: string): Promise<void> {
+    if (liveEditor.current.pinnedTabIds?.includes(id)) {
+      setError('Unpin this editor tab before closing it.');
+      return;
+    }
     if (saveInProgress.current || filePickerInProgress.current ||
         selectionInProgress.current) {
       setError('Finish the current file operation before closing a tab.');
@@ -3597,7 +3622,7 @@ export default function App() {
         }
       }
       const current = liveEditor.current.documents.find((item) => item.id === id);
-      if (saveInProgress.current || !current || !isUnchangedSnapshot(current, document)) {
+      if (saveInProgress.current || !current || liveEditor.current.pinnedTabIds?.includes(id) || !isUnchangedSnapshot(current, document)) {
         setError('The file changed while confirming close. Review the changes and try again.');
         return;
       }
@@ -3895,7 +3920,7 @@ export default function App() {
             onForget={forgetWorkspaceTabs} onClearAll={clearRememberedWorkspaces} />
           </ExplorerToolSlot>
           <ExplorerToolSlot id="manage-tabs">
-          <OpenEditorManager documents={documents} activeId={activeId}
+          <OpenEditorManager documents={documents} activeId={activeId} pinnedIds={editorState.pinnedTabIds}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             onActivate={activateManagedTab} onClose={closeSelectedCleanTabs} />
           <WorkspaceDiskReviewPanel editor={editorState} native={isTauri()}
@@ -4074,6 +4099,8 @@ export default function App() {
           onChange={size => updateWorkspaceDimension('explorerWidth', size)}
           onReset={() => updateWorkspaceDimension('explorerWidth', DEFAULT_WORKSPACE_LAYOUT.explorerWidth)} />}
         <main className="workspace">
+          <TabOrganizationPanel editor={editorState} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onOrganize={applyTabOrganization}/>
           <div className="tabs" role="tablist" aria-label="Open source files">
             {documents.map((document) => (
               <div
@@ -4081,7 +4108,7 @@ export default function App() {
                 ref={document.id === activeId ? activeTabElement : undefined}
                 id={'studio-tab-' + document.id}
                 aria-selected={document.id === activeId}
-                className={'tab' + (document.id === activeId ? ' active' : '')}
+                className={'tab' + (document.id === activeId ? ' active' : '') + (editorState.pinnedTabIds?.includes(document.id) ? ' pinned' : '')}
                 key={document.id}
                 onClick={() => dispatch({ type: 'activate', id: document.id })}
                 onKeyDown={(event) => {
@@ -4107,6 +4134,7 @@ export default function App() {
                 title={document.path || document.name}
               >
                 <span>{documentLabels.get(document.id) ?? document.name}</span>
+                {editorState.pinnedTabIds?.includes(document.id) && <span className="tab-pin-marker" aria-label="Pinned tab" title="Pinned; unpin before closing">◆</span>}
                 {autoSaveReview.current.isHeld(document) && (
                   <span className="review-indicator" aria-label="Manual Save required after reviewed buffer changes"
                     title="Reviewed buffer changes are held from Auto Save until manual Save, Undo or further editing">
@@ -4116,10 +4144,11 @@ export default function App() {
                 {isDirty(document) && <span className="dirty-indicator" aria-label="unsaved changes">●</span>}
                 <button
                   className="tab-close"
+                  disabled={editorState.pinnedTabIds?.includes(document.id)}
                   onClick={(event) => { event.stopPropagation(); void closeFile(document.id); }}
                   onKeyDown={(event) => { event.stopPropagation(); }}
                   aria-label={'Close ' + (documentLabels.get(document.id) ?? document.name)}
-                  title={'Close ' + (documentLabels.get(document.id) ?? document.name)}
+                  title={editorState.pinnedTabIds?.includes(document.id) ? 'Unpin this tab before closing' : 'Close ' + (documentLabels.get(document.id) ?? document.name)}
                 >×</button>
               </div>
             ))}
