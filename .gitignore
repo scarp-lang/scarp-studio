@@ -9,6 +9,7 @@ rustc-ice-*.txt
 # Node, Vite, and tooling
 node_modules/
 dist/
+dist-search-smoke/
 .vite/
 coverage/
 *.tsbuildinfo
