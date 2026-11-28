@@ -9,6 +9,7 @@ import { buildProjectScopeInventory, MAX_SCOPE_REPORT_UNITS } from './projectSea
 import type { ProjectSearchSource } from './projectSearch';
 import { validRelativeLabel } from './projectSearchComparison';
 import { scarpInsightIdentifier } from '../language/sourceLex';
+import { captureScarpFunctionInterfaces, type InterfaceShapeEvidence } from '../language/scarpFunctionInterfaces';
 
 export const LISTED_SYMBOL_PAGE_SIZE = 20;
 export type ListedSiteKind = SymbolKind | 'call';
@@ -49,6 +50,10 @@ export interface ListedSymbolFile {
   readonly declarations: number;
   readonly calls: number;
 }
+export interface ListedFunctionInterface {
+  readonly site: ListedSymbolSite;
+  readonly evidence: InterfaceShapeEvidence;
+}
 export interface ListedSymbolReport {
   readonly status: 'completed' | 'cancelled';
   readonly settings: InspectionSettings;
@@ -60,6 +65,8 @@ export interface ListedSymbolReport {
   readonly bytes: number;
   readonly files: readonly ListedSymbolFile[];
   readonly declarations: readonly ListedSymbolSite[];
+  /** Explicit opt-in; canonical interface shapes may contain private identifiers. */
+  readonly interfaces: readonly ListedFunctionInterface[] | null;
   readonly calls: readonly ListedSymbolSite[];
   readonly complete: boolean;
 }
@@ -78,10 +85,11 @@ function siteId(source:string,kind:ListedSiteKind,offset:number):string{
  * Calls are lexical candidates; imported modules and scopes are not resolved.
  */
 export async function executeListedSymbolIndex(plan:ProjectInspectionPlan,documents:readonly StudioDocument[],
-  read:(path:string,maxBytes:number)=>Promise<string>,control:InspectionControl):Promise<ListedSymbolExecution>{
+  read:(path:string,maxBytes:number)=>Promise<string>,control:InspectionControl,captureInterfaces=false):Promise<ListedSymbolExecution>{
   const files:ListedSymbolFile[]=[];
   const declarations:ListedSymbolSite[]=[];
   const calls:ListedSymbolSite[]=[];
+  const interfaces:ListedFunctionInterface[]=[];
   let bytes=0;
   const stopped=()=>!control.isCurrent()||control.isCancelled();
   for(const source of plan.sources){
@@ -105,11 +113,20 @@ export async function executeListedSymbolIndex(plan:ProjectInspectionPlan,docume
     const keptSymbols=index.symbols.slice(0,Math.max(0,MAX_WORKSPACE_SYMBOLS-declarations.length));
     const keptCalls=index.calls.slice(0,Math.max(0,MAX_WORKSPACE_CALLS-calls.length));
     const functions=new Map(keptSymbols.filter(symbol=>symbol.kind==='function').map(symbol=>[symbol.id,symbol]));
-    for(const symbol of keptSymbols)declarations.push(Object.freeze({
+    const localDeclarations:ListedSymbolSite[]=[];
+    for(const symbol of keptSymbols)localDeclarations.push(Object.freeze({
       id:siteId(source.name,symbol.kind,symbol.offset),source:source.name,name:symbol.name,
       kind:symbol.kind,line:symbol.line,column:symbol.column,offset:symbol.offset,end:symbol.end,
       scope:symbol.scope,visibility:symbol.visibility,pure:symbol.pure,enclosing:null,enclosingId:null,
     }));
+    declarations.push(...localDeclarations);
+    if(captureInterfaces){
+      const byOffset=new Map(localDeclarations.map(site=>[site.offset,site]));
+      for(const item of captureScarpFunctionInterfaces(snapshot.content,keptSymbols)){
+        const site=byOffset.get(item.offset);
+        if(site)interfaces.push(Object.freeze({site,evidence:item.evidence}));
+      }
+    }
     for(const call of keptCalls)calls.push(Object.freeze({
       id:siteId(source.name,'call',call.offset),source:source.name,name:call.name,kind:'call',
       line:call.line,column:call.column,offset:call.offset,end:call.end,
@@ -136,6 +153,7 @@ export async function executeListedSymbolIndex(plan:ProjectInspectionPlan,docume
     status,settings:plan.settings,listed:plan.listed,selected:plan.selected,
     deferred:plan.deferred,excluded:plan.excluded,withheld:plan.withheld,bytes,
     files:Object.freeze(files),declarations:Object.freeze(declarations),calls:Object.freeze(calls),
+    interfaces:captureInterfaces?Object.freeze(interfaces):null,
     complete:status==='completed'&&!plan.settings.listingLimited&&!plan.deferred&&!plan.withheld&&
       files.every(file=>file.state==='scanned'),
   })};
@@ -268,7 +286,7 @@ export function listedSymbolReportText(report:ListedSymbolReport,includeLabels=f
     'Call-like sites: '+report.calls.length,
     ...SYMBOL_KINDS.map(kind=>SYMBOL_KIND_LABELS[kind]+': '+report.declarations.filter(site=>site.kind===kind).length),
     'Repeated names and spelling matches are not diagnostics.',
-    'No native paths, source headers or source text are retained.',
+    'No native paths, source headers or source text are exported by this report.',
   ];
   let units=lines.join('\n').length;
   const append=(line:string)=>{
