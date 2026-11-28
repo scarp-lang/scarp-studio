@@ -70,3 +70,59 @@ describe('manifest-aware Explorer SSR layout and accessibility', () => {
     expect(button).toMatch(/\bdisabled\b/);
   });
 });
+
+describe('workspace folder navigation presentation', () => {
+  it('offers a bounded folder selector with synthetic intermediate headings', () => {
+    const source = {
+      name: 'basic_tuple/src/deep/math.srp',
+      path: 'C:/Scarp-Practice/basic_tuple/src/deep/math.srp',
+    };
+    const markup = renderToStaticMarkup(createElement(ProjectExplorer, {
+      files: [source, loop], directories: ['loops'],
+      documents: [], activeId: null, busy: false, onOpen: noop,
+    }));
+    expect(markup).toContain('aria-label="Browse listed folder"');
+    expect(markup).toContain('value="fbasic_tuple"');
+    expect(markup).toContain('value="fbasic_tuple/src"');
+    expect(markup).toContain('aria-label="Folder basic_tuple/src"');
+    expect(markup).toContain('2 listed files');
+    expect(markup).toContain('0 open');
+    expect(markup).toContain('0 modified');
+  });
+
+  it('reports open and modified descendants and enables active-file reveal', () => {
+    const markup = renderToStaticMarkup(createElement(ProjectExplorer, {
+      files: [tuple, loop],
+      documents: [{
+        id: 'active', name: 'main.srp', path: tuple.path,
+        content: 'print(2);', savedContent: 'print(1);', revision: 1,
+      }],
+      activeId: 'active', busy: false, onOpen: noop,
+    }));
+    expect(markup).toContain('1 open');
+    expect(markup).toContain('1 modified');
+    expect(markup).toContain('aria-label="Contains active source"');
+    expect(markup).toContain('aria-label="1 modified sources in folder tree"');
+    const reveal = markup.match(/<button[^>]*>\s*Reveal active file\s*<\/button>/)?.[0];
+    expect(reveal).toBeDefined();
+    expect(reveal).not.toMatch(/\bdisabled\b/);
+  });
+
+  it('disables active-file reveal while busy or when the active tab is not listed', () => {
+    const active = {
+      id: 'active', name: 'main.srp', path: tuple.path,
+      content: '', savedContent: '', revision: 0,
+    };
+    for (const props of [
+      { files: [tuple], busy: true },
+      { files: [loop], busy: false },
+    ]) {
+      const markup = renderToStaticMarkup(createElement(ProjectExplorer, {
+        ...props, documents: [active], activeId: 'active', onOpen: noop,
+      }));
+      const reveal = markup.match(/<button[^>]*>\s*Reveal active file\s*<\/button>/)?.[0];
+      expect(reveal).toBeDefined();
+      expect(reveal).toMatch(/\bdisabled\b/);
+    }
+  });
+});
