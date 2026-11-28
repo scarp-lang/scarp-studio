@@ -576,6 +576,14 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   font-size: 10px;
 }
 .explorer-count { white-space: nowrap; }
+.explorer-keyboard-hint {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+  margin: 2px 8px 6px;
+  overflow-wrap: anywhere;
+}
+
 
 .explorer-filter { display: grid; gap: 5px; padding: 4px 8px; }
 .explorer-filter input, .explorer-filter select { width: 100%; min-width: 0; color: var(--text); background: var(--bg); border: 1px solid var(--border); padding: 5px 7px; border-radius: 4px; font: 11px/1.4 "Segoe UI", sans-serif; }
