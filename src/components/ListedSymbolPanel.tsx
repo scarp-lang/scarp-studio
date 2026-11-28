@@ -1,4 +1,5 @@
 import {useMemo,useRef,useState} from 'react';
+import {ListedCallTopologyPanel} from './ListedCallTopologyPanel';
 import {ProjectSearchScopeControls} from './ProjectSearchScopeControls';
 import {DEFAULT_PROJECT_SEARCH_SCOPE,type ProjectSearchScope} from '../model/projectSearchScope';
 import {prepareProjectInspection,INSPECTION_READ_LIMITS,INSPECTION_ORIGIN_LABELS,
@@ -173,6 +174,7 @@ export function ListedSymbolResults({report,busy,onNavigate}:{
       <button type="button" disabled={detailVisible.page===detailVisible.pages} onClick={()=>setDetailPage(detailVisible.page+1)}>Next group page</button>
       <button type="button" onClick={()=>setDetail(null)}>Close symbol group</button>
     </section>}
+    <ListedCallTopologyPanel report={report} busy={busy} onNavigate={onNavigate}/>
     <button type="button" aria-expanded={showReport} onClick={()=>{setShowReport(!showReport);if(showReport){setLabels(false);setNames(false);}}}>
       {showReport?'Hide listed symbol report':'Review listed symbol report'}
     </button>
