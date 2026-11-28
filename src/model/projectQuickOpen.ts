@@ -10,7 +10,7 @@ export interface ListedProjectSource {
 }
 
 export type QuickOpenEntry =
-  | (NavigationEntry & { kind: 'tab'; documentId: string })
+  | (NavigationEntry & { kind: 'tab'; documentId: string; path?: string | null; modified?: boolean; relativeLabel?: string })
   | (NavigationEntry & { kind: 'project'; sourcePath: string });
 
 /** Include only already-open tabs and explicitly listed Scarp project files.
@@ -24,6 +24,11 @@ export function buildQuickOpenEntries(
   const entries: QuickOpenEntry[] = documents.map((document) => ({
     kind: 'tab',
     documentId: document.id,
+    path: document.path,
+    modified: isDirty(document),
+    relativeLabel: document.path === null ? undefined : listedFiles.slice(0, MAX_DISPLAYED_SCARP_FILES)
+      .find(source => safeRelativeScarpSourceName(source.name) && isScarpPath(source.path) &&
+        sameFilePath(source.path, document.path!))?.name,
     id: 'tab:' + document.id,
     label: document.name,
     detail: (document.path ?? 'Unsaved Scarp source') +
