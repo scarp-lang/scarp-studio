@@ -25,6 +25,7 @@ export const EXPLORER_TOOLS=[
   {id:'project-verification',category:'analysis',label:'Literal source verification',description:'Check reviewed required or forbidden literal patterns across listed sources',keywords:'verify rule literal pattern audit project files'},
   {id:'identifier-edit',category:'editing',label:'Identifier edit',description:'Select literal code tokens for reviewed replacement',keywords:'rename replace identifier refactor'},
   {id:'project-identifier-migration',category:'editing',label:'Project identifier migration',description:'Stage reviewed simultaneous code-token substitutions across listed sources',keywords:'project refactor rename identifier migration mappings replacements'},
+  {id:'project-whitespace',category:'editing',label:'Project whitespace cleanup',description:'Review bounded whitespace edits preserving literal token contents',keywords:'project whitespace indentation formatting line endings trailing newline cleanup'},
   {id:'line-tools',category:'editing',label:'Line tools',description:'Sort, reverse, indent or transform selected lines',keywords:'sort prefix suffix trim duplicate indentation'},
   {id:'selection-edit',category:'editing',label:'Selection editing',description:'Review literal transformations across editor selections',keywords:'multi cursor surround unwrap duplicate replace case delete'},
   {id:'working-changes',category:'changes',label:'Working changes',description:'Compare working text to its last saved snapshot',keywords:'diff unsaved saved changes'},
