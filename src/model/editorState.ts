@@ -7,11 +7,14 @@ import { validateRecoveryDrafts, type RecoveryDraft } from './draftRecovery';
 import { MAX_WORKSPACE_SESSION_TABS, MAX_WORKSPACE_RESTORE_BYTES, validWorkspaceRoot } from './workspaceSessions';
 import { assertScarpSourceText } from './sourceLimits';
 import { utf8ByteLength } from './utf8Text';
+import { organizeEditorTabs, type TabOrganizationOperation } from './tabOrganization';
 
 export interface EditorState {
   documents: StudioDocument[];
   activeId: string | null;
   nextUntitled: number;
+  /** In-memory only. Pinned IDs correspond to the leading document group. */
+  pinnedTabIds?: readonly string[];
   /** Monotonic whole-session generation, including close/reopen ABA transitions. */
   sessionRevision: number;
 }
@@ -58,6 +61,7 @@ export type EditorAction =
   | { type: 'reload-clean-files'; changes: readonly BufferReplacement[]; allSnapshots: readonly StudioDocument[] }
   | { type: 'replace-open-files'; changes: readonly BufferReplacement[]; allSnapshots: readonly StudioDocument[] }
   | { type: 'activate'; id: string }
+  | { type: 'organize-tabs'; expectedSessionRevision: number; operation: TabOrganizationOperation }
   | { type: 'close'; id: string; snapshot: StudioDocument }
   | { type: 'close-clean-tabs'; snapshots: readonly StudioDocument[] };
 
@@ -303,6 +307,12 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
       if (state.activeId === action.id ||
           !state.documents.some((document) => document.id === action.id)) return state;
       return { ...state, activeId: action.id };
+    case 'organize-tabs': {
+      if (action.expectedSessionRevision !== state.sessionRevision) return state;
+      const plan = organizeEditorTabs(state.documents, state.pinnedTabIds ?? [], action.operation);
+      if (!plan.ok) return state;
+      return { ...state, documents: plan.value.documents, pinnedTabIds: plan.value.pinnedIds };
+    }
     case 'close-clean-tabs': {
       // A bulk action is deliberately not a discard path. Validate every
       // exact snapshot before removing even one tab, including the case
@@ -310,7 +320,7 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
       if (!action.snapshots.length || action.snapshots.length > MAX_MANAGED_TABS) return state;
       const ids = new Set<string>();
       for (const snapshot of action.snapshots) {
-        if (ids.has(snapshot.id) || !canBulkClose(snapshot)) return state;
+        if (ids.has(snapshot.id) || state.pinnedTabIds?.includes(snapshot.id) || !canBulkClose(snapshot)) return state;
         ids.add(snapshot.id);
         const current = state.documents.find(document => document.id === snapshot.id);
         if (!current || !canBulkClose(current) ||
@@ -329,7 +339,7 @@ function reduceEditorState(state: EditorState, action: EditorAction): EditorStat
     }
     case 'close': {
       const current = state.documents.find((document) => document.id === action.id);
-      if (!current || !isUnchangedSnapshot(current, action.snapshot)) return state;
+      if (!current || state.pinnedTabIds?.includes(action.id) || !isUnchangedSnapshot(current, action.snapshot)) return state;
       // A changed saved snapshot is treated as a new edit, not an authorized discard.
       if (isDirty(current) !== isDirty(action.snapshot)) return state;
       const remaining = state.documents.filter((document) => document.id !== action.id);
