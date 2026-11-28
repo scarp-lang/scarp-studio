@@ -1981,6 +1981,30 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+.quick-open-controls input {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font: inherit;
+}
+.quick-open-controls input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.quick-open-controls input[aria-invalid="true"] {
+  border-color: currentColor;
+}
+.quick-open-location-error {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--text);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
 .quick-open-match {
   background: transparent;
   color: inherit;
