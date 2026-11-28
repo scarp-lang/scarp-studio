@@ -159,6 +159,38 @@ function unavailable(name: string, state: InspectionState, origin: InspectionOri
     lexicalLines: null, lexicalTokens: null });
 }
 
+export type InspectionSnapshot =
+  | { readonly kind: 'available'; readonly content: string; readonly bytes: number; readonly origin: 'open-buffer' | 'disk'; readonly dirtyTab: boolean }
+  | { readonly kind: 'unavailable'; readonly state: 'read-failed' | 'byte-limit' | 'ambiguous-buffer'; readonly origin: InspectionOrigin; readonly dirtyTab: boolean }
+  | { readonly kind: 'stopped' };
+
+/** Shared bounded reader for reviewed listing operations. The caller retains
+ * the exact planned source identity and must guard the active generation.
+ */
+export async function readInspectionSnapshot(source:ProjectSearchSource,documents:readonly StudioDocument[],
+  mode:InspectionMode,remainingBytes:number,read:(path:string,maxBytes:number)=>Promise<string>,
+  stopped:()=>boolean):Promise<InspectionSnapshot>{
+  if(stopped())return {kind:'stopped'};
+  const matching=documents.filter(document=>document.path!==null&&sameFilePath(document.path,source.path));
+  const dirtyTab=matching.some(isDirty);
+  if(mode==='working'&&matching.length>1)return {kind:'unavailable',state:'ambiguous-buffer',origin:'none',dirtyTab};
+  const open=mode==='working'?matching[0]:undefined;
+  const origin=open?'open-buffer':'disk';
+  const budget=Math.min(MAX_PROJECT_SEARCH_READ_BYTES,remainingBytes);
+  if(!Number.isSafeInteger(budget)||budget<=0)return {kind:'unavailable',state:'byte-limit',origin:'none',dirtyTab};
+  try{
+    const content=open?open.content:await read(source.path,budget);
+    if(stopped())return {kind:'stopped'};
+    if(typeof content!=='string')throw Error('Invalid source text');
+    assertWellFormedUtf16(content,'Inspected source');
+    const bytes=content.length<=budget?utf8ByteLength(content):budget+1;
+    if(bytes>budget)return {kind:'unavailable',state:'byte-limit',origin,dirtyTab};
+    return {kind:'available',content,bytes,origin,dirtyTab};
+  }catch{
+    return stopped()?{kind:'stopped'}:{kind:'unavailable',state:'read-failed',origin,dirtyTab};
+  }
+}
+
 /** Keep only bounded lexical evidence and display metadata; never retain a
  * source snapshot, native path, document id, cleanup edit or raw read error.
  * Each file is read once, then inspected locally without further native IO.
@@ -176,36 +208,13 @@ export async function executeProjectInspection(
     if (stopped()) break;
     control.onProgress?.({ observed: files.length, total: plan.selected });
     if (stopped()) break;
-    const matching = documents.filter(document => document.path !== null && sameFilePath(document.path, source.path));
-    const dirtyTab = matching.some(isDirty);
-    if (plan.settings.mode === 'working' && matching.length > 1) {
-      files.push(unavailable(source.name, 'ambiguous-buffer', 'none', dirtyTab));
-      continue;
+    const snapshot=await readInspectionSnapshot(source,documents,plan.settings.mode,MAX_PROJECT_SEARCH_TOTAL_BYTES-bytes,read,stopped);
+    if(snapshot.kind==='stopped')break;
+    if(snapshot.kind==='unavailable'){
+      files.push(unavailable(source.name,snapshot.state,snapshot.origin,snapshot.dirtyTab));continue;
     }
-    const open = plan.settings.mode === 'working' ? matching[0] : undefined;
-    const origin: InspectionOrigin = open ? 'open-buffer' : 'disk';
-    const budget = Math.min(MAX_PROJECT_SEARCH_READ_BYTES, MAX_PROJECT_SEARCH_TOTAL_BYTES - bytes);
-    if (budget <= 0) {
-      files.push(unavailable(source.name, 'byte-limit', 'none', dirtyTab));
-      continue;
-    }
-    let content: string;
-    try {
-      content = open ? open.content : await read(source.path, budget);
-      if (stopped()) break;
-      if (typeof content !== 'string') throw Error('Invalid source text');
-      assertWellFormedUtf16(content, 'Inspected source');
-    } catch {
-      if (stopped()) break;
-      files.push(unavailable(source.name, 'read-failed', origin, dirtyTab));
-      continue;
-    }
-    const size = content.length <= budget ? utf8ByteLength(content) : budget + 1;
-    if (size > budget) {
-      files.push(unavailable(source.name, 'byte-limit', origin, dirtyTab));
-      continue;
-    }
-    bytes += size;
+    const {content,origin,dirtyTab,bytes:size}=snapshot;
+    bytes+=size;
     const lex = scanScarpSource(content);
     const lexicalComplete = lex.complete && !lex.issues.some(issue =>
       issue.kind === 'unterminated-string' || issue.kind === 'invalid-control');
