@@ -3,6 +3,8 @@ import { ProjectSearchComparisonPanel } from './components/ProjectSearchComparis
 import { ProjectSearchLedgerPanel } from './components/ProjectSearchLedgerPanel';
 import { ProjectSearchPresetsPanel } from './components/ProjectSearchPresetsPanel';
 import { ProjectMatchExplorer } from './components/ProjectMatchExplorer';
+import { ProjectSearchSweepPanel } from './components/ProjectSearchSweepPanel';
+import { confirmSearchSweep, executeSearchSweep, type SearchSweepPlan, type SweepControl, type SweepExecution } from './model/projectSearchSweep';
 import { DEFAULT_PROJECT_SEARCH_SCOPE, buildProjectScopeInventory, planScopedProjectSearch, summarizeScopedSearch, type ProjectSearchScope, type ScopedSearchSummary } from './model/projectSearchScope';
 import { CommandLibrarySettings } from './components/CommandLibrarySettings';
 import { COMMAND_GROUPS,EMPTY_COMMAND_LIBRARY,commandGroup,collectionLabel,isCommandCollection,isLibraryCommand,searchCommandCollection,recordCommandSelection,togglePinnedCommand,movePinnedCommand,confirmLibraryClear,type CommandCollection,type LibraryClearReview } from './model/commandPaletteLibrary';
@@ -2611,6 +2613,41 @@ export default function App() {
     setProjectReplacementUndo(null);setError(null);setNotice('Undid workspace replacements in memory.');
   }
 
+  async function runProjectSearchSweep(plan: SearchSweepPlan, control: SweepControl): Promise<SweepExecution> {
+    const selection = selectedFolderRef.current;
+    if (!isTauri() || !selection || recoveryOperationsBlocked() || compilerBusy || compilerSelecting || compilerScanning) {
+      setError('Finish active native operations and choose a project before running a sweep.');
+      return {kind:'invalidated'};
+    }
+    const settings = { query: searchQuery, options: {caseSensitive:searchCaseSensitive, wholeWord:searchWholeWord}, scope:projectSearchScope };
+    const confirmed = confirmSearchSweep(plan, selection.files, settings);
+    if (!confirmed.ok) {
+      setError(confirmed.error);
+      return {kind:'invalidated'};
+    }
+    const snapshot = liveEditor.current;
+    const ticket = ++projectSearchEpoch.current;
+    const current = () => control.isCurrent() && ticket === projectSearchEpoch.current &&
+      selection === selectedFolderRef.current && snapshot.sessionRevision === liveEditor.current.sessionRevision;
+    filePickerInProgress.current = true;
+    setBusy(true);
+    setProjectSearchResult(null);
+    setError(null);
+    setNotice('Running reviewed project search sweep.');
+    try {
+      const result = await executeSearchSweep(confirmed.value, snapshot.documents,
+        (path,maxBytes) => readScarpSource(path,maxBytes), {...control,isCurrent:current});
+      if (result.kind === 'report' && current()) {
+        setNotice('Search sweep '+result.report.status+'; '+result.report.batches.length+
+          ' completed batch observation(s). No files changed.');
+      }
+      return current() ? result : {kind:'invalidated'};
+    } finally {
+      filePickerInProgress.current = false;
+      setBusy(false);
+    }
+  }
+
   async function searchSelectedProject(): Promise<void> {
     const selection = selectedFolderRef.current;
     if (!isTauri() || !selection) {
@@ -3646,6 +3683,11 @@ export default function App() {
                   setSearchWholeWord(settings.options.wholeWord);setProjectSearchScope(settings.scope);
                   setError(null);return true;
                 }}/>}
+              {folderPath&&<ProjectSearchSweepPanel key={'search-sweep:'+folderPath}
+                listed={selectedFolderRef.current?.files??[]}
+                settings={{query:searchQuery,options:{caseSensitive:searchCaseSensitive,wholeWord:searchWholeWord},scope:projectSearchScope}}
+                busy={busy||compilerBusy||compilerSelecting||compilerScanning} available={isTauri()}
+                onRun={runProjectSearchSweep}/>}
               <div className="open-file-search-toolbar" aria-label="Literal replacement in open files">
                 <label htmlFor="open-file-replacement">Replace with</label>
                 <input id="open-file-replacement" type="text" maxLength={256}

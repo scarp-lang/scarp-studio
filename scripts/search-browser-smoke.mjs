@@ -7,6 +7,7 @@ import { scopeScenarios } from './search-browser-scope.mjs';
 import { observationScenarios, ledgerScenarios } from './search-browser-observations.mjs';
 import { presetScenarios } from './search-browser-presets.mjs';
 import { matchScenarios } from './search-browser-matches.mjs';
+import { sweepScenarios } from './search-browser-sweep.mjs';
 
 const dist = resolve(dirname(fileURLToPath(import.meta.url)), '../dist-search-smoke');
 const server = await serveBuild(dist);
@@ -30,6 +31,7 @@ try {
   await ledgerScenarios(d, step);
   await presetScenarios(d, step);
   await matchScenarios(d, step);
+  await sweepScenarios(d, step);
   assert.deepEqual(browser.cdp.errors, [], 'Unexpected browser runtime exceptions');
   console.log('Completed ' + passed + ' independent search browser scenarios.');
 } finally {
