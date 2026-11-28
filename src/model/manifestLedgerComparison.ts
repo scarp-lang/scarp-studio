@@ -1,5 +1,7 @@
 import {
   summarizeManifestLedger,
+  isKnownManifestLedger,
+  descendsFromManifestLedger,
   type ManifestLedger,
   type ManifestLedgerReceipt,
   type ManifestLedgerRow,
@@ -51,6 +53,7 @@ const fail = (error: string): Result<never> => ({ ok: false, error });
 /** A baseline is the actual immutable in-session ledger, not an imported
  * report, a timestamp, or an authorization to open its private paths. */
 export function captureLedgerComparisonBaseline(ledger: ManifestLedger): Result<ManifestLedger> {
+  if (!isKnownManifestLedger(ledger)) return fail('The ledger is not an active session revision.');
   if (!ledger.receipts.length) return fail('Record at least one batch before capturing a comparison baseline.');
   return { ok: true, value: ledger };
 }
@@ -70,6 +73,7 @@ export function compareLedgerObservations(baseline: ManifestLedger, current: Man
   if (baseline.plan !== current.plan) return fail('The ledger membership session was replaced. Capture a new baseline.');
   if (!baseline.receipts.length) return fail('The baseline has no recorded batches.');
   if (current.nextSequence < baseline.nextSequence) return fail('The current ledger predates this baseline.');
+  if (!descendsFromManifestLedger(current, baseline)) return fail('The current ledger does not descend from this baseline.');
   const beforeReceipts = receiptMap(baseline);
   const afterReceipts = receiptMap(current);
   for (const receipt of baseline.receipts) {

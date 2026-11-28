@@ -32,6 +32,28 @@ export interface ManifestLedger{
   readonly receipts:readonly ManifestLedgerReceipt[];
   readonly nextSequence:number;
 }
+// Track actual immutable revision identity, not just receipt sequence numbers.
+// Nodes retain only ancestry metadata; no old source rows or paths are kept alive.
+interface LedgerRevision {
+  readonly depth:number;
+  readonly parent:LedgerRevision|null;
+}
+const revisions=new WeakMap<ManifestLedger,LedgerRevision>();
+
+export function isKnownManifestLedger(ledger:ManifestLedger):boolean {
+  return revisions.has(ledger);
+}
+
+/** Includes the same revision. Rejects copies, unrelated sessions and
+ * forks, even when their latest receipt numbers and batch labels match. */
+export function descendsFromManifestLedger(current:ManifestLedger,baseline:ManifestLedger):boolean {
+  const ancestor=revisions.get(baseline);
+  let revision=revisions.get(current);
+  if(!ancestor||!revision||revision.depth<ancestor.depth)return false;
+  while(revision&&revision.depth>ancestor.depth)revision=revision.parent??undefined;
+  return revision===ancestor;
+}
+
 type Result<T>={readonly ok:true;readonly value:T}|{readonly ok:false;readonly error:string};
 const fail=(error:string):Result<never>=>({ok:false,error});
 const cmp=(a:string,b:string)=>a<b?-1:a>b?1:0;
@@ -84,7 +106,9 @@ export function confirmManifestLedger(plan:ManifestLedgerPlan,listed:readonly Pr
   return sameManifestLedgerPlan(plan,next.value)?next:fail('Ledger scope or listing membership changed. Review a new ledger.');
 }
 export function startManifestLedger(plan:ManifestLedgerPlan):ManifestLedger{
-  return Object.freeze({plan,receipts:Object.freeze([]),nextSequence:1});
+  const ledger:ManifestLedger=Object.freeze({plan,receipts:Object.freeze([]),nextSequence:1});
+  revisions.set(ledger,{depth:0,parent:null});
+  return ledger;
 }
 export function prepareLedgerBatch(ledger:ManifestLedger,index:number,listed:readonly ProjectSearchSource[],
   scope:ProjectSearchScope,mode:InspectionMode,listingLimited:boolean):Result<ProjectInspectionPlan>{
@@ -102,6 +126,9 @@ export function prepareLedgerBatch(ledger:ManifestLedger,index:number,listed:rea
  * not the other windows. Reports never receive the private source paths.
  */
 export function recordManifestLedgerBatch(ledger:ManifestLedger,report:ProjectSourceManifest,replace:boolean):Result<ManifestLedger>{
+  const parent=revisions.get(ledger);
+  if(!parent)return fail('The ledger is not an active session revision.');
+  if(!Number.isSafeInteger(ledger.nextSequence+1))return fail('Ledger receipt sequence exhausted. Start a new ledger.');
   const index=report.settings.scope.batch;
   if(!Number.isSafeInteger(index)||index===undefined||index<1||index>ledger.plan.batches.length)
     return fail('Result is not a numbered ledger batch.');
@@ -121,10 +148,12 @@ export function recordManifestLedgerBatch(ledger:ManifestLedger,report:ProjectSo
   const receipt:ManifestLedgerReceipt=Object.freeze({
     batch:index,sequence:ledger.nextSequence,status:report.status,files:baseline.value.files,bytes,
   });
-  return {ok:true,value:Object.freeze({plan:ledger.plan,
+  const next:ManifestLedger=Object.freeze({plan:ledger.plan,
     receipts:Object.freeze([...ledger.receipts.filter(item=>item.batch!==index),receipt].sort((a,b)=>a.batch-b.batch)),
     nextSequence:ledger.nextSequence+1,
-  })};
+  });
+  revisions.set(next,{depth:parent.depth+1,parent});
+  return {ok:true,value:next};
 }
 export interface ManifestLedgerRow{
   readonly label:string;

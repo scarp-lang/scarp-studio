@@ -1,3 +1,4 @@
+import { ManifestLedgerEvidencePanel } from './ManifestLedgerEvidencePanel';
 import { useMemo, useState } from 'react';
 import type { ManifestLedger, ManifestLedgerRow } from '../model/manifestBatchLedger';
 import {
@@ -117,6 +118,7 @@ export function ManifestLedgerComparisonPanel({ ledger, baseline, busy, onCaptur
             <dt>{LEDGER_COMPARISON_LABELS[state]}</dt><dd>{comparison.value.counts[state]}</dd>
           </div>)}
         </dl>
+        <ManifestLedgerEvidencePanel comparison={comparison.value}/>
         <label>Filter comparison labels<input aria-label="Ledger comparison label filter" type="search"
           maxLength={120} value={filter.query} onChange={event => patchFilter({ query: event.target.value })}/></label>
         <label>Comparison evidence<select aria-label="Ledger comparison state" value={filter.state} onChange={event => {
