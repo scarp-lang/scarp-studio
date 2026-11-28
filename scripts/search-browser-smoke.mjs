@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {transactionScenarios} from './search-browser-transactions.mjs';
 import {listedSymbolScenarios} from './search-browser-listed-symbols.mjs';
 import {listedReferenceScenarios} from './search-browser-listed-references.mjs';
 import {analysisOpenScenarios} from './search-browser-analysis-open.mjs';
@@ -42,6 +43,7 @@ try {
   await listedSymbolScenarios(d,step);
   await listedReferenceScenarios(d,step);
   await analysisOpenScenarios(d,step);
+  await transactionScenarios(d,step);
   assert.deepEqual(browser.cdp.errors, [], 'Unexpected browser runtime exceptions');
   console.log('Completed ' + passed + ' independent search browser scenarios.');
 } finally {
