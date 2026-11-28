@@ -24,6 +24,20 @@ import {
   createFixture, listedSources, editBuffer, recoverFile, addListedFile,
   removeDenseFile, createFixtureReader, addFixtureTask, QUERY, type FixtureWorkspace,
 } from './fixture';
+import { ListedSymbolPanel } from '../../src/components/ListedSymbolPanel';
+import { ListedCodeReferencesPanel } from '../../src/components/ListedCodeReferencesPanel';
+import { executeListedSymbolIndex, resolveListedSymbolPath, recheckListedSymbolSite,
+  type ListedSymbolExecution, type ListedSymbolReport, type ListedSymbolSite } from '../../src/model/listedSymbolIndex';
+import { confirmListedReferences, executeListedReferences, resolveListedReferencePath, recheckListedReference,
+  type ListedReferenceExecution, type ListedReferencePlan, type ListedReferenceQuery,
+  type ListedReferenceReport, type ListedReferenceSite } from '../../src/model/listedCodeReferences';
+import { confirmAnalysisOpen, readAnalysisOpenSources, analysisOpenSatisfied,
+  type AnalysisOpenPlan, type AnalysisOpenControl, type AnalysisOpenOutcome,
+  type AnalysisSourceCandidate } from '../../src/model/analysisSourceOpen';
+import { editorReducer, type EditorState } from '../../src/model/editorState';
+import { isDirty, type StudioDocument } from '../../src/model/documents';
+import { createLexicalFixture, changeLexicalInterface, shiftLexicalLocation,
+  failLexicalLeaf, removeLexicalEntry } from './fixture';
 import './fixture.css';
 
 interface CompletedSearch {
@@ -52,10 +66,18 @@ function Workbench() {
   const [navigation, setNavigation] = useState('');
   const [paused, setPaused] = useState(false);
   const [session, setSession] = useState(0);
+  const [lexicalActiveId, setLexicalActiveId] = useState<string | null>(null);
   const generation = useRef(0);
   const releaseRead = useRef<(() => void) | null>(null);
   const listed = useMemo(() => listedSources(workspace), [workspace]);
   const inventory = useMemo(() => buildProjectScopeInventory(listed), [listed]);
+
+  const editor: EditorState = {
+    documents: [...workspace.documents],
+    activeId: lexicalActiveId ?? workspace.documents[0]?.id ?? null,
+    nextUntitled: 1,
+    sessionRevision: generation.current,
+  };
 
   function retire() {
     generation.current++;
@@ -84,6 +106,18 @@ function Workbench() {
   function reset() {
     retire();
     setWorkspace(createFixture());
+    setLexicalActiveId(null);
+    setSettings(initialSettings());
+    setSearches(0);
+    setReadPaths([]);
+    setPaused(false);
+    setSession(value => value + 1);
+  }
+
+  function switchLexical() {
+    retire();
+    setWorkspace(createLexicalFixture());
+    setLexicalActiveId(null);
     setSettings(initialSettings());
     setSearches(0);
     setReadPaths([]);
@@ -166,7 +200,7 @@ function Workbench() {
   /** Use the same synthetic read adapter and generation checks for all
    * reviewed analyses. A reset or workspace mutation retires in-flight work.
    */
-  async function reviewedAnalysis<T extends InspectionExecution | VerificationExecution>(
+  async function reviewedAnalysis<T extends InspectionExecution | VerificationExecution | ListedSymbolExecution | ListedReferenceExecution>(
     control: InspectionControl,
     execute: (read: ReturnType<typeof createFixtureReader>['read'], current: () => boolean) => Promise<T>,
   ): Promise<T | {kind:'invalidated'}> {
@@ -209,6 +243,85 @@ function Workbench() {
       executeProjectVerification(checked.value, workspace.documents, read, {...control,isCurrent}));
   }
 
+  async function runSymbols(plan: ProjectInspectionPlan, config: InspectionSettings,
+    control: InspectionControl, captureInterfaces: boolean): Promise<ListedSymbolExecution> {
+    const checked = confirmProjectInspection(plan, listed, config);
+    if (!checked.ok) return {kind:'invalidated'};
+    return reviewedAnalysis(control, (read, isCurrent) =>
+      executeListedSymbolIndex(checked.value, workspace.documents, read,
+        {...control,isCurrent},captureInterfaces));
+  }
+
+  async function runReferences(plan: ListedReferencePlan, config: InspectionSettings,
+    query: ListedReferenceQuery, control: InspectionControl): Promise<ListedReferenceExecution> {
+    const checked = confirmListedReferences(plan, listed, config, query);
+    if (!checked.ok) return {kind:'invalidated'};
+    return reviewedAnalysis(control, (read, isCurrent) =>
+      executeListedReferences(checked.value, workspace.documents, read, {...control,isCurrent}));
+  }
+
+  // Native navigation is intentionally not mocked as a successful OS open.
+  // The fixture rechecks a current snapshot and records the resulting coordinates.
+  function documentForPath(path: string | null): StudioDocument | null {
+    if (!path) return null;
+    const open = workspace.documents.find(document => document.path === path);
+    if (open) return open;
+    const file = workspace.files.find(candidate => candidate.path === path);
+    if (!file || workspace.unavailable.includes(file.name)) return null;
+    return {id:'fixture-recheck:'+file.name,name:file.name,path,
+      content:file.content,savedContent:file.content,revision:0};
+  }
+
+  function navigateSymbol(report: ListedSymbolReport, site: ListedSymbolSite) {
+    const path = resolveListedSymbolPath(report,site,listed);
+    const document = documentForPath(path);
+    const target = document && path ? recheckListedSymbolSite(site,document,path) : null;
+    setNavigation(target ? JSON.stringify({name:site.source,line:target.line,
+      column:target.column,kind:'symbol'}) : '');
+  }
+
+  function navigateReference(report: ListedReferenceReport, hit: ListedReferenceSite) {
+    const path = resolveListedReferencePath(report,hit,listed);
+    const document = documentForPath(path);
+    const target = document && path ? recheckListedReference(hit,document,path) : null;
+    setNavigation(target ? JSON.stringify({name:hit.source,line:target.line,
+      column:target.column,kind:'reference'}) : '');
+  }
+
+  async function openAnalysisSources(plan: AnalysisOpenPlan,
+    candidates: readonly AnalysisSourceCandidate[], control: AnalysisOpenControl): Promise<AnalysisOpenOutcome> {
+    if (busy) return {ok:false,error:'Fixture is busy.'};
+    const checked = confirmAnalysisOpen(plan,candidates,listed,editor);
+    if (!checked.ok) return checked;
+    retire();
+    const id = ++generation.current;
+    setBusy(true);
+    let blocked = paused;
+    const reader = createFixtureReader(workspace, async () => {
+      if (!blocked) return;
+      blocked = false;
+      await new Promise<void>(resolve => { releaseRead.current = resolve; });
+      releaseRead.current = null;
+    });
+    const current = () => generation.current === id && control.isCurrent();
+    try {
+      const result = await readAnalysisOpenSources(checked.value,reader.read,{...control,isCurrent:current});
+      if (!current()) return {ok:false,error:'Source listing or editor changed. No files opened.'};
+      setReadPaths(previous=>[...previous,...reader.paths()]);
+      if (result.kind !== 'prepared') return {ok:false,error:result.kind==='failed'?result.error:
+        'Reviewed source open cancelled or invalidated. No files opened.'};
+      const next = editorReducer(editor,{type:'restore-workspace-tabs',files:result.value.files,
+        activePath:result.value.activePath});
+      if (!analysisOpenSatisfied(checked.value,next))
+        return {ok:false,error:'Editor rejected the reviewed source set.'};
+      setWorkspace({...workspace,documents:next.documents});
+      setLexicalActiveId(next.activeId);
+      return {ok:true,opened:checked.value.newCount,reused:checked.value.existingCount};
+    } finally {
+      if(generation.current===id)setBusy(false);
+    }
+  }
+
   function openInspection(report: ProjectInspectionReport, label: string) {
     const resolved = resolveInspectionSource(report, label, listed);
     setNavigation(resolved ? JSON.stringify({name:label,source:'inspection'}) : '');
@@ -232,6 +345,11 @@ function Workbench() {
     <p>Test-only workspace. All reads are synthetic; no native navigation occurs.</p>
     <section aria-label="Fixture controls">
       <button onClick={reset}>Reset fixture</button>
+      <button onClick={switchLexical}>Use lexical fixture</button>
+      <button onClick={()=>mutate(changeLexicalInterface)}>Change lexical function interface</button>
+      <button onClick={()=>mutate(shiftLexicalLocation)}>Shift lexical source location</button>
+      <button onClick={()=>mutate(failLexicalLeaf)}>Fail lexical leaf read</button>
+      <button onClick={()=>mutate(removeLexicalEntry)}>Remove lexical entry</button>
       <button onClick={() => mutate(editBuffer)}>Edit fixture buffer</button>
       <button onClick={() => mutate(addFixtureTask)}>Add fixture task</button>
       <button onClick={() => mutate(recoverFile)}>Recover fixture read</button>
@@ -248,6 +366,12 @@ function Workbench() {
       </dl>
       <output data-testid="read-paths">{JSON.stringify(readPaths)}</output>
       <output data-testid="navigation">{navigation}</output>
+      <output data-testid="lexical-open-tabs">{JSON.stringify(editor.documents.map(document=>({
+        name:document.path ? listed.find(source=>source.path===document.path)?.name??document.name : document.name,
+        dirty:isDirty(document),
+      })))}</output>
+      <output data-testid="lexical-active-tab">{listed.find(source=>source.path===
+        editor.documents.find(document=>document.id===editor.activeId)?.path)?.name??''}</output>
     </section>
     <section aria-label="Fixture search settings">
       <label>Query<input aria-label="Fixture query" value={settings.query} disabled={busy}
@@ -281,6 +405,12 @@ function Workbench() {
       <ProjectInspectionPanel listed={listed} listingLimited={false} available busy={busy}
         onRun={runInspection} onOpen={openInspection}/>
       <ProjectVerificationPanel listed={listed} listingLimited={false} available busy={busy} onRun={runVerification}/>
+      <ListedSymbolPanel listed={listed} listingLimited={false} available busy={busy}
+        onRun={runSymbols} onNavigate={navigateSymbol}
+        sourceOpen={{editor,listed,onOpen:openAnalysisSources}}/>
+      <ListedCodeReferencesPanel listed={listed} listingLimited={false} available busy={busy}
+        cursorIdentifier={()=>'helper'} onRun={runReferences} onNavigate={navigateReference}
+        sourceOpen={{editor,listed,onOpen:openAnalysisSources}}/>
       {completed && <section key={completed.id} aria-label="Fixture completed search">
         <output data-testid="completed-id">{completed.id}</output>
         <ProjectSearchCoverage summary={completed.summary}/>
