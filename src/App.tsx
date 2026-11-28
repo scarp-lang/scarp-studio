@@ -102,6 +102,8 @@ import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { ProjectInspectionPanel } from './components/ProjectInspectionPanel';
+import { ProjectVerificationPanel } from './components/ProjectVerificationPanel';
+import { confirmProjectVerification, executeProjectVerification, type ProjectVerificationPlan, type VerificationRule, type VerificationControl, type VerificationExecution } from './model/projectVerification';
 import { confirmProjectInspection, executeProjectInspection, resolveInspectionSource, type InspectionSettings, type ProjectInspectionPlan, type ProjectInspectionReport, type InspectionControl, type InspectionExecution } from './model/projectInspection';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
 import { StudioSettingsPanel } from './components/StudioSettingsPanel';
@@ -1684,6 +1686,29 @@ export default function App() {
     try{
       const result=await executeProjectInspection(checked.value,start.documents,readScarpSource,{...control,isCurrent:current});
       if(result.kind==='report'&&current())setNotice('Listed source inspection '+result.report.status+'. No files changed.');
+      return current()?result:{kind:'invalidated'};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  async function runProjectVerification(plan:ProjectVerificationPlan,settings:InspectionSettings,
+    rules:readonly VerificationRule[],control:VerificationControl):Promise<VerificationExecution>{
+    const selection=selectedFolderRef.current;
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return {kind:'invalidated'};
+    const checked=confirmProjectVerification(plan,selection.files,{
+      ...settings,listingLimited:folderListingLimited||unavailableProjectFolders.length>0,
+    },rules);
+    if(!checked.ok){setError(checked.error);return {kind:'invalidated'};}
+    const start=liveEditor.current;
+    const epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&start.sessionRevision===liveEditor.current.sessionRevision;
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const result=await executeProjectVerification(checked.value,start.documents,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
+      if(result.kind==='report'&&current())setNotice('Literal project verification '+result.report.status+'. No files changed.');
       return current()?result:{kind:'invalidated'};
     }finally{filePickerInProgress.current=false;setBusy(false);}
   }
@@ -3588,6 +3613,12 @@ export default function App() {
             listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
             available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
             onRun={runListedInspection} onOpen={openInspectedSource}/>
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="project-verification">
+          <ProjectVerificationPanel key={'project-verification:'+folderPath} listed={folderEntries}
+            listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
+            available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            onRun={runProjectVerification}/>
           </ExplorerToolSlot>
           </ExplorerToolDirectory>
         </aside>
