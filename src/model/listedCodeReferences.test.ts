@@ -6,7 +6,7 @@ import {prepareListedReferences,confirmListedReferences,validateListedReferenceQ
   executeListedReferences,filterListedReferences,groupReferenceSpellings,pageListedReferences,
   resolveListedReferencePath,recheckListedReference,listedReferenceReportText,DEFAULT_REFERENCE_FILTER,
   MAX_LISTED_REFERENCE_HITS,MAX_LISTED_REFERENCES_PER_FILE,LISTED_REFERENCE_PAGE,
-  type ListedReferenceQuery,type ListedReferenceReport} from './listedCodeReferences';
+  type ListedReferenceQuery} from './listedCodeReferences';
 
 const settings:InspectionSettings={scope:DEFAULT_PROJECT_SEARCH_SCOPE,mode:'working',listingLimited:false};
 const query:ListedReferenceQuery={identifier:'target',caseSensitive:true};
