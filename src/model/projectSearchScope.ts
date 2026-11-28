@@ -1,15 +1,21 @@
 import { isScarpPath, sameFilePath } from './documents';
 import { MAX_DISPLAYED_SCARP_FILES, safeRelativeScarpDirectory, safeRelativeScarpSourceName } from './folderListing';
-import { MAX_PROJECT_SEARCH_FILES, PROJECT_SEARCH_FILE_STATES, type ProjectSearchFileEvidence, type ProjectSearchFileState, type ProjectSearchSource, type ProjectSearchResult } from './projectSearch';
+import { MAX_PROJECT_SEARCH_FILES, MAX_PROJECT_SEARCH_READ_BYTES, MAX_PROJECT_SEARCH_TOTAL_BYTES, PROJECT_SEARCH_FILE_STATES, type ProjectSearchFileEvidence, type ProjectSearchFileState, type ProjectSearchSource, type ProjectSearchResult } from './projectSearch';
 import { assertWellFormedUtf16 } from './utf8Text';
 
 export const MAX_SCOPE_NAME_QUERY=120;
 export const MAX_SCOPE_REPORT_UNITS=24*1024;
 export const MAX_SCOPE_PREVIEW_FILES=200;
+// A batch can fit even when every selected source reaches its per-file byte limit.
+// Match/candidate limits and read failures can still leave a batch incomplete.
+export const PROJECT_SEARCH_BATCH_SIZE=Math.min(MAX_PROJECT_SEARCH_FILES,
+  Math.floor(MAX_PROJECT_SEARCH_TOTAL_BYTES/MAX_PROJECT_SEARCH_READ_BYTES));
 export interface ProjectSearchScope {
   readonly directory:string;
   readonly descendants:boolean;
   readonly filename:string;
+  /** Undefined preserves the conventional bounded search; otherwise a 1-based batch. */
+  readonly batch?:number;
 }
 export const DEFAULT_PROJECT_SEARCH_SCOPE:ProjectSearchScope=Object.freeze({directory:'',descendants:true,filename:''});
 export interface ProjectScopeDirectory{
@@ -25,7 +31,16 @@ export interface ProjectScopeInventory{
   readonly uninspected:number;
   readonly listed:number;
 }
+export interface ProjectSearchBatch {
+  readonly index:number;
+  readonly total:number;
+  readonly candidates:number;
+  readonly deferred:number;
+  readonly first:number;
+  readonly last:number;
+}
 export interface ScopedProjectSearchPlan{
+  readonly batch?:ProjectSearchBatch;
   readonly scope:ProjectSearchScope;
   readonly sources:readonly ProjectSearchSource[];
   readonly listed:number;
@@ -90,19 +105,35 @@ export function planScopedProjectSearch(inventory:ProjectScopeInventory,scope:Pr
     return fail('Choose a directory from the current Explorer listing.');
   if(!validFilenameQuery(scope.filename))return fail('Enter a filename substring of at most 120 characters, without path separators or controls.');
   const query=scope.filename.toLowerCase();
-  const sources=inventory.sources.filter(source=>isWithin(source.name,scope.directory,scope.descendants)&&
+  const candidates=inventory.sources.filter(source=>isWithin(source.name,scope.directory,scope.descendants)&&
     basename(source.name).toLowerCase().includes(query));
+  let sources=candidates;
+  let batch:ProjectSearchBatch|undefined;
+  if(scope.batch!==undefined){
+    const total=Math.ceil(candidates.length/PROJECT_SEARCH_BATCH_SIZE);
+    if(!Number.isSafeInteger(scope.batch)||scope.batch<1||scope.batch>total)
+      return fail('Choose an available search batch from the current scope.');
+    // Exact relative names are unique in the inventory. Use code-unit order,
+    // not locale-dependent collation or dirty-buffer priority, for membership.
+    const ordered=[...candidates].sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
+    const start=(scope.batch-1)*PROJECT_SEARCH_BATCH_SIZE;
+    sources=ordered.slice(start,start+PROJECT_SEARCH_BATCH_SIZE);
+    batch=Object.freeze({index:scope.batch,total,candidates:candidates.length,
+      deferred:candidates.length-sources.length,first:start+1,last:start+sources.length});
+  }
   return {ok:true,value:Object.freeze({
     scope:Object.freeze({...scope}),sources:Object.freeze(sources),listed:inventory.listed,
-    eligible:inventory.sources.length,excluded:inventory.sources.length-sources.length,
+    eligible:inventory.sources.length,excluded:inventory.sources.length-candidates.length,
+    ...(batch?{batch}:{}),
     invalid:inventory.invalid,ambiguous:inventory.ambiguous,uninspected:inventory.uninspected,
   })};
 }
 export function sameProjectScope(a:ProjectSearchScope,b:ProjectSearchScope):boolean{
-  return a.directory===b.directory&&a.descendants===b.descendants&&a.filename===b.filename;
+  return a.directory===b.directory&&a.descendants===b.descendants&&a.filename===b.filename&&a.batch===b.batch;
 }
 export function scopeLabel(scope:ProjectSearchScope):string{
-  return (scope.directory||'Workspace root')+(scope.descendants?' and descendants':' only');
+  return (scope.directory||'Workspace root')+(scope.descendants?' and descendants':' only')+
+    (scope.batch===undefined?'':' · batch '+scope.batch);
 }
 export interface ScopedSearchFileRow{
   readonly name:string;
@@ -129,6 +160,7 @@ export function searchCoverageOrigin(row:ScopedFileCoverageRow):string{
   return 'Not read';
 }
 export interface ScopedSearchSummary{
+  readonly batch?:ProjectSearchBatch;
   readonly fileCoverage?:readonly ScopedFileCoverageRow[];
   readonly scope:ProjectSearchScope;
   readonly listed:number;
@@ -186,7 +218,8 @@ export function summarizeScopedSearch(plan:ScopedProjectSearchPlan,result:Projec
   return {ok:true,value:Object.freeze({
     scope:plan.scope,listed:plan.listed,inScope:plan.sources.length,excluded:plan.excluded,
     withheld,searched:result.searchedFiles,skipped:result.skippedFiles,hits:result.hits.length,matchingFiles:rows.length,
-    incomplete:result.truncated||result.skippedFiles>0||withheld>0,
+    incomplete:result.truncated||result.skippedFiles>0||withheld>0||(plan.batch?.deferred??0)>0,
+    ...(plan.batch?{batch:plan.batch}:{}),
     rows:Object.freeze(rows.map(row=>Object.freeze(row))),
     ...(fileCoverage?{fileCoverage}:{}),
   })};
@@ -203,7 +236,14 @@ export function scopedSearchReport(summary:ScopedSearchSummary,options:ScopeRepo
     'Coverage applies only to the listed sources, not the full filesystem.',
     summary.scope.descendants?'Directory scope includes descendants.':'Directory scope excludes descendants.',
     'Listed sources: '+summary.listed,
-    'Eligible sources in scope: '+summary.inScope,
+    ...(summary.batch?[
+      'Eligible sources in scope: '+summary.batch.candidates,
+      'Selected batch: '+summary.batch.index+' / '+summary.batch.total,
+      'Batch positions: '+summary.batch.first+'–'+summary.batch.last,
+      'Sources selected in this batch: '+summary.inScope,
+      'Deferred to other batches: '+summary.batch.deferred,
+      'No combined coverage across separate searches is asserted.',
+    ]:['Eligible sources in scope: '+summary.inScope]),
     'Excluded by scope: '+summary.excluded,
     'Invalid, ambiguous or uninspected listing entries: '+summary.withheld,
     'Fully scanned sources: '+summary.searched,
