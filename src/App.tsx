@@ -80,6 +80,11 @@ import { captureSelections, selectionMatchesLive, selectionEditIsCurrent, type S
 import { LineRangeToolsPanel } from './components/LineRangeToolsPanel';
 import { IdentifierEditPanel } from './components/IdentifierEditPanel';
 import { ProjectIdentifierMigrationPanel } from './components/ProjectIdentifierMigrationPanel';
+import { ProjectWhitespacePanel } from './components/ProjectWhitespacePanel';
+import { confirmProjectWhitespace,scanProjectWhitespace,prepareWhitespaceApply,
+  type ProjectWhitespaceReview,type ProjectWhitespacePlan,type WhitespaceScanExecution,type WhitespaceApplyOutcome } from './model/projectWhitespace';
+import { createReviewedStageUndo } from './model/reviewedSourceStage';
+import type { WhitespaceOptions } from './model/sourceWhitespace';
 import { confirmProjectMigration, scanProjectMigration, prepareMigrationApply, createMigrationUndo,
   type ProjectMigrationReview,type MigrationScanExecution,type ProjectMigrationPlan,type MigrationOutcome } from './model/projectIdentifierMigration';
 import type { MigrationRule } from './model/migrationRules';
@@ -428,6 +433,7 @@ export default function App() {
   const [lineRangeUndo, setLineRangeUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [identifierUndo, setIdentifierUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [migrationUndo, setMigrationUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [whitespaceUndo, setWhitespaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [bufferTransferUndo, setBufferTransferUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [checkpointUndo, setCheckpointUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
@@ -1683,6 +1689,63 @@ export default function App() {
     const path=resolveAuditFile(audit,id,selectedFolderRef.current,selectedProjectPath);
     if(path)void openFolderFile(path);
     else setError('The audited source is no longer uniquely listed.');
+  }
+
+  async function runProjectWhitespace(review:ProjectWhitespaceReview,scope:ProjectSearchScope,
+    options:WhitespaceOptions,control:InspectionControl):Promise<WhitespaceScanExecution>{
+    const selection=selectedFolderRef.current;
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return {kind:'invalidated'};
+    const checked=confirmProjectWhitespace(review,selection.files,scope,
+      folderListingLimited||unavailableProjectFolders.length>0,options);
+    if(!checked.ok)return {kind:'failed',error:checked.error};
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&hasUnchangedEditorSession(start,liveEditor.current);
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const result=await scanProjectWhitespace(checked.value,start,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
+      return current()?result:{kind:'invalidated'};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  async function applyProjectWhitespace(plan:ProjectWhitespacePlan,control:InspectionControl):Promise<WhitespaceApplyOutcome>{
+    const selection=selectedFolderRef.current;
+    const fail=(error:string):WhitespaceApplyOutcome=>({ok:false,error});
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return fail('Finish current native operations and choose a project.');
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&hasUnchangedEditorSession(start,liveEditor.current);
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const prepared=await prepareWhitespaceApply(plan,selection.files,
+        folderListingLimited||unavailableProjectFolders.length>0,start,readScarpSource,{
+          ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+        });
+      if(prepared.kind==='failed')return fail(prepared.error);
+      if(prepared.kind!=='ready'||!current()||control.isCancelled())return fail('Whitespace operation cancelled or invalidated. Nothing changed.');
+      const predicted=editorReducer(start,prepared.value.action);
+      if(predicted===start)return fail('The editor declined the whitespace review. Nothing changed.');
+      const undo=createReviewedStageUndo(prepared.value.staged.changes,predicted);
+      if(!undo)return fail('Could not prepare reversible whitespace changes. Nothing changed.');
+      dispatch(prepared.value.action);
+      autoSaveReview.current.holdReplacements(liveEditor.current.documents,undo.changes.map(change=>change.id));
+      setWhitespaceUndo(undo);setNotice('Staged reviewed whitespace changes. Review or Undo before Save.');
+      return {ok:true,files:prepared.value.staged.changes.length,edits:prepared.value.edits,newTabs:prepared.value.staged.newTabs};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  function undoProjectWhitespace():void{
+    if(recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning||!whitespaceUndo||
+      !canUndoOpenFileReplace(whitespaceUndo,liveEditor.current)){
+      setError('Whitespace undo is stale or a native operation is active. Nothing changed.');return;
+    }
+    dispatch({type:'replace-open-files',changes:whitespaceUndo.changes,allSnapshots:whitespaceUndo.after});
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents,whitespaceUndo.changes.map(change=>change.id));
+    setWhitespaceUndo(null);setError(null);setNotice('Restored pre-cleanup contents. Newly opened tabs remain open.');
   }
 
   async function runProjectMigration(review:ProjectMigrationReview,scope:ProjectSearchScope,
@@ -3849,6 +3912,13 @@ export default function App() {
             available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
             onScan={runProjectMigration} onApply={applyProjectMigration}
             undoAvailable={!!migrationUndo&&canUndoOpenFileReplace(migrationUndo,editorState)} onUndo={undoProjectMigration}/>
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="project-whitespace">
+          <ProjectWhitespacePanel key={'project-whitespace:'+folderPath} editor={editorState} listed={folderEntries}
+            listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
+            available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            onScan={runProjectWhitespace} onApply={applyProjectWhitespace}
+            undoAvailable={!!whitespaceUndo&&canUndoOpenFileReplace(whitespaceUndo,editorState)} onUndo={undoProjectWhitespace}/>
           </ExplorerToolSlot>
           </ExplorerToolDirectory>
         </aside>
