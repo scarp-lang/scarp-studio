@@ -18,6 +18,7 @@ import { buildSnippetPaletteEntries, planSnippetInsertion, isSnippetPaletteEntry
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Editor from '@monaco-editor/react';
 import { ReferenceEditorPane } from './components/ReferenceEditorPane';
+import { SourceBreadcrumbs } from './components/SourceBreadcrumbs';
 import { DEFAULT_REFERENCE_LAYOUT, updateReferenceLayout, resolveReferenceSource,
   reconcileReferenceSelection, planReferenceSwap } from './model/referenceEditor';
 import type * as Monaco from 'monaco-editor';
@@ -4440,6 +4441,9 @@ export default function App() {
             </div>
           )}
           <div className="editor-output-region" ref={editorOutputRegion}>
+          {active && !focusMode && <SourceBreadcrumbs key={active.id} document={active}
+            line={cursor.line} column={cursor.column} busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onNavigate={jumpToSourceInsight} />}
           <div className={'editor-panes' + (referenceOpen && !focusMode ? ' split-' + referenceLayout.orientation : '')}>
           <div id="scarp-editor-panel" className="editor-panel" role="tabpanel"
             style={referenceOpen && !focusMode ? { flexBasis: (100 - referenceLayout.share) + '%' } : undefined}
