@@ -172,7 +172,9 @@ export function summarizeScopedSearch(plan:ScopedProjectSearchPlan,result:Projec
       const row=candidates[0],group=groups.get(source.name);
       if(!PROJECT_SEARCH_FILE_STATES.includes(row.state)||
         (row.origin!==null&&row.origin!=='disk'&&row.origin!=='open-buffer')||
-        (row.state==='scanned'&&row.origin===null)||
+        ((row.state==='scanned'||row.state==='content-limit')&&row.origin===null)||
+        (row.state==='read-failed'&&row.origin!=='disk')||
+        ((row.state==='file-limit'||row.state==='invalid-listing')&&row.origin!==null)||
         (group&&(row.state!=='scanned'&&row.state!=='content-limit'||
           row.origin!==(group.openBuffer?'open-buffer':'disk'))))
         return fail('Per-file coverage contains inconsistent source evidence.');
@@ -221,12 +223,19 @@ export function scopedSearchReport(summary:ScopedSearchSummary,options:ScopeRepo
   if(options.includeLabels){
     lines.push('Directory label: '+JSON.stringify(summary.scope.directory||'(root)'));
     let length=lines.join('\n').length;
-    const reportRows=summary.fileCoverage??summary.rows.map(row=>({
-      name:row.name,hits:row.hits,state:'scanned' as const,origin:row.openBuffer?'open-buffer' as const:'disk' as const,
-    }));
+    // Legacy reports contain matching rows but no per-file completion proof.
+    // A displayed hit establishes its origin, not that its source was fully scanned.
+    const reportRows=summary.fileCoverage
+      ?summary.fileCoverage.map(row=>({
+        name:row.name,hits:row.hits,coverage:SEARCH_COVERAGE_LABELS[row.state],origin:searchCoverageOrigin(row),
+      }))
+      :summary.rows.map(row=>({
+        name:row.name,hits:row.hits,coverage:'Per-file coverage unavailable',
+        origin:row.openBuffer?'Open buffer':'Disk snapshot',
+      }));
     for(const row of reportRows){
-      const line=JSON.stringify(row.name)+' — '+row.hits+' displayed match(es), '+SEARCH_COVERAGE_LABELS[row.state]+
-        ', '+searchCoverageOrigin(row);
+      const line=JSON.stringify(row.name)+' — '+row.hits+' displayed match(es), '+row.coverage+
+        ', '+row.origin;
       if(length+line.length+1>MAX_SCOPE_REPORT_UNITS-100){
         lines.push('Additional file rows omitted from report due to size limit.');break;
       }
