@@ -1,4 +1,5 @@
 import {useMemo,useRef,useState} from 'react';
+import {MigrationRecipesPanel} from './MigrationRecipesPanel';
 import {MigrationImpactPanel} from './MigrationImpactPanel';
 import {ProjectSearchScopeControls} from './ProjectSearchScopeControls';
 import {DEFAULT_PROJECT_SEARCH_SCOPE,type ProjectSearchScope} from '../model/projectSearchScope';
@@ -234,6 +235,9 @@ export function ProjectIdentifierMigrationPanel({editor,listed,listingLimited,av
         <button type="button" disabled={blocked||rules.length===1} onClick={()=>update(rules.filter((_,i)=>i!==index))}>Remove mapping {index+1}</button>
       </div>)}</div>
       <button type="button" disabled={blocked||rules.length>=MAX_MIGRATION_RULES} onClick={()=>update([...rules,blank()])}>Add identifier mapping</button>
+    </>}
+    <MigrationRecipesPanel drafts={rules} busy={blocked} visible={expanded} onApply={update}/>
+    {expanded&&<>
       <ProjectSearchScopeControls listed={listed} scope={scope} busy={blocked} onChange={next=>{setScope(next);resetReview();}}/>
       <button type="button" disabled={blocked} onClick={preview}>Review migration source scan</button>
       {review&&<MigrationReview review={review} busy={blocked} onConfirm={()=>void scan()} onCancel={()=>setReview(null)}/>}
