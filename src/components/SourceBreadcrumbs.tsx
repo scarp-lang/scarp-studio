@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import type { StudioDocument } from '../model/documents';
 import { activeSourceBreadcrumbs, buildSourceBreadcrumbIndex, currentBreadcrumbTarget,
   type SourceBreadcrumb, type BreadcrumbKind } from '../model/sourceBreadcrumbs';
@@ -19,18 +19,20 @@ export function SourceBreadcrumbs({document,line,column,busy,onNavigate}:Props) 
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState<BreadcrumbKind|'all'>('all');
   const [page,setPage]=useState(1);
-  const index=useMemo(()=>buildSourceBreadcrumbIndex(document),[document]);
-  const active=activeSourceBreadcrumbs(index,line,column);
+  const deferredDocument=useDeferredValue(document);
+  const index=useMemo(()=>buildSourceBreadcrumbIndex(deferredDocument),[deferredDocument]);
+  const current=index.documentId===document.id&&index.revision===document.revision&&index.source===document.content;
+  const active=current?activeSourceBreadcrumbs(index,line,column):[];
   const matches=useMemo(()=>{
-    if(!expanded)return [];
+    if(!expanded||!current)return [];
     const search=query.trim().toLowerCase();
     return index.ranges.filter(entry=>(filter==='all'||entry.kind===filter)&&
       (!search||entry.name.toLowerCase().includes(search)));
-  },[index,expanded,filter,query]);
+  },[index,expanded,filter,query,current]);
   const pages=Math.max(1,Math.ceil(matches.length/pageSize));
   const shownPage=Math.min(page,pages);
   function jump(entry:SourceBreadcrumb){
-    if(busy)return;
+    if(busy||!current)return;
     const target=currentBreadcrumbTarget(index,document,entry);
     if(target){onNavigate(target);setExpanded(false);}
   }
@@ -45,8 +47,8 @@ export function SourceBreadcrumbs({document,line,column,busy,onNavigate}:Props) 
         <button type="button" title={kinds[entry.kind]+' · line '+entry.line}
           disabled={busy} onClick={()=>jump(entry)}>{entry.name}</button>
       </span>)}
-      {!active.length&&<span className="source-breadcrumb-muted">File scope</span>}
-      {!index.complete&&<span className="source-breadcrumb-muted" title="Only confirmed lexical ranges are shown">Partial outline</span>}
+      {!active.length&&<span className="source-breadcrumb-muted">{current?'File scope':'Updating outline…'}</span>}
+      {current&&!index.complete&&<span className="source-breadcrumb-muted" title="Only confirmed lexical ranges are shown">Partial outline</span>}
       <button type="button" className="source-breadcrumb-toggle" aria-expanded={expanded}
         aria-controls="source-breadcrumb-outline" onClick={()=>{setExpanded(value=>!value);setPage(1);}}>
         Outline
@@ -67,7 +69,7 @@ export function SourceBreadcrumbs({document,line,column,busy,onNavigate}:Props) 
           <option value="variant">Variants</option>
         </select>
       </div>
-      <p role="status">{matches.length} matching declarations{index.complete?'':' · partial index'}</p>
+      <p role="status">{current?matches.length+' matching declarations'+(index.complete?'':' · partial index'):'Updating declarations…'}</p>
       <ul>
         {matches.slice((shownPage-1)*pageSize,shownPage*pageSize).map(entry=><li key={entry.id}>
           <button type="button" disabled={busy} onClick={()=>jump(entry)}>
