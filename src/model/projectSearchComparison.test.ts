@@ -51,7 +51,7 @@ describe('bounded explicit search observations', () => {
       content: 'private source', preview: 'private preview' };
     const flags = { ...options, arbitrary: 'private value' };
     const scope = { ...DEFAULT_PROJECT_SEARCH_SCOPE, secret: 'private value' };
-    const evidence = [row];
+    const evidence: ScopedFileCoverageRow[] = [row];
     const result = captureSearchObservation(query, flags, summary(evidence, { scope }));
     if (!result.ok) throw Error(result.error);
     row.hits = 10;
