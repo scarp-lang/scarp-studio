@@ -38,6 +38,19 @@ import { editorReducer, type EditorState } from '../../src/model/editorState';
 import { isDirty, type StudioDocument } from '../../src/model/documents';
 import { createLexicalFixture, changeLexicalInterface, shiftLexicalLocation,
   failLexicalLeaf, removeLexicalEntry } from './fixture';
+import {ProjectIdentifierMigrationPanel} from '../../src/components/ProjectIdentifierMigrationPanel';
+import {ProjectWhitespacePanel} from '../../src/components/ProjectWhitespacePanel';
+import {ProjectSourceManifestPanel} from '../../src/components/ProjectSourceManifestPanel';
+import {confirmProjectMigration,scanProjectMigration,prepareMigrationApply,createMigrationUndo,
+  type ProjectMigrationReview,type ProjectMigrationPlan,type MigrationScanExecution,type MigrationOutcome} from '../../src/model/projectIdentifierMigration';
+import type {MigrationRule} from '../../src/model/migrationRules';
+import {confirmProjectWhitespace,scanProjectWhitespace,prepareWhitespaceApply,
+  type ProjectWhitespaceReview,type ProjectWhitespacePlan,type WhitespaceScanExecution,type WhitespaceApplyOutcome} from '../../src/model/projectWhitespace';
+import type {WhitespaceOptions} from '../../src/model/sourceWhitespace';
+import {createReviewedStageUndo} from '../../src/model/reviewedSourceStage';
+import {canUndoOpenFileReplace,type OpenFileReplaceUndo} from '../../src/model/openFileReplaceUndo';
+import {executeSourceManifest,type ManifestExecution} from '../../src/model/projectSourceManifest';
+import {createTransactionFixture,changeTransactionDisk,failTransactionCopy} from './fixture';
 import './fixture.css';
 
 interface CompletedSearch {
@@ -67,6 +80,8 @@ function Workbench() {
   const [paused, setPaused] = useState(false);
   const [session, setSession] = useState(0);
   const [lexicalActiveId, setLexicalActiveId] = useState<string | null>(null);
+  const [migrationUndo,setMigrationUndo]=useState<OpenFileReplaceUndo|null>(null);
+  const [whitespaceUndo,setWhitespaceUndo]=useState<OpenFileReplaceUndo|null>(null);
   const generation = useRef(0);
   const releaseRead = useRef<(() => void) | null>(null);
   const listed = useMemo(() => listedSources(workspace), [workspace]);
@@ -106,6 +121,7 @@ function Workbench() {
   function reset() {
     retire();
     setWorkspace(createFixture());
+    setMigrationUndo(null);setWhitespaceUndo(null);
     setLexicalActiveId(null);
     setSettings(initialSettings());
     setSearches(0);
@@ -117,12 +133,112 @@ function Workbench() {
   function switchLexical() {
     retire();
     setWorkspace(createLexicalFixture());
+    setMigrationUndo(null);setWhitespaceUndo(null);
     setLexicalActiveId(null);
     setSettings(initialSettings());
     setSearches(0);
     setReadPaths([]);
     setPaused(false);
     setSession(value => value + 1);
+  }
+
+  function switchTransactions(){
+    retire();
+    setWorkspace(createTransactionFixture());
+    setLexicalActiveId(null);
+    setMigrationUndo(null);setWhitespaceUndo(null);
+    setSettings(initialSettings());
+    setSearches(0);setReadPaths([]);setPaused(false);
+    setSession(value=>value+1);
+  }
+
+  /** Unlike unrelated search runs, an edit scan must not itself change
+   * the editor generation. Only a workspace mutation or atomic commit
+   * retires its exact source snapshot. */
+  async function transactionRead<T>(control:InspectionControl,
+    execute:(read:ReturnType<typeof createFixtureReader>['read'],current:()=>boolean)=>Promise<T>,
+    invalidated:T):Promise<T>{
+    if(busy)return invalidated;
+    const id=generation.current;
+    setBusy(true);setSearches(value=>value+1);
+    let blocked=paused;
+    const reader=createFixtureReader(workspace,async()=>{
+      if(!blocked)return;
+      blocked=false;
+      await new Promise<void>(resolve=>{releaseRead.current=resolve;});
+      releaseRead.current=null;
+    });
+    const current=()=>generation.current===id&&control.isCurrent();
+    try{
+      const result=await execute(reader.read,current);
+      if(!current())return invalidated;
+      setReadPaths(previous=>[...previous,...reader.paths()]);
+      return result;
+    }finally{if(generation.current===id)setBusy(false);}
+  }
+
+  function commitFixtureEditor(next:EditorState){
+    generation.current=next.sessionRevision;
+    setWorkspace(old=>({...old,documents:next.documents}));
+    setLexicalActiveId(next.activeId);
+  }
+
+  async function scanMigration(review:ProjectMigrationReview,scope:ProjectSearchScope,
+    rules:readonly MigrationRule[],control:InspectionControl):Promise<MigrationScanExecution>{
+    const confirmed=confirmProjectMigration(review,listed,scope,false,rules);
+    if(!confirmed.ok)return {kind:'failed',error:confirmed.error};
+    return transactionRead(control,(read,isCurrent)=>scanProjectMigration(confirmed.value,editor,read,{...control,isCurrent}),
+      {kind:'invalidated'});
+  }
+  async function applyMigration(plan:ProjectMigrationPlan,control:InspectionControl):Promise<MigrationOutcome>{
+    const fail={ok:false as const,error:'Migration cancelled or invalidated. Nothing changed.'};
+    const result=await transactionRead(control,(read,isCurrent)=>prepareMigrationApply(plan,listed,false,editor,read,
+      {...control,isCurrent}),{kind:'invalidated'});
+    if(result.kind==='failed')return {ok:false,error:result.error};
+    if(result.kind!=='prepared'||control.isCancelled()||!control.isCurrent()||generation.current!==editor.sessionRevision)return fail;
+    const next=editorReducer(editor,result.action);
+    if(next===editor)return {ok:false,error:'Editor rejected migration.'};
+    const undo=createMigrationUndo(result.changes,next);
+    if(!undo)return {ok:false,error:'Could not prepare migration undo.'};
+    commitFixtureEditor(next);setMigrationUndo(undo);
+    return {ok:true,replacements:plan.replacements,files:result.changes.length,newTabs:plan.newTabs};
+  }
+
+  async function scanWhitespace(review:ProjectWhitespaceReview,scope:ProjectSearchScope,options:WhitespaceOptions,
+    control:InspectionControl):Promise<WhitespaceScanExecution>{
+    const confirmed=confirmProjectWhitespace(review,listed,scope,false,options);
+    if(!confirmed.ok)return {kind:'failed',error:confirmed.error};
+    return transactionRead(control,(read,isCurrent)=>scanProjectWhitespace(confirmed.value,editor,read,{...control,isCurrent}),
+      {kind:'invalidated'});
+  }
+
+  async function applyWhitespace(plan:ProjectWhitespacePlan,control:InspectionControl):Promise<WhitespaceApplyOutcome>{
+    const fail={ok:false as const,error:'Whitespace operation cancelled or invalidated. Nothing changed.'};
+    const result=await transactionRead(control,(read,isCurrent)=>prepareWhitespaceApply(plan,listed,false,editor,read,
+      {...control,isCurrent}),{kind:'invalidated'});
+    if(result.kind==='failed')return {ok:false,error:result.error};
+    if(result.kind!=='ready'||control.isCancelled()||!control.isCurrent()||generation.current!==editor.sessionRevision)return fail;
+    const next=editorReducer(editor,result.value.action);
+    if(next===editor)return {ok:false,error:'Editor rejected whitespace changes.'};
+    const undo=createReviewedStageUndo(result.value.staged.changes,next);
+    if(!undo)return {ok:false,error:'Could not prepare whitespace undo.'};
+    commitFixtureEditor(next);setWhitespaceUndo(undo);
+    return {ok:true,files:result.value.staged.changes.length,edits:result.value.edits,newTabs:result.value.staged.newTabs};
+  }
+  function undoTransaction(kind:'migration'|'whitespace'){
+    const undo=kind==='migration'?migrationUndo:whitespaceUndo;
+    if(busy||!undo||!canUndoOpenFileReplace(undo,editor))return;
+    const next=editorReducer(editor,{type:'replace-open-files',changes:undo.changes,allSnapshots:undo.after});
+    if(next===editor)return;
+    commitFixtureEditor(next);
+    if(kind==='migration')setMigrationUndo(null);else setWhitespaceUndo(null);
+  }
+  async function scanManifest(plan:ProjectInspectionPlan,settings:InspectionSettings,
+    control:InspectionControl):Promise<ManifestExecution>{
+    const confirmed=confirmProjectInspection(plan,listed,settings);
+    if(!confirmed.ok)return {kind:'invalidated'};
+    return transactionRead(control,(read,isCurrent)=>executeSourceManifest(confirmed.value,editor.documents,read,
+      {...control,isCurrent}),{kind:'invalidated'});
   }
 
   async function run() {
@@ -346,6 +462,9 @@ function Workbench() {
     <section aria-label="Fixture controls">
       <button onClick={reset}>Reset fixture</button>
       <button onClick={switchLexical}>Use lexical fixture</button>
+      <button onClick={switchTransactions}>Use transaction fixture</button>
+      <button onClick={()=>{if(!busy)setWorkspace(changeTransactionDisk);}}>Change transaction disk externally</button>
+      <button onClick={()=>{if(!busy)setWorkspace(failTransactionCopy);}}>Fail transaction copy read</button>
       <button onClick={()=>mutate(changeLexicalInterface)}>Change lexical function interface</button>
       <button onClick={()=>mutate(shiftLexicalLocation)}>Shift lexical source location</button>
       <button onClick={()=>mutate(failLexicalLeaf)}>Fail lexical leaf read</button>
@@ -366,6 +485,9 @@ function Workbench() {
       </dl>
       <output data-testid="read-paths">{JSON.stringify(readPaths)}</output>
       <output data-testid="navigation">{navigation}</output>
+      <output data-testid="transaction-documents">{JSON.stringify(editor.documents.map(doc=>({name:listed.find(source=>source.path===doc.path)?.name??doc.name,
+        content:doc.content,savedContent:doc.savedContent,dirty:isDirty(doc)})))}</output>
+      <output data-testid="transaction-disk">{JSON.stringify(workspace.files.map(file=>({name:file.name,content:file.content})))}</output>
       <output data-testid="lexical-open-tabs">{JSON.stringify(editor.documents.map(document=>({
         name:document.path ? listed.find(source=>source.path===document.path)?.name??document.name : document.name,
         dirty:isDirty(document),
@@ -411,6 +533,13 @@ function Workbench() {
       <ListedCodeReferencesPanel listed={listed} listingLimited={false} available busy={busy}
         cursorIdentifier={()=>'helper'} onRun={runReferences} onNavigate={navigateReference}
         sourceOpen={{editor,listed,onOpen:openAnalysisSources}}/>
+      <ProjectIdentifierMigrationPanel listed={listed} listingLimited={false} available busy={busy} editor={editor}
+        onScan={scanMigration} onApply={applyMigration} undoAvailable={!!migrationUndo&&canUndoOpenFileReplace(migrationUndo,editor)}
+        onUndo={()=>undoTransaction('migration')}/>
+      <ProjectWhitespacePanel listed={listed} listingLimited={false} available busy={busy} editor={editor}
+        onScan={scanWhitespace} onApply={applyWhitespace} undoAvailable={!!whitespaceUndo&&canUndoOpenFileReplace(whitespaceUndo,editor)}
+        onUndo={()=>undoTransaction('whitespace')}/>
+      <ProjectSourceManifestPanel listed={listed} listingLimited={false} available busy={busy} onRun={scanManifest}/>
       {completed && <section key={completed.id} aria-label="Fixture completed search">
         <output data-testid="completed-id">{completed.id}</output>
         <ProjectSearchCoverage summary={completed.summary}/>
