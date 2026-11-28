@@ -102,6 +102,9 @@ import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { ProjectInspectionPanel } from './components/ProjectInspectionPanel';
+import { ListedSymbolPanel } from './components/ListedSymbolPanel';
+import { executeListedSymbolIndex, resolveListedSymbolPath, recheckListedSymbolSite,
+  type ListedSymbolExecution, type ListedSymbolReport, type ListedSymbolSite } from './model/listedSymbolIndex';
 import { ProjectVerificationPanel } from './components/ProjectVerificationPanel';
 import { confirmProjectVerification, executeProjectVerification, type ProjectVerificationPlan, type VerificationRule, type VerificationControl, type VerificationExecution } from './model/projectVerification';
 import { confirmProjectInspection, executeProjectInspection, resolveInspectionSource, type InspectionSettings, type ProjectInspectionPlan, type ProjectInspectionReport, type InspectionControl, type InspectionExecution } from './model/projectInspection';
@@ -1668,6 +1671,63 @@ export default function App() {
     const path=resolveAuditFile(audit,id,selectedFolderRef.current,selectedProjectPath);
     if(path)void openFolderFile(path);
     else setError('The audited source is no longer uniquely listed.');
+  }
+
+  async function runListedSymbols(plan:ProjectInspectionPlan,settings:InspectionSettings,control:InspectionControl):Promise<ListedSymbolExecution>{
+    const selection=selectedFolderRef.current;
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return {kind:'invalidated'};
+    const checked=confirmProjectInspection(plan,selection.files,{
+      ...settings,listingLimited:folderListingLimited||unavailableProjectFolders.length>0,
+    });
+    if(!checked.ok){setError(checked.error);return {kind:'invalidated'};}
+    const start=liveEditor.current;
+    const epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&start.sessionRevision===liveEditor.current.sessionRevision;
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const result=await executeListedSymbolIndex(checked.value,start.documents,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
+      if(result.kind==='report'&&current())setNotice('Listed symbol index '+result.report.status+'. No files changed.');
+      return current()?result:{kind:'invalidated'};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  async function navigateListedSymbol(report:ListedSymbolReport,site:ListedSymbolSite):Promise<void>{
+    const selection=selectedFolderRef.current;
+    if(!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)return;
+    const path=resolveListedSymbolPath(report,site,selection.files);
+    if(!path){setError('The observed source is no longer uniquely listed. Index again.');return;}
+    const matching=liveEditor.current.documents.filter(doc=>doc.path!==null&&sameFilePath(doc.path,path));
+    if(matching.length>1){setError('Multiple tabs match that source. Resolve the ambiguous tabs first.');return;}
+    if(matching.length===1){
+      const target=recheckListedSymbolSite(site,matching[0],path);
+      if(!target){setError('The current lexical site no longer matches. Index again.');return;}
+      jumpToSourceInsight(target);setError(null);return;
+    }
+    if(!isTauri())return;
+    const start=liveEditor.current;
+    const epoch=projectResultEpoch.current;
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const content=await readScarpSource(path,512*1024);
+      if(selection!==selectedFolderRef.current||epoch!==projectResultEpoch.current||
+        !hasUnchangedEditorSession(start,liveEditor.current)){
+        setError('Workspace changed during source recheck. Index again.');return;
+      }
+      const candidate={id:'listed-symbol-recheck',name:site.source,path,content,savedContent:content,revision:0};
+      if(!recheckListedSymbolSite(site,candidate,path)){
+        setError('The disk lexical site no longer matches. Index again.');return;
+      }
+      activateOpenedFile(path,content);
+      const opened=currentActiveDocument(liveEditor.current);
+      const target=opened?recheckListedSymbolSite(site,opened,path):null;
+      if(target)jumpToSourceInsight(target);
+      else setError('The source opened but its current lexical site could not be verified.');
+    }catch{setError('Could not recheck the listed source. Refresh Explorer and index again.');}
+    finally{filePickerInProgress.current=false;setBusy(false);}
   }
 
   async function runListedInspection(plan:ProjectInspectionPlan, settings:InspectionSettings, control:InspectionControl):Promise<InspectionExecution>{
@@ -3623,6 +3683,12 @@ export default function App() {
             listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
             available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
             onRun={runProjectVerification}/>
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="listed-symbols">
+          <ListedSymbolPanel key={'listed-symbols:'+folderPath} listed={folderEntries}
+            listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
+            available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            onRun={runListedSymbols} onNavigate={(report,site)=>void navigateListedSymbol(report,site)}/>
           </ExplorerToolSlot>
           </ExplorerToolDirectory>
         </aside>
