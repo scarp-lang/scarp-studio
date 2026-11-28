@@ -1684,7 +1684,9 @@ export default function App() {
       epoch===projectResultEpoch.current&&start.sessionRevision===liveEditor.current.sessionRevision;
     filePickerInProgress.current=true;setBusy(true);setError(null);
     try{
-      const result=await executeProjectInspection(checked.value,start.documents,readScarpSource,{...control,isCurrent:current});
+      const result=await executeProjectInspection(checked.value,start.documents,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
       if(result.kind==='report'&&current())setNotice('Listed source inspection '+result.report.status+'. No files changed.');
       return current()?result:{kind:'invalidated'};
     }finally{filePickerInProgress.current=false;setBusy(false);}
@@ -2690,7 +2692,9 @@ export default function App() {
     setNotice('Running reviewed project search sweep.');
     try {
       const result = await executeSearchSweep(confirmed.value, snapshot.documents,
-        (path,maxBytes) => readScarpSource(path,maxBytes), {...control,isCurrent:current});
+        (path,maxBytes) => readScarpSource(path,maxBytes), {
+          ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+        });
       if (result.kind === 'report' && current()) {
         setNotice('Search sweep '+result.report.status+'; '+result.report.batches.length+
           ' completed batch observation(s). No files changed.');

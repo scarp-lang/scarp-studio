@@ -143,6 +143,7 @@ export async function searchListedProjectSources(
   options: SearchOptions,
   readSource: (path: string, maxBytes: number) => Promise<string>,
   isCurrent: () => boolean = () => true,
+  yieldBeforeSource?: () => Promise<void>,
 ): Promise<ProjectSearchResult | null> {
   const empty: ProjectSearchResult = {
     hits: [], searchedFiles: 0, skippedFiles: 0,
@@ -181,6 +182,10 @@ export async function searchListedProjectSources(
   const scannedSources=new Map<string,ProjectSearchSource>();
 
   for (let index = 0; index < selected.length; index++) {
+    if (!isCurrent()) return null;
+    // Open-buffer-only runs otherwise stay within a synchronous loop. Let the
+    // caller schedule a UI turn before touching the next bounded snapshot.
+    if (yieldBeforeSource) await yieldBeforeSource();
     if (!isCurrent()) return null;
     // Stop before another native read once the aggregate budget is consumed.
     const remainingBytes = MAX_PROJECT_SEARCH_TOTAL_BYTES - totalBytes;

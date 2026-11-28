@@ -219,3 +219,42 @@ describe('inspection filtering and privacy', () => {
     expect(withLabels.length).toBeLessThanOrEqual(MAX_SCOPE_REPORT_UNITS);
   });
 });
+
+
+describe('cooperative inspection scheduling', () => {
+  it('cancels an all-buffer inspection between completed file observations', async () => {
+    const listed = entries(3);
+    const docs = listed.map((source,index) => ({
+      ...createUntitled(index+1), name:source.name, path:source.path,
+      content:'// TODO: retained task\n', savedContent:'',
+    }));
+    const read = vi.fn(async () => { throw Error('Unexpected disk read'); });
+    let cancelled = false;
+    let turns = 0;
+    const result = await run(plan(listed),read,docs,{
+      ...control,isCancelled:()=>cancelled,
+      yieldBetweenFiles:async()=>{if(++turns===2)cancelled=true;},
+    });
+    expect(result.status).toBe('cancelled');
+    expect(result.tasks).toHaveLength(1);
+    expect(result.files.map(file=>file.state)).toEqual(['scanned','not-observed','not-observed']);
+    expect(read).not.toHaveBeenCalled();
+  });
+  it('invalidates before the next read when workspace changes during a yield', async () => {
+    const read = vi.fn(async () => '// TODO: private task\n');
+    let current = true;
+    let turns = 0;
+    const result=await executeProjectInspection(plan(),[],read,{
+      ...control,isCurrent:()=>current,
+      yieldBetweenFiles:async()=>{if(++turns===2)current=false;},
+    });
+    expect(result).toEqual({kind:'invalidated'});
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+  it('rejects oversized adapter responses before scanning malformed text', async () => {
+    const result=await run(plan(entries(1)),async(_path,limit)=>'x'.repeat(limit)+'\ud800');
+    expect(result.files[0].state).toBe('byte-limit');
+    expect(result.tasks).toHaveLength(0);
+    expect(result.findings).toHaveLength(0);
+  });
+});

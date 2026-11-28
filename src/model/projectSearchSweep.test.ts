@@ -207,3 +207,43 @@ describe('sweep evidence reports', () => {
     expect(output).toContain('Additional labels omitted');
   });
 });
+
+
+describe('cooperative search sweep scheduling',()=>{
+  it('cancels an in-memory batch before processing its next source',async()=>{
+    const listed=entries(size*2);
+    const docs=listed.map((source,index)=>({
+      ...createUntitled(index+1),name:source.name,path:source.path,
+      content:settings.query,savedContent:'',
+    }));
+    let cancelled=false,turns=0;
+    const reader=vi.fn(async()=>settings.query);
+    const result=await run(plan(listed),reader,{
+      ...control,isCancelled:()=>cancelled,
+      yieldBetweenFiles:async()=>{if(++turns===size+2)cancelled=true;},
+    },docs);
+    expect(result.status).toBe('cancelled');
+    expect(result.fullyScanned).toBe(size);
+    expect(result.unobserved).toBe(size);
+    expect(result.batches).toHaveLength(1);
+    expect(reader).not.toHaveBeenCalled();
+  });
+  it('does not begin another disk read after invalidation during a scheduling turn',async()=>{
+    let current=true,turns=0;
+    const reader=vi.fn(async()=>settings.query);
+    const result=await executeSearchSweep(plan(),[],reader,{
+      ...control,isCurrent:()=>current,
+      yieldBetweenFiles:async()=>{if(++turns===2)current=false;},
+    });
+    expect(result).toEqual({kind:'invalidated'});
+    expect(reader).toHaveBeenCalledTimes(1);
+  });
+  it('retires evidence when the final progress callback invalidates the workspace',async()=>{
+    let current=true;
+    const result=await executeSearchSweep(plan(),[],async()=>settings.query,{
+      ...control,isCurrent:()=>current,
+      onProgress:progress=>{if(progress.currentBatch===null)current=false;},
+    });
+    expect(result).toEqual({kind:'invalidated'});
+  });
+});
