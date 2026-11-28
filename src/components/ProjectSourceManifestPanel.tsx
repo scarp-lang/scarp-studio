@@ -189,7 +189,7 @@ export function ProjectSourceManifestPanel({listed,listingLimited,available,busy
       </div>}
       {notice&&<p role="alert">{notice}</p>}
     </>}
-    <div hidden={!expanded}><ManifestHistoryPanel current={report} busy={blocked}/></div>
+    <ManifestHistoryPanel current={report} busy={blocked} visible={expanded}/>
     {expanded&&report&&<>
       <ProjectSourceManifestResults report={report}/>
       <button type="button" disabled={running} onClick={()=>setReport(null)}>Dismiss source manifest results</button>
