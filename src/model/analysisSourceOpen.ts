@@ -4,6 +4,7 @@ import {assertScarpSourceText} from './sourceLimits';
 import {utf8ByteLength} from './utf8Text';
 import {buildProjectScopeInventory} from './projectSearchScope';
 import {validRelativeLabel} from './projectSearchComparison';
+import {safeRelativeScarpSourceName} from './folderListing';
 import type {ProjectSearchSource} from './projectSearch';
 import type {EditorState} from './editorState';
 
@@ -49,7 +50,7 @@ export interface AnalysisCandidateRow extends AnalysisSourceCandidate{
 export function analysisSourceCandidates(sites:readonly {readonly source:string}[]):readonly AnalysisSourceCandidate[]{
   const counts=new Map<string,number>();
   for(const site of sites){
-    if(!validRelativeLabel(site.source))continue;
+    if(!validRelativeLabel(site.source)||!safeRelativeScarpSourceName(site.source))continue;
     counts.set(site.source,(counts.get(site.source)??0)+1);
   }
   return Object.freeze([...counts.entries()].sort(([a],[b])=>a<b?-1:a>b?1:0)
@@ -86,7 +87,7 @@ export function prepareAnalysisOpen(candidates:readonly AnalysisSourceCandidate[
   if(activeLabel!==null&&!selected.includes(activeLabel))return fail('Choose an active source from the selected labels.');
   const rows:AnalysisOpenRow[]=[];
   for(const name of selected){
-    if(!validRelativeLabel(name)||!candidates.some(candidate=>candidate.name===name&&candidate.occurrences>0))
+    if(!validRelativeLabel(name)||!safeRelativeScarpSourceName(name)||!candidates.some(candidate=>candidate.name===name&&candidate.occurrences>0))
       return fail('Only observed source labels can be reviewed.');
     const resolved=resolveCandidate(name,listed,editor.documents);
     if(!resolved.row)return fail('One or more selected sources are missing or ambiguous. Review the current listing.');
