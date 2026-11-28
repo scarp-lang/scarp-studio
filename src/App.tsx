@@ -2,6 +2,7 @@ import { ProjectSearchScopeControls, ProjectSearchCoverage } from './components/
 import { ProjectSearchComparisonPanel } from './components/ProjectSearchComparisonPanel';
 import { ProjectSearchLedgerPanel } from './components/ProjectSearchLedgerPanel';
 import { ProjectSearchPresetsPanel } from './components/ProjectSearchPresetsPanel';
+import { ProjectMatchExplorer } from './components/ProjectMatchExplorer';
 import { DEFAULT_PROJECT_SEARCH_SCOPE, buildProjectScopeInventory, planScopedProjectSearch, summarizeScopedSearch, type ProjectSearchScope, type ScopedSearchSummary } from './model/projectSearchScope';
 import { CommandLibrarySettings } from './components/CommandLibrarySettings';
 import { COMMAND_GROUPS,EMPTY_COMMAND_LIBRARY,commandGroup,collectionLabel,isCommandCollection,isLibraryCommand,searchCommandCollection,recordCommandSelection,togglePinnedCommand,movePinnedCommand,confirmLibraryClear,type CommandCollection,type LibraryClearReview } from './model/commandPaletteLibrary';
@@ -3739,25 +3740,10 @@ export default function App() {
                     options={{caseSensitive:searchCaseSensitive,wholeWord:searchWholeWord}} editor={editorState}
                     busy={busy || compilerBusy || compilerSelecting || compilerScanning}
                     onStage={stageProjectReplacements} onApply={applyProjectReplacements} />
-                  <div className="search-results" role="list" aria-label="Matches in selected Scarp project">
-                    {projectSearchResult.result.hits.map((hit) => (
-                      <div role="listitem"
-                        key={hit.path + ':' + hit.match.offset + ':' + hit.match.sourceRevision}>
-                        <button className="search-result-row" type="button"
-                          onClick={() => void goToProjectSearchHit(hit, projectSearchResult.selection)}
-                          title={hit.name + ' at ' + hit.match.line + ':' + hit.match.column}>
-                          <span className="search-result-location">
-                            {hit.name} · {hit.match.line}:{hit.match.column}
-                            {hit.fromOpenTab && ' · open buffer'}
-                          </span>
-                          <span className="search-result-preview">{hit.match.preview}</span>
-                        </button>
-                      </div>
-                    ))}
-                    {!projectSearchResult.result.hits.length && (
-                      <p className="sidebar-note">No displayed matches in this search. Check coverage before drawing conclusions.</p>
-                    )}
-                  </div>
+                  <ProjectMatchExplorer key={'matches-'+projectSearchEpoch.current}
+                    result={projectSearchResult.result} coverage={projectSearchResult.coverage}
+                    busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+                    onNavigate={hit=>void goToProjectSearchHit(hit,projectSearchResult.selection)}/></div>
                 </section>
               )}
             </section>
