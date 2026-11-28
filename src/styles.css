@@ -2044,3 +2044,8 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .migration-preview-code mark { color: var(--text); border-radius: 2px; text-decoration: underline; text-underline-offset: 2px; }
 .migration-token-before { background: color-mix(in srgb, #d96871 24%, var(--surface)); }
 .migration-token-after { background: color-mix(in srgb, #42a67c 24%, var(--surface)); }
+
+/* Manifest evidence uses wrapping rather than clipping long SHA-256 values. */
+.manifest-digest { display: block; overflow-wrap: anywhere; word-break: break-all; font-size: 0.82rem; margin-block: 0.35rem; }
+.manifest-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 0.5rem; }
+.manifest-pair > div { min-width: 0; padding: 0.35rem; border: 1px solid var(--border, #4a5568); border-radius: 4px; }
