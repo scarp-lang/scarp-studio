@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { VerificationProfilesPanel } from './VerificationProfilesPanel';
 import { ProjectSearchScopeControls } from './ProjectSearchScopeControls';
 import { DEFAULT_PROJECT_SEARCH_SCOPE, type ProjectSearchScope } from '../model/projectSearchScope';
 import type { ProjectSearchSource } from '../model/projectSearch';
@@ -215,6 +216,12 @@ export function ProjectVerificationPanel({listed,listingLimited,available,busy,o
           const index=drafts.findIndex(draft=>draft.id===id),target=index+direction;
           if(index<0||target<0||target>=drafts.length)return;
           const next=[...drafts];[next[index],next[target]]=[next[target],next[index]];updateDrafts(next);
+        }}/>
+      <VerificationProfilesPanel current={drafts.map(draft=>draft.rule)} busy={blocked}
+        onApply={rules=>{
+          if(blocked)return false;
+          updateDrafts(rules.map(rule=>({id:sequence.current++,rule})));
+          return true;
         }}/>
       <button type="button" disabled={blocked} onClick={preview}>Review project verification</button>
       {review&&<ProjectVerificationReview plan={review} busy={blocked} onConfirm={()=>void run()} onCancel={()=>setReview(null)}/>}
