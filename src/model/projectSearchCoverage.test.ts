@@ -158,6 +158,48 @@ describe('coverage provenance and export',()=>{
     const summary=summarizeScopedSearch(plan,legacy);
     expect(summary.ok&&summary.value.fileCoverage).toBeUndefined();
   });
+  it('rejects impossible origins even for zero-match sources',async()=>{
+    const sources=['a.srp','b.srp'].map(entry);
+    const plan=planScopedProjectSearch(buildProjectScopeInventory(sources),DEFAULT_PROJECT_SEARCH_SCOPE);
+    if(!plan.ok)throw Error(plan.error);
+    const result=await searchListedProjectSources(sources,[],'needle',options,async()=> 'unrelated');
+    if(!result?.fileEvidence)throw Error('Missing search evidence');
+    const [first,second]=result.fileEvidence;
+    for(const invalid of [
+      {...first,state:'read-failed' as const,origin:null},
+      {...first,state:'read-failed' as const,origin:'open-buffer' as const},
+      {...first,state:'file-limit' as const,origin:'disk' as const},
+      {...first,state:'invalid-listing' as const,origin:'open-buffer' as const},
+      {...first,state:'content-limit' as const,origin:null},
+    ]){
+      expect(summarizeScopedSearch(plan.value,{
+        ...result,fileEvidence:[invalid,second],searchedFiles:1,skippedFiles:1,truncated:true,
+      }).ok).toBe(false);
+    }
+    for(const valid of [
+      {...first,state:'read-failed' as const,origin:'disk' as const},
+      {...first,state:'file-limit' as const,origin:null},
+      {...first,state:'byte-limit' as const,origin:null},
+      {...first,state:'byte-limit' as const,origin:'open-buffer' as const},
+      {...first,state:'content-limit' as const,origin:'disk' as const},
+    ]){
+      expect(summarizeScopedSearch(plan.value,{
+        ...result,fileEvidence:[valid,second],searchedFiles:1,skippedFiles:1,truncated:true,
+      }).ok).toBe(true);
+    }
+  });
+  it('does not invent fully scanned file labels in a partial legacy report',async()=>{
+    const {plan,result}=await fixture();
+    const {fileEvidence:_,...legacy}=result;
+    const summary=summarizeScopedSearch(plan,{...legacy,searchedFiles:1,skippedFiles:1,truncated:true});
+    if(!summary.ok)throw Error(summary.error);
+    const report=scopedSearchReport(summary.value,{includeLabels:true,includeFilenameQuery:false});
+    expect(report).toContain('Coverage: incomplete');
+    expect(report).toContain('"src/a.srp" — 1 displayed match(es), Per-file coverage unavailable, Disk snapshot');
+    expect(report).toContain('"src/b.srp" — 1 displayed match(es), Per-file coverage unavailable, Disk snapshot');
+    expect(report).not.toContain('displayed match(es), Fully scanned');
+    expect(report).not.toContain('C:/work');
+  });
   it('uses file labels only when explicitly requested, including zero-match sources',async()=>{
     const sources=['src/private-match.srp','src/private-miss.srp'].map(entry);
     const result=await searchListedProjectSources(sources,[],'secret needle',options,async path=>
