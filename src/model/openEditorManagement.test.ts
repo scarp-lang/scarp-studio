@@ -162,3 +162,24 @@ describe('atomic editor reducer bulk close', () => {
     expect(editorReducer(state, { type: 'close-clean-tabs', snapshots: [] })).toBe(state);
   });
 });
+
+describe('pin-aware editor manager', () => {
+  it('includes pinned clean sources in saved inventory but excludes them from close selection', () => {
+    const other = source('other');
+    const inventory = buildTabInventory([clean, other, dirty, untitled], clean.id, [clean.id, dirty.id]);
+    expect(inventory.pinned).toBe(2);
+    expect(inventory.closeEligible).toBe(1);
+    expect(filterTabInventory(inventory.entries, '', 'pinned', 'tab-order').map(entry => entry.document.id))
+      .toEqual([clean.id, dirty.id]);
+    expect(filterTabInventory(inventory.entries, '', 'saved', 'tab-order').map(entry => entry.document.id))
+      .toEqual([clean.id, other.id]);
+    expect(selectVisibleTabs(inventory.entries)).toEqual([tabSelection(other)]);
+  });
+
+  it('invalidates an existing selection when a previously clean tab is pinned', () => {
+    const selected = tabSelection(clean)!;
+    expect(currentTabSelection([selected], [clean], [clean.id])).toEqual([]);
+    expect(resolveBulkClose([selected], [clean], [clean.id])).toBeNull();
+    expect(resolveBulkClose([selected], [clean], [])).toEqual([clean]);
+  });
+});
