@@ -1,3 +1,4 @@
+import { editorViewStateSmoke } from './settings-browser-editor-view-state.mjs';
 import { tabOrganizationSmoke } from './settings-browser-tab-organization.mjs';
 import { quickOpenSmoke } from './settings-browser-quick-open.mjs';
 import { selectionAndCommandSmoke } from './settings-browser-selection.mjs';
@@ -166,6 +167,7 @@ try {
   await selectionAndCommandSmoke({ evaluate, wait, visible, click, button, change, category, step, cdp });
   await quickOpenSmoke({ evaluate, wait, visible, click, button, change, step, cdp });
   await tabOrganizationSmoke({ evaluate, wait, visible, click, button, change, step, cdp });
+  await editorViewStateSmoke({ evaluate, wait, visible, click, change, step, cdp });
   assert.deepEqual(cdp.errors, [], 'uncaught browser exceptions');
   console.log('Settings browser smoke: ' + completed + ' checks passed.');
 } finally {
