@@ -9,7 +9,7 @@ import { MANIFEST_STATE_LABELS, type ManifestFile } from './projectSourceManifes
 
 export const LEDGER_COMPARISON_STATES = [
   'retained', 'newly-hashed', 'newly-unavailable', 'unchanged',
-  'changed', 'origin-changed', 'unavailable',
+  'changed', 'origin-changed', 'inconsistent', 'unavailable',
 ] as const;
 export type LedgerComparisonState = typeof LEDGER_COMPARISON_STATES[number];
 
@@ -18,7 +18,8 @@ export const LEDGER_COMPARISON_LABELS: Readonly<Record<LedgerComparisonState, st
   'newly-hashed': 'New digest evidence',
   'newly-unavailable': 'Digest evidence lost',
   unchanged: 'Equal digest and length',
-  changed: 'Different digest or length',
+  changed: 'Different digest',
+  inconsistent: 'Digest and metric evidence disagree',
   'origin-changed': 'Snapshot origin changed',
   unavailable: 'No comparable digest evidence',
 });
@@ -82,7 +83,7 @@ export function compareLedgerObservations(baseline: ManifestLedger, current: Man
   if (previous.rows.length !== next.rows.length) return fail('The selected source inventory changed.');
   const counts: Record<LedgerComparisonState, number> = {
     retained: 0, 'newly-hashed': 0, 'newly-unavailable': 0, unchanged: 0,
-    changed: 0, 'origin-changed': 0, unavailable: 0,
+    changed: 0, 'origin-changed': 0, inconsistent: 0, unavailable: 0,
   };
   const refreshedBatches = current.receipts.filter(receipt => receipt !== beforeReceipts.get(receipt.batch)).length;
   const rows: LedgerComparisonRow[] = [];
@@ -100,9 +101,12 @@ export function compareLedgerObservations(baseline: ManifestLedger, current: Man
       if (before.origin !== after.origin) {
         state = 'origin-changed';
       } else {
-        state = before.digest === after.digest && before.bytes === after.bytes ? 'unchanged' : 'changed';
-        byteDelta = after.bytes - before.bytes;
-        if (before.metrics && after.metrics) lineDelta = after.metrics.lines - before.metrics.lines;
+        state = before.digest !== after.digest ? 'changed' :
+          before.bytes === after.bytes && JSON.stringify(before.metrics) === JSON.stringify(after.metrics) ? 'unchanged' : 'inconsistent';
+        if (state !== 'inconsistent') {
+          byteDelta = after.bytes - before.bytes;
+          if (before.metrics && after.metrics) lineDelta = after.metrics.lines - before.metrics.lines;
+        }
       }
     } else if (hashed(after)) {
       state = 'newly-hashed';
