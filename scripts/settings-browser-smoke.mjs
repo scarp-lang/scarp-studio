@@ -1,3 +1,4 @@
+import { quickOpenSmoke } from './settings-browser-quick-open.mjs';
 import { selectionAndCommandSmoke } from './settings-browser-selection.mjs';
 import assert from 'node:assert/strict';
 import { advancedSettingsSmoke } from './settings-browser-advanced.mjs';
@@ -162,6 +163,7 @@ try {
   });
   await advancedSettingsSmoke({ evaluate, wait, visible, click, button, change, category, stored, step, cdp });
   await selectionAndCommandSmoke({ evaluate, wait, visible, click, button, change, category, step, cdp });
+  await quickOpenSmoke({ evaluate, wait, visible, click, button, change, step, cdp });
   assert.deepEqual(cdp.errors, [], 'uncaught browser exceptions');
   console.log('Settings browser smoke: ' + completed + ' checks passed.');
 } finally {
