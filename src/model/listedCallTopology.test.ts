@@ -156,3 +156,156 @@ describe('candidate graph presentation',()=>{
     expect(text).toContain('Additional evidence omitted');
   });
 });
+
+/** A separate small-graph oracle uses repeated breadth-first searches rather
+ * than the production iterative SCC implementation. Each generated program
+ * has unique function spellings, so its intended lexical edges are known.
+ */
+function generatedAdjacency(seed:number,size:number):number[][]{
+  let state=seed>>>0;
+  const next=()=>{
+    state=(Math.imul(state,1664525)+1013904223)>>>0;
+    return state;
+  };
+  return Array.from({length:size},()=>Array.from({length:size},(_,index)=>index)
+    .filter(()=>next()%7<2));
+}
+
+function oracleDistances(adjacency:readonly (readonly number[])[],start:number):Map<number,number>{
+  const result=new Map<number,number>([[start,0]]);
+  const queue=[start];
+  for(let cursor=0;cursor<queue.length;cursor++){
+    const from=queue[cursor];
+    for(const to of adjacency[from]){
+      if(result.has(to))continue;
+      result.set(to,result.get(from)!+1);
+      queue.push(to);
+    }
+  }
+  return result;
+}
+
+function oracleCycles(adjacency:readonly (readonly number[])[]):string[]{
+  const reachable=adjacency.map((_,index)=>oracleDistances(adjacency,index));
+  const assigned=new Set<number>();
+  const components:string[]=[];
+  for(let start=0;start<adjacency.length;start++){
+    if(assigned.has(start))continue;
+    const members=adjacency.map((_,index)=>index).filter(index=>
+      reachable[start].has(index)&&reachable[index].has(start));
+    members.forEach(index=>assigned.add(index));
+    if(members.length>1||adjacency[start].includes(start))
+      components.push(members.map(index=>'oracle_'+index).sort().join(','));
+  }
+  return components.sort();
+}
+
+function programForGraph(adjacency:readonly (readonly number[])[]):Record<string,string>{
+  const result:Record<string,string>={};
+  for(let index=0;index<adjacency.length;index++){
+    const source='src/oracle-'+(index%3)+'.srp';
+    const body=adjacency[index].map(target=>'oracle_'+target+'();').join(' ');
+    result[source]=(result[source]??'')+'funcra oracle_'+index+'() { '+body+' }\n';
+  }
+  return result;
+}
+
+describe('candidate topology independent graph oracle',()=>{
+  it('matches mutual reachability, shortest distances and edge accounting over reproducible graph cases',async()=>{
+    for(const seed of [1,2,3,7,17,99,1001,2147483647,4294967295]){
+      const adjacency=generatedAdjacency(seed,9);
+      const graph=buildListedCallTopology(await report(programForGraph(adjacency)));
+      expect(graph.complete).toBe(true);
+      expect(graph.nodes).toHaveLength(adjacency.length);
+      const edgeCount=adjacency.reduce((sum,list)=>sum+list.length,0);
+      expect(graph.uniqueEdges).toBe(edgeCount);
+      expect(graph.callSites).toBe(edgeCount);
+      expect(graph.ambiguousEdges).toBe(0);
+      expect(graph.unobservedEdges).toBe(0);
+      const ids=new Map(graph.nodes.map(item=>[item.id,item.name]));
+      expect(graph.cycles.map(component=>component.nodes.map(id=>ids.get(id)!).sort().join(',')).sort())
+        .toEqual(oracleCycles(adjacency));
+      for(const component of graph.cycles){
+        const members=new Set(component.nodes);
+        const internal=graph.edges.filter(edge=>members.has(edge.callerId)&&edge.targetId!==null&&members.has(edge.targetId));
+        expect(component.edgeIds.slice().sort()).toEqual(internal.map(edge=>edge.id).sort());
+        expect(component.selfOnly).toBe(component.nodes.length===1);
+      }
+      for(let start=0;start<adjacency.length;start++){
+        const origin=node(graph,'oracle_'+start);
+        const distances=oracleDistances(adjacency,start);
+        const walk=walkTopology(graph,origin.id,'outgoing',9);
+        expect(walk.limited).toBe(false);
+        expect(walk.visited).toBe(distances.size);
+        expect(new Set(walk.rows.map(row=>row.node.id)).size).toBe(walk.rows.length);
+        for(const row of walk.rows){
+          const target=Number(row.node.name.slice('oracle_'.length));
+          expect(row.depth).toBe(distances.get(target));
+          if(row.depth===0){
+            expect(row.via).toBeNull();
+            expect(row.edgeId).toBeNull();
+          }else{
+            const edge=graph.edges.find(item=>item.id===row.edgeId);
+            expect(edge?.callerId).toBe(row.via);
+            expect(edge?.targetId).toBe(row.node.id);
+          }
+        }
+        for(let end=0;end<adjacency.length;end++){
+          const target=node(graph,'oracle_'+end);
+          const path=shortestTopologyPath(graph,origin.id,target.id,9);
+          if(!distances.has(end)){
+            expect(path.status).toBe('not-observed');
+            expect(path.rows).toEqual([]);
+            continue;
+          }
+          expect(path.status).toBe('observed');
+          expect(path.rows).toHaveLength(distances.get(end)!+1);
+          expect(path.rows[0].node.id).toBe(origin.id);
+          expect(path.rows.at(-1)?.node.id).toBe(target.id);
+          for(let index=1;index<path.rows.length;index++){
+            const previous=Number(path.rows[index-1].node.name.slice('oracle_'.length));
+            const current=Number(path.rows[index].node.name.slice('oracle_'.length));
+            expect(adjacency[previous]).toContain(current);
+          }
+        }
+      }
+    }
+  });
+
+  it('matches reverse reachability without confusing outgoing and incoming links',async()=>{
+    const adjacency=generatedAdjacency(805,11);
+    const reverse=adjacency.map((_,target)=>adjacency.map((_,source)=>source)
+      .filter(source=>adjacency[source].includes(target)));
+    const graph=buildListedCallTopology(await report(programForGraph(adjacency)));
+    for(let start=0;start<adjacency.length;start++){
+      const target=node(graph,'oracle_'+start);
+      const expected=oracleDistances(reverse,start);
+      const walk=walkTopology(graph,target.id,'incoming',11);
+      expect(walk.visited).toBe(expected.size);
+      expect(walk.limited).toBe(false);
+      for(const row of walk.rows){
+        const index=Number(row.node.name.slice('oracle_'.length));
+        expect(row.depth).toBe(expected.get(index));
+        if(row.edgeId){
+          const edge=graph.edges.find(item=>item.id===row.edgeId);
+          expect(edge?.callerId).toBe(row.node.id);
+          expect(edge?.targetId).toBe(row.via);
+        }
+      }
+    }
+  });
+
+  it('retains all isolated nodes and no cycles for an empty-edge graph',async()=>{
+    const adjacency=Array.from({length:12},()=>[] as number[]);
+    const graph=buildListedCallTopology(await report(programForGraph(adjacency)));
+    expect(graph.nodes).toHaveLength(12);
+    expect(graph.edges).toEqual([]);
+    expect(graph.cycles).toEqual([]);
+    expect(graph.callSites).toBe(0);
+    for(const current of graph.nodes){
+      expect(topologyNeighbors(graph,current.id)).toMatchObject({outgoing:[],incoming:[]});
+      expect(walkTopology(graph,current.id,'outgoing',12).visited).toBe(1);
+      expect(walkTopology(graph,current.id,'incoming',12).visited).toBe(1);
+    }
+  });
+});
