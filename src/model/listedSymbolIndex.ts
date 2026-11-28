@@ -11,6 +11,8 @@ import { validRelativeLabel } from './projectSearchComparison';
 import { scarpInsightIdentifier } from '../language/sourceLex';
 import { captureScarpFunctionInterfaces, type InterfaceShapeEvidence } from '../language/scarpFunctionInterfaces';
 
+import {captureScarpCallArguments,type CallArgumentEvidence} from '../language/scarpCallArguments';
+
 export const LISTED_SYMBOL_PAGE_SIZE = 20;
 export type ListedSiteKind = SymbolKind | 'call';
 export const LISTED_SITE_KINDS = [...SYMBOL_KINDS, 'call'] as const;
@@ -54,6 +56,10 @@ export interface ListedFunctionInterface {
   readonly site: ListedSymbolSite;
   readonly evidence: InterfaceShapeEvidence;
 }
+export interface ListedCallArgumentObservation {
+  readonly site:ListedSymbolSite;
+  readonly evidence:CallArgumentEvidence;
+}
 export interface ListedSymbolReport {
   readonly status: 'completed' | 'cancelled';
   readonly settings: InspectionSettings;
@@ -68,6 +74,8 @@ export interface ListedSymbolReport {
   /** Explicit opt-in; canonical interface shapes may contain private identifiers. */
   readonly interfaces: readonly ListedFunctionInterface[] | null;
   readonly calls: readonly ListedSymbolSite[];
+  /** Captured with interface opt-in; never contains argument expressions. */
+  readonly callArguments?:readonly ListedCallArgumentObservation[]|null;
   readonly complete: boolean;
 }
 export type ListedSymbolExecution =
@@ -90,6 +98,7 @@ export async function executeListedSymbolIndex(plan:ProjectInspectionPlan,docume
   const declarations:ListedSymbolSite[]=[];
   const calls:ListedSymbolSite[]=[];
   const interfaces:ListedFunctionInterface[]=[];
+  const callArguments:ListedCallArgumentObservation[]=[];
   let bytes=0;
   const stopped=()=>!control.isCurrent()||control.isCancelled();
   for(const source of plan.sources){
@@ -127,7 +136,8 @@ export async function executeListedSymbolIndex(plan:ProjectInspectionPlan,docume
         if(site)interfaces.push(Object.freeze({site,evidence:item.evidence}));
       }
     }
-    for(const call of keptCalls)calls.push(Object.freeze({
+    const localCalls:ListedSymbolSite[]=[];
+    for(const call of keptCalls)localCalls.push(Object.freeze({
       id:siteId(source.name,'call',call.offset),source:source.name,name:call.name,kind:'call',
       line:call.line,column:call.column,offset:call.offset,end:call.end,
       scope:null,visibility:null,pure:false,
@@ -135,6 +145,14 @@ export async function executeListedSymbolIndex(plan:ProjectInspectionPlan,docume
       enclosingId:call.enclosingSymbolId&&functions.has(call.enclosingSymbolId)?
         siteId(source.name,'function',functions.get(call.enclosingSymbolId)!.offset):null,
     }));
+    calls.push(...localCalls);
+    if(captureInterfaces){
+      const byOffset=new Map(localCalls.map(site=>[site.offset,site]));
+      for(const item of captureScarpCallArguments(snapshot.content,keptCalls)){
+        const site=byOffset.get(item.offset);
+        if(site)callArguments.push(Object.freeze({site,evidence:item.evidence}));
+      }
+    }
     const reasons=[...index.reasons];
     if(keptSymbols.length!==index.symbols.length)reasons.push('workspace-symbol-limit');
     if(keptCalls.length!==index.calls.length)reasons.push('workspace-call-limit');
@@ -154,6 +172,7 @@ export async function executeListedSymbolIndex(plan:ProjectInspectionPlan,docume
     deferred:plan.deferred,excluded:plan.excluded,withheld:plan.withheld,bytes,
     files:Object.freeze(files),declarations:Object.freeze(declarations),calls:Object.freeze(calls),
     interfaces:captureInterfaces?Object.freeze(interfaces):null,
+    callArguments:captureInterfaces?Object.freeze(callArguments):null,
     complete:status==='completed'&&!plan.settings.listingLimited&&!plan.deferred&&!plan.withheld&&
       files.every(file=>file.state==='scanned'),
   })};
