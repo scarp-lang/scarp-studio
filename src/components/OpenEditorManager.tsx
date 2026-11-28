@@ -9,6 +9,7 @@ import {
 interface Props {
   documents: readonly StudioDocument[];
   activeId: string | null;
+  pinnedIds?: readonly string[];
   busy: boolean;
   onActivate: (document: StudioDocument) => void;
   onClose: (selections: readonly TabSelection[]) => boolean;
@@ -21,6 +22,7 @@ const filters: readonly { value: TabFilter; label: string }[] = [
   { value: 'modified', label: 'Unsaved changes' },
   { value: 'saved', label: 'Saved sources' },
   { value: 'untitled', label: 'Untitled buffers' },
+  { value: 'pinned', label: 'Pinned tabs' },
 ];
 const orders: readonly { value: TabSort; label: string }[] = [
   { value: 'tab-order', label: 'Tab order' },
@@ -29,7 +31,7 @@ const orders: readonly { value: TabSort; label: string }[] = [
 ];
 
 export function OpenEditorManager({
-  documents, activeId, busy, onActivate, onClose, initiallyExpanded = false,
+  documents, activeId, pinnedIds = [], busy, onActivate, onClose, initiallyExpanded = false,
 }: Props) {
   const [expanded, setExpanded] = useState(initiallyExpanded);
   const [query, setQuery] = useState('');
@@ -38,11 +40,11 @@ export function OpenEditorManager({
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<TabSelection[]>([]);
   const inventory = useMemo(() => expanded
-    ? buildTabInventory(documents, activeId) : null, [expanded, documents, activeId]);
+    ? buildTabInventory(documents, activeId, pinnedIds) : null, [expanded, documents, activeId, pinnedIds]);
   const filtered = useMemo(() => inventory
     ? filterTabInventory(inventory.entries, query, filter, sort) : [],
     [inventory, query, filter, sort]);
-  const valid = useMemo(() => currentTabSelection(selected, documents), [selected, documents]);
+  const valid = useMemo(() => currentTabSelection(selected, documents, pinnedIds), [selected, documents, pinnedIds]);
   const stale = selected.length !== valid.length;
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pages);
@@ -53,7 +55,7 @@ export function OpenEditorManager({
     setSelected([]);
   }
   function toggleSelection(document: StudioDocument, checked: boolean) {
-    const selection = tabSelection(document);
+    const selection = pinnedIds.includes(document.id) ? null : tabSelection(document);
     setSelected(previous => {
       const remaining = previous.filter(item => item.id !== document.id);
       return checked && selection ? [...remaining, selection] : remaining;
@@ -78,10 +80,10 @@ export function OpenEditorManager({
         {inventory && <div className="editor-manager-content">
           <p className="insights-disclaimer">
             Batch close is limited to saved, unmodified source tabs. Unsaved and untitled buffers
-            are protected. No source files are changed or deleted.
+            are protected, along with pinned tabs. No source files are changed or deleted.
           </p>
           <div className="editor-manager-summary" role="status">
-            {inventory.total} open · {inventory.modified} modified · {inventory.untitled} untitled
+            {inventory.total} open · {inventory.modified} modified · {inventory.untitled} untitled · {inventory.pinned} pinned
           </div>
           {inventory.limited && <p className="sidebar-note" role="status">
             Only the first 200 open tabs can be managed here.
@@ -127,7 +129,7 @@ export function OpenEditorManager({
                   aria-current={entry.active ? 'true' : undefined}
                   onClick={() => onActivate(document)}>
                   <span>{entry.label}</span>
-                  <small>{entry.modified ? 'Modified' : document.path === null ? 'Untitled' : 'Saved'}</small>
+                  <small>{entry.pinned ? 'Pinned · ' : ''}{entry.modified ? 'Modified' : document.path === null ? 'Untitled' : 'Saved'}</small>
                 </button>
               </div>;
             })}

@@ -68,3 +68,13 @@ describe('open editor manager rendered controls', () => {
     expect(html).toContain('0 open · 0 modified · 0 untitled');
   });
 });
+
+describe('pinned editor manager presentation', () => {
+  it('shows a pinned filter and disables selection of a pinned saved tab', () => {
+    const html = render({ pinnedIds: ['one'] });
+    expect(html).toContain('1 pinned');
+    expect(html).toContain('Pinned tabs');
+    expect(html).toContain('Pinned · Saved');
+    expect(inputTag(html, 'Select saved tab one.srp')).toContain('disabled');
+  });
+});
