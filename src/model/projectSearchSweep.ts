@@ -137,6 +137,7 @@ export interface SweepControl {
   /** Explicit user cancellation can retain already completed batch evidence. */
   readonly isCancelled: () => boolean;
   readonly onProgress?: (progress: SweepProgress) => void;
+  readonly yieldBetweenFiles?: () => Promise<void>;
 }
 function report(
   plan: SearchSweepPlan, batches: readonly SweepBatchEvidence[], status: SweepStatus,
@@ -169,6 +170,7 @@ export async function executeSearchSweep(
   const finish = (status: SweepStatus): SweepExecution => {
     if (!control.isCurrent()) return { kind: 'invalidated' };
     control.onProgress?.({ finishedBatches: evidence.length, totalBatches: plan.batches.length, currentBatch: null });
+    if (!control.isCurrent()) return { kind: 'invalidated' };
     return { kind: 'report', report: report(plan, evidence, status) };
   };
   for (const batch of plan.batches) {
@@ -186,6 +188,7 @@ export async function executeSearchSweep(
           return read(path, maxBytes);
         },
         current,
+        control.yieldBetweenFiles,
       );
       if (!control.isCurrent()) return { kind: 'invalidated' };
       if (control.isCancelled()) return finish('cancelled');
