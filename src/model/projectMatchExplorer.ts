@@ -83,7 +83,8 @@ export function buildProjectMatchInventory(
       !count(result.totalListedFiles) || !count(result.searchedFiles) || !count(result.skippedFiles) ||
       result.searchedFiles + result.skippedFiles !== result.totalListedFiles ||
       result.totalListedFiles !== summary.inScope || result.searchedFiles !== summary.searched ||
-      result.skippedFiles !== summary.skipped) return fail('Search result counts do not match the reviewed coverage.');
+      result.skippedFiles !== summary.skipped || (!summary.incomplete && (result.truncated || result.skippedFiles > 0)))
+    return fail('Search result counts do not match the reviewed coverage.');
 
   const expected = new Map(summary.rows.map(row => [row.name, row]));
   if (expected.size !== summary.rows.length || expected.size !== summary.matchingFiles) {
@@ -287,6 +288,11 @@ export function resolveReviewedProjectMatch(result: ProjectSearchResult, row: Pr
       hit.match.line !== row.line || hit.match.column !== row.column ||
       hit.match.sourceRevision !== row.revision || hit.match.matchText !== row.context.match ||
       hit.match.sourceContent.slice(row.offset, row.offset + row.context.match.length) !== row.context.match) return null;
+  const source = hit.match.sourceContent;
+  const start = row.offset - row.context.before.length;
+  const end = row.offset + row.context.match.length;
+  if (start < 0 || source.slice(start, row.offset) !== row.context.before ||
+      source.slice(end, end + row.context.after.length) !== row.context.after) return null;
   return hit;
 }
 
