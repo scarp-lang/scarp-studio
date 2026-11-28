@@ -1,4 +1,5 @@
 import { ProjectSearchScopeControls, ProjectSearchCoverage } from './components/ProjectSearchScopeControls';
+import { ProjectSearchComparisonPanel } from './components/ProjectSearchComparisonPanel';
 import { DEFAULT_PROJECT_SEARCH_SCOPE, buildProjectScopeInventory, planScopedProjectSearch, summarizeScopedSearch, type ProjectSearchScope, type ScopedSearchSummary } from './model/projectSearchScope';
 import { CommandLibrarySettings } from './components/CommandLibrarySettings';
 import { COMMAND_GROUPS,EMPTY_COMMAND_LIBRARY,commandGroup,collectionLabel,isCommandCollection,isLibraryCommand,searchCommandCollection,recordCommandSelection,togglePinnedCommand,movePinnedCommand,confirmLibraryClear,type CommandCollection,type LibraryClearReview } from './model/commandPaletteLibrary';
@@ -3615,6 +3616,14 @@ export default function App() {
                 busy={busy||compilerBusy||compilerSelecting||compilerScanning} onChange={scope=>{
                   invalidateProjectSearch();setProjectSearchScope(scope);
                 }}/>}
+              {folderPath&&<ProjectSearchComparisonPanel key={'search-observations:'+folderPath}
+                current={projectSearchResult&&projectSearchResult.query===searchQuery&&
+                  projectSearchResult.selection===selectedFolderRef.current?{
+                    query:projectSearchResult.query,
+                    options:{caseSensitive:searchCaseSensitive,wholeWord:searchWholeWord},
+                    summary:projectSearchResult.coverage,
+                  }:null}
+                busy={busy||compilerBusy||compilerSelecting||compilerScanning}/>}
               <div className="open-file-search-toolbar" aria-label="Literal replacement in open files">
                 <label htmlFor="open-file-replacement">Replace with</label>
                 <input id="open-file-replacement" type="text" maxLength={256}
