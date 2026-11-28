@@ -1,4 +1,6 @@
 import {useMemo,useRef,useState} from 'react';
+import {AnalysisSourceOpenPanel,type AnalysisSourceOpenContext} from './AnalysisSourceOpenPanel';
+import {analysisSourceCandidates} from '../model/analysisSourceOpen';
 import {ProjectSearchScopeControls} from './ProjectSearchScopeControls';
 import {DEFAULT_PROJECT_SEARCH_SCOPE,type ProjectSearchScope} from '../model/projectSearchScope';
 import {INSPECTION_READ_LIMITS,INSPECTION_ORIGIN_LABELS,type InspectionSettings,type InspectionMode,
@@ -14,6 +16,7 @@ interface Props{
   listed:readonly ProjectSearchSource[];
   listingLimited:boolean;
   available:boolean;
+  sourceOpen?:AnalysisSourceOpenContext;
   busy:boolean;
   cursorIdentifier:()=>string|null;
   onRun:(plan:ListedReferencePlan,settings:InspectionSettings,query:ListedReferenceQuery,control:InspectionControl)=>Promise<ListedReferenceExecution>;
@@ -128,7 +131,7 @@ export function ListedReferenceResults({report,busy,onNavigate}:{
     </>}
   </section>;
 }
-export function ListedCodeReferencesPanel({listed,listingLimited,available,busy,cursorIdentifier,onRun,onNavigate}:Props){
+export function ListedCodeReferencesPanel({listed,listingLimited,available,busy,cursorIdentifier,onRun,onNavigate,sourceOpen}:Props){
   const [expanded,setExpanded]=useState(false);
   const [identifier,setIdentifier]=useState('');
   const [caseSensitive,setCaseSensitive]=useState(true);
@@ -199,6 +202,7 @@ export function ListedCodeReferencesPanel({listed,listingLimited,available,busy,
       </div>}
       {notice&&<p role="alert">{notice}</p>}
       {result&&<><ListedReferenceResults report={result} busy={blocked} onNavigate={hit=>onNavigate(result,hit)}/>
+        {sourceOpen&&<AnalysisSourceOpenPanel context={sourceOpen} busy={blocked} candidates={analysisSourceCandidates(result.hits)}/>}
         <button type="button" disabled={running} onClick={()=>setResult(null)}>Dismiss listed reference results</button></>}
     </>}
   </section>;
