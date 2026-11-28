@@ -1,5 +1,5 @@
 import { useMemo,useState } from 'react';
-import { DEFAULT_PROJECT_SEARCH_SCOPE, MAX_SCOPE_NAME_QUERY, MAX_SCOPE_PREVIEW_FILES,
+import { DEFAULT_PROJECT_SEARCH_SCOPE, MAX_SCOPE_NAME_QUERY, MAX_SCOPE_PREVIEW_FILES, PROJECT_SEARCH_BATCH_SIZE,
   buildProjectScopeInventory, planScopedProjectSearch, scopeLabel, scopedSearchReport, sameProjectScope, SEARCH_COVERAGE_LABELS, searchCoverageOrigin,
   type ProjectSearchScope, type ScopedSearchSummary } from '../model/projectSearchScope';
 import { MAX_PROJECT_SEARCH_FILES, type ProjectSearchSource } from '../model/projectSearch';
@@ -13,10 +13,12 @@ interface Props{
 export function ProjectSearchScopeControls({listed,scope,busy,onChange}:Props){
   const inventory=useMemo(()=>buildProjectScopeInventory(listed),[listed]);
   const plan=useMemo(()=>planScopedProjectSearch(inventory,scope),[inventory,scope]);
+  const unbatched=useMemo(()=>planScopedProjectSearch(inventory,{...scope,batch:undefined}),[inventory,scope]);
+  const batchCount=unbatched.ok?Math.ceil(unbatched.value.sources.length/PROJECT_SEARCH_BATCH_SIZE):0;
   const [expanded,setExpanded]=useState(false);
   const [preview,setPreview]=useState(false);
   function update(patch:Partial<ProjectSearchScope>){
-    onChange({...scope,...patch});setPreview(false);
+    onChange({...scope,batch:undefined,...patch});setPreview(false);
   }
   return <section className="project-scope-controls" aria-label="Project search scope">
     <button type="button" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>
@@ -38,12 +40,38 @@ export function ProjectSearchScopeControls({listed,scope,busy,onChange}:Props){
           onChange={event=>update({descendants:event.target.checked})}/>Include descendant directories</label>
         <label>Filename contains<input aria-label="Project filename substring" disabled={busy} maxLength={MAX_SCOPE_NAME_QUERY}
           value={scope.filename} placeholder="Literal basename substring" onChange={event=>update({filename:event.target.value})}/></label>
+        <label>Search batch<select aria-label="Project search batch" disabled={busy}
+          value={scope.batch===undefined?'all':String(scope.batch)} onChange={event=>{
+            const value=event.target.value;
+            if(value==='all')update({batch:undefined});
+            else {
+              const index=Number(value);
+              if(Number.isSafeInteger(index)&&index>=1&&index<=batchCount)update({batch:index});
+            }
+          }}>
+          <option value="all">Conventional bounded search</option>
+          {scope.batch!==undefined&&(scope.batch<1||scope.batch>batchCount)&&
+            <option value={String(scope.batch)} disabled>Batch no longer available</option>}
+          {Array.from({length:batchCount},(_,offset)=><option key={offset+1} value={String(offset+1)}>
+            Batch {offset+1} of {batchCount} (up to {PROJECT_SEARCH_BATCH_SIZE} sources)
+          </option>)}
+        </select></label>
         <button type="button" disabled={busy||sameProjectScope(scope,DEFAULT_PROJECT_SEARCH_SCOPE)} onClick={()=>{
           onChange(DEFAULT_PROJECT_SEARCH_SCOPE);setPreview(false);
         }}>Reset project scope</button>
       </div>
       {!plan.ok?<p role="alert">{plan.error}</p>:<>
-        <p role="status">{plan.value.sources.length} listed eligible source(s) in scope · {plan.value.excluded} excluded by scope.</p>
+        <p role="status">{plan.value.batch?plan.value.batch.candidates:plan.value.sources.length} listed eligible source(s) in scope · {plan.value.excluded} excluded by scope.</p>
+        {plan.value.batch&&<div className="project-scope-batch">
+          <p>Batch {plan.value.batch.index} of {plan.value.batch.total}: positions {plan.value.batch.first}–{plan.value.batch.last}.
+            {' '}{plan.value.sources.length} selected · {plan.value.batch.deferred} deferred to other batches.</p>
+          <p>Batch membership follows exact relative label order. Changing the listing or filters may change membership.
+            Each search is separate; completing a batch does not establish combined coverage.</p>
+          <button type="button" disabled={busy||plan.value.batch.index===1}
+            onClick={()=>update({batch:plan.value.batch!.index-1})}>Previous search batch</button>
+          <button type="button" disabled={busy||plan.value.batch.index===plan.value.batch.total}
+            onClick={()=>update({batch:plan.value.batch!.index+1})}>Next search batch</button>
+        </div>}
         {plan.value.sources.length>MAX_PROJECT_SEARCH_FILES&&<p>Only up to {MAX_PROJECT_SEARCH_FILES} files can be scanned per search.
           Choose a narrower directory or filename substring for better coverage.</p>}
         {plan.value.invalid+plan.value.ambiguous+plan.value.uninspected>0&&<p role="alert">
@@ -53,7 +81,7 @@ export function ProjectSearchScopeControls({listed,scope,busy,onChange}:Props){
           {preview?'Hide scope inventory':'Review scope inventory'}
         </button>
         {preview&&<div className="project-scope-inventory">
-          <p>Eligible candidates only; read and result budgets still apply.</p>
+          <p>{plan.value.batch?'Selected batch candidates only;':'Eligible candidates only;'} read and result budgets still apply.</p>
           {plan.value.sources.length?<ul>{plan.value.sources.slice(0,MAX_SCOPE_PREVIEW_FILES).map(source=><li key={source.name}>
             <code dir="auto">{source.name}</code>
           </li>)}</ul>:<p>No eligible sources match this scope.</p>}
@@ -70,7 +98,8 @@ export function ProjectSearchCoverage({summary}:{summary:ScopedSearchSummary}){
   const report=useMemo(()=>expanded?scopedSearchReport(summary,{includeLabels,includeFilenameQuery}):'',
     [expanded,summary,includeLabels,includeFilenameQuery]);
   return <section className="project-scope-coverage" aria-label="Project search coverage">
-    <p>{scopeLabel(summary.scope)} · {summary.inScope} eligible candidate(s) · {summary.excluded} excluded by scope</p>
+    <p>{scopeLabel(summary.scope)} · {summary.inScope} {summary.batch?'selected batch':'eligible'} candidate(s) · {summary.excluded} excluded by scope</p>
+    {summary.batch&&<p>Batch {summary.batch.index} of {summary.batch.total} · {summary.batch.deferred} deferred to other batches. Separate searches are not combined.</p>}
     {summary.withheld>0&&<p role="alert">{summary.withheld} listing entries were withheld before reading.</p>}
     {summary.incomplete&&<p>Coverage is incomplete. Zero displayed matches does not prove the query is absent.</p>}
     <button type="button" aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>
