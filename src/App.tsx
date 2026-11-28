@@ -82,6 +82,9 @@ import { IdentifierEditPanel } from './components/IdentifierEditPanel';
 import { ProjectIdentifierMigrationPanel } from './components/ProjectIdentifierMigrationPanel';
 import { ProjectSourceManifestPanel } from './components/ProjectSourceManifestPanel';
 import { executeSourceManifest,type ManifestExecution } from './model/projectSourceManifest';
+import { ProjectLiteralReplacementPanel } from './components/ProjectLiteralReplacementPanel';
+import { confirmProjectLiteralReplacement,scanProjectLiteralReplacement,prepareLiteralReplacementApply,type ProjectLiteralReview,type ProjectLiteralPlan,type LiteralScanExecution,type LiteralReplaceOutcome } from './model/projectLiteralReplacement';
+import type { LiteralReplaceSettings } from './model/literalSourceReplacement';
 import { ProjectWhitespacePanel } from './components/ProjectWhitespacePanel';
 import { confirmProjectWhitespace,scanProjectWhitespace,prepareWhitespaceApply,
   type ProjectWhitespaceReview,type ProjectWhitespacePlan,type WhitespaceScanExecution,type WhitespaceApplyOutcome } from './model/projectWhitespace';
@@ -435,6 +438,7 @@ export default function App() {
   const [lineRangeUndo, setLineRangeUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [identifierUndo, setIdentifierUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [migrationUndo, setMigrationUndo] = useState<OpenFileReplaceUndo | null>(null);
+  const [literalUndo,setLiteralUndo]=useState<OpenFileReplaceUndo|null>(null);
   const [whitespaceUndo, setWhitespaceUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [bufferTransferUndo, setBufferTransferUndo] = useState<OpenFileReplaceUndo | null>(null);
   const [checkpointUndo, setCheckpointUndo] = useState<OpenFileReplaceUndo | null>(null);
@@ -1691,6 +1695,63 @@ export default function App() {
     const path=resolveAuditFile(audit,id,selectedFolderRef.current,selectedProjectPath);
     if(path)void openFolderFile(path);
     else setError('The audited source is no longer uniquely listed.');
+  }
+
+  async function runProjectLiteralReplacement(review:ProjectLiteralReview,scope:ProjectSearchScope,
+    settings:LiteralReplaceSettings,control:InspectionControl):Promise<LiteralScanExecution>{
+    const selection=selectedFolderRef.current;
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return {kind:'invalidated'};
+    const checked=confirmProjectLiteralReplacement(review,selection.files,scope,
+      folderListingLimited||unavailableProjectFolders.length>0,settings);
+    if(!checked.ok)return {kind:'failed',error:checked.error};
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&hasUnchangedEditorSession(start,liveEditor.current);
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const result=await scanProjectLiteralReplacement(checked.value,start,readScarpSource,{
+        ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+      });
+      return current()?result:{kind:'invalidated'};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  async function applyProjectLiteralReplacement(plan:ProjectLiteralPlan,control:InspectionControl):Promise<LiteralReplaceOutcome>{
+    const selection=selectedFolderRef.current;
+    const fail=(error:string):LiteralReplaceOutcome=>({ok:false,error});
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return fail('Finish current native operations and choose a project.');
+    const start=liveEditor.current,epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&hasUnchangedEditorSession(start,liveEditor.current);
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const prepared=await prepareLiteralReplacementApply(plan,selection.files,
+        folderListingLimited||unavailableProjectFolders.length>0,start,readScarpSource,{
+          ...control,isCurrent:current,yieldBetweenFiles:()=>new Promise<void>(resolve=>setTimeout(resolve,0)),
+        });
+      if(prepared.kind==='failed')return fail(prepared.error);
+      if(prepared.kind!=='ready'||!current()||control.isCancelled())return fail('Literal operation cancelled or invalidated. Nothing changed.');
+      const predicted=editorReducer(start,prepared.value.action);
+      if(predicted===start)return fail('The editor declined the literal replacement review. Nothing changed.');
+      const undo=createReviewedStageUndo(prepared.value.staged.changes,predicted);
+      if(!undo)return fail('Could not prepare reversible literal replacements. Nothing changed.');
+      dispatch(prepared.value.action);
+      autoSaveReview.current.holdReplacements(liveEditor.current.documents,undo.changes.map(change=>change.id));
+      setLiteralUndo(undo);setNotice('Staged reviewed literal replacements. Review or Undo before Save.');
+      return {ok:true,files:prepared.value.staged.changes.length,replacements:prepared.value.replacements,newTabs:prepared.value.staged.newTabs};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  function undoProjectLiteralReplacement():void{
+    if(recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning||!literalUndo||
+      !canUndoOpenFileReplace(literalUndo,liveEditor.current)){
+      setError('Literal replacement undo is stale or a native operation is active. Nothing changed.');return;
+    }
+    dispatch({type:'replace-open-files',changes:literalUndo.changes,allSnapshots:literalUndo.after});
+    autoSaveReview.current.holdReplacements(liveEditor.current.documents,literalUndo.changes.map(change=>change.id));
+    setLiteralUndo(null);setError(null);setNotice('Restored pre-replacement contents. Newly opened tabs remain open.');
   }
 
   async function runProjectWhitespace(review:ProjectWhitespaceReview,scope:ProjectSearchScope,
@@ -3949,6 +4010,13 @@ export default function App() {
             listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
             available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
             onRun={runSourceManifest}/>
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="project-literal-replacement">
+          <ProjectLiteralReplacementPanel key={'project-literal:'+folderPath} listed={folderEntries}
+            listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
+            available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning} editor={editorState}
+            onScan={runProjectLiteralReplacement} onApply={applyProjectLiteralReplacement}
+            undoAvailable={!!literalUndo&&canUndoOpenFileReplace(literalUndo,editorState)} onUndo={undoProjectLiteralReplacement}/>
           </ExplorerToolSlot>
           </ExplorerToolDirectory>
         </aside>

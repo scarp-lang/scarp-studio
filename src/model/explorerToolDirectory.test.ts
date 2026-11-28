@@ -4,7 +4,7 @@ import { DEFAULT_TOOL_DIRECTORY,EXPLORER_TOOLS,MAX_TOOL_QUERY,MAX_TOOL_RECENT,fi
 const ids=(state:ToolDirectoryState)=>filterExplorerTools(state).map(tool=>tool.id);
 describe('Explorer tool directory',()=>{
   it('exposes all registered tools by default with unique stable identities',()=>{
-    expect(ids(DEFAULT_TOOL_DIRECTORY)).toHaveLength(26);
+    expect(ids(DEFAULT_TOOL_DIRECTORY)).toHaveLength(27);
     expect(new Set(ids(DEFAULT_TOOL_DIRECTORY)).size).toBe(EXPLORER_TOOLS.length);
     expect(new Set(EXPLORER_TOOLS.map(tool=>tool.category))).toEqual(new Set(TOOL_CATEGORIES));
   });
