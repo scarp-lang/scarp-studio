@@ -126,6 +126,7 @@ import { SourceImportsPanel } from './components/SourceImportsPanel';
 import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
 import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { WorkspaceArchitecturePanel } from './components/WorkspaceArchitecturePanel';
+import { WorkspaceArchitectureGovernancePanel } from './components/WorkspaceArchitectureGovernancePanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
 import { ProjectInspectionPanel } from './components/ProjectInspectionPanel';
@@ -4084,6 +4085,9 @@ export default function App() {
             activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting || compilerScanning}
             onNavigate={jumpToSourceInsight} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="architecture-governance">
+          <WorkspaceArchitectureGovernancePanel documents={documents} listed={folderEntries} activeId={activeId} />
           </ExplorerToolSlot>
           <ExplorerToolSlot id="symbols">
           <WorkspaceSymbolsPanel documents={documents} activeId={activeId}
