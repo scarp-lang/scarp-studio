@@ -33,6 +33,8 @@ import { disambiguateDocumentNames } from './model/documentLabels';
 import { saveChangesWorkspaceListing } from './model/workspaceSaveRefresh';
 import { preferredProjectDirectory, retainedProjectDirectory, projectTargetForListedSource, selectedManifestPath } from './model/projectTargets';
 import { buildQuickOpenEntries, type QuickOpenEntry } from './model/projectQuickOpen';
+import { searchQuickOpen, quickOpenLabelParts, QUICK_OPEN_SCOPES, QUICK_OPEN_SCOPE_LABELS,
+  type QuickOpenScope, type QuickOpenMatchMode } from './model/quickOpenSearch';
 import { isCurrentListedSourceRead, resolveListedProjectOpen } from './model/listedProjectOpen';
 import {
   DEFAULT_EDITOR_PREFERENCES, editorDisplayOptions,
@@ -543,6 +545,8 @@ export default function App() {
   const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteIndex, setPaletteIndex] = useState(0);
+  const [quickOpenScope, setQuickOpenScope] = useState<QuickOpenScope>('all');
+  const [quickOpenMode, setQuickOpenMode] = useState<QuickOpenMatchMode>('fuzzy');
   const paletteInput = useRef<HTMLInputElement | null>(null);
   const paletteDismiss = useRef<HTMLButtonElement | null>(null);
   const paletteSelectedResult = useRef<HTMLButtonElement | null>(null);
@@ -816,12 +820,18 @@ export default function App() {
   }
 
   const builtInPaletteCommands=studioCommands.map(entry=>({...entry,detail:studioCommandDetail(entry.id,entry.detail,shortcuts.bindings)}));
+  const quickOpenEntries = useMemo(() => paletteMode === 'files'
+    ? buildQuickOpenEntries(documents, folderEntries) : [], [paletteMode, documents, folderEntries]);
+  const quickOpenResults = useMemo(() => searchQuickOpen(quickOpenEntries, paletteQuery,
+    { scope: quickOpenScope, mode: quickOpenMode, activeId }),
+    [quickOpenEntries, paletteQuery, quickOpenScope, quickOpenMode, activeId]);
   const paletteEntries: readonly NavigationEntry[] = paletteMode === 'files'
-    ? buildQuickOpenEntries(documents, folderEntries)
+    ? quickOpenEntries
     : paletteMode === 'symbols' ? buildDeclarationEntries(active, declarationOutline) : [...builtInPaletteCommands,
       ...buildSnippetPaletteEntries(userSnippets, active)];
   const paletteResults = paletteMode === 'line'
     ? []
+    : paletteMode === 'files' ? quickOpenResults.matches.map(match => match.entry)
     : paletteMode==='commands'?searchCommandCollection(paletteEntries,commandLibrary,commandCollection,paletteQuery):filterNavigationEntries(paletteEntries, paletteQuery);
   const selectedPaletteIndex = clampPaletteIndex(paletteIndex, paletteResults.length);
   const selectedPaletteId = paletteResults[selectedPaletteIndex]?.id;
@@ -843,6 +853,8 @@ export default function App() {
     paletteRestoreOnClose.current = false;
     setPaletteMode(mode);
     setCommandCollection('all');
+    setQuickOpenScope('all');
+    setQuickOpenMode('fuzzy');
     setPaletteQuery('');
     setPaletteIndex(0);
   }
@@ -4685,6 +4697,23 @@ export default function App() {
               />
               <button type="button" ref={paletteDismiss} className="nav-dismiss" onClick={() => hidePalette()} aria-label="Close navigation">×</button>
             </div>
+            {paletteMode === 'files' && <div className="nav-collection-controls quick-open-controls">
+              <label>Sources <select aria-label="Quick Open source scope" value={quickOpenScope} onChange={event => {
+                const next = QUICK_OPEN_SCOPES.find(scope => scope === event.target.value);
+                if (next) { setQuickOpenScope(next); setPaletteIndex(0); paletteInput.current?.focus(); }
+              }}>
+                {QUICK_OPEN_SCOPES.map(scope => <option key={scope} value={scope}>{QUICK_OPEN_SCOPE_LABELS[scope]}</option>)}
+              </select></label>
+              <label>Match <select aria-label="Quick Open matching mode" value={quickOpenMode} onChange={event => {
+                const next = event.target.value;
+                if (next === 'fuzzy' || next === 'literal') {
+                  setQuickOpenMode(next); setPaletteIndex(0); paletteInput.current?.focus();
+                }
+              }}>
+                <option value="fuzzy">Fuzzy filename</option>
+                <option value="literal">Literal substring</option>
+              </select></label>
+            </div>}
             {paletteMode==='commands'&&<div className="nav-collection-controls">
               <label>Collection <select aria-label="Command palette collection" value={commandCollection} onChange={event=>{
                 if(isCommandCollection(event.target.value)){setCommandCollection(event.target.value);setPaletteIndex(0);paletteInput.current?.focus();}
@@ -4711,13 +4740,23 @@ export default function App() {
                     onMouseDown={event => event.preventDefault()}
                     onMouseEnter={() => setPaletteIndex(index)}
                     onClick={() => executePaletteEntry(item)}>
-                    <span className="nav-result-name">{item.label}</span>
+                    <span className="nav-result-name">{paletteMode === 'files'
+                      ? quickOpenLabelParts(item.label, quickOpenResults.matches[index]?.labelPositions ?? []).map((part, partIndex) =>
+                        part.matched ? <mark key={partIndex} className="quick-open-match">{part.text}</mark> : <span key={partIndex}>{part.text}</span>)
+                      : item.label}</span>
                     <span className="nav-result-detail">{paletteMode==='commands'&&commandLibrary.pinned.includes(item.id)?'Pinned · ':''}
                       {paletteMode==='commands'&&commandGroup(item.id)?commandGroup(item.id)+' · ':''}{item.detail}</span>
                   </button>
                 ))}
                 {!paletteResults.length && <p className="nav-hint">{paletteMode === 'symbols'
                   ? 'No matching declarations in the current Scarp file.' : 'No matching Scarp Studio items.'}</p>}
+                {paletteMode === 'files' && <p className="nav-hint">
+                  {quickOpenResults.invalidQuery ? 'Enter a valid filename or path query.' :
+                    quickOpenResults.matched + ' matches in ' + quickOpenResults.eligible + ' eligible sources.'}
+                  {quickOpenResults.resultLimited && ' Showing the first 40 ranked matches; refine the query.'}
+                  {quickOpenResults.inputLimited && ' Candidate limit reached; only the first 1,000 entries were searched.'}
+                  {' No files are read until a source is selected.'}
+                </p>}
                 {paletteMode === 'symbols' && <p className="nav-hint">Current file only · up to 500 declarations · up to 40 results. Refine the query to find more.</p>}
               </div>
             )}
