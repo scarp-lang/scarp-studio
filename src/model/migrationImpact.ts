@@ -68,8 +68,9 @@ function windowBounds(line:SnapshotLine,positions:readonly SitePosition[]){
     Math.min(line.text.length,positions.at(-1)!.end+IMPACT_CONTEXT));
 }
 function buildWindow(source:string,line:SnapshotLine,positions:readonly SitePosition[],rules:readonly MigrationRule[],
-  ordinal:number):MigrationResult<ImpactWindow>{
-  const bounds=windowBounds(line,positions);
+  ordinal:number,previousEnd:number,nextStart:number):MigrationResult<ImpactWindow>{
+  const candidate=windowBounds(line,positions);
+  const bounds={start:Math.max(candidate.start,previousEnd),end:Math.min(candidate.end,nextStart)};
   const before:ImpactFragment[]=[],after:ImpactFragment[]=[];
   let cursor=bounds.start;
   const plain=(text:string)=>{
@@ -98,8 +99,8 @@ function buildWindow(source:string,line:SnapshotLine,positions:readonly SitePosi
   })};
 }
 /** Group nearby selected edits into bounded context windows. A gap between
- * windows is never implied to be edited. Adjacent windows may share context
- * but every selected site is represented exactly once. */
+ * windows is never implied to be edited. Context stops before selected
+ * tokens belonging to adjacent windows; each edit is represented once. */
 function lineWindows(source:string,line:SnapshotLine,positions:readonly SitePosition[],rules:readonly MigrationRule[]):MigrationResult<readonly ImpactWindow[]>{
   const groups:SitePosition[][]=[];
   for(const position of positions){
@@ -114,7 +115,9 @@ function lineWindows(source:string,line:SnapshotLine,positions:readonly SitePosi
   }
   const windows:ImpactWindow[]=[];
   for(const [index,group] of groups.entries()){
-    const result=buildWindow(source,line,group,rules,index);
+    const previousEnd=groups[index-1]?.at(-1)?.end??0;
+    const nextStart=groups[index+1]?.[0].start??line.text.length;
+    const result=buildWindow(source,line,group,rules,index,previousEnd,nextStart);
     if(!result.ok)return result;
     windows.push(result.value);
   }
