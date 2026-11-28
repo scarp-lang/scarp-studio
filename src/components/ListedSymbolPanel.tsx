@@ -1,4 +1,6 @@
 import {useMemo,useRef,useState} from 'react';
+import {AnalysisSourceOpenPanel,type AnalysisSourceOpenContext} from './AnalysisSourceOpenPanel';
+import {analysisSourceCandidates} from '../model/analysisSourceOpen';
 import {ListedFunctionInterfacesPanel} from './ListedFunctionInterfacesPanel';
 import {ListedCallTopologyPanel} from './ListedCallTopologyPanel';
 import {ProjectSearchScopeControls} from './ProjectSearchScopeControls';
@@ -18,6 +20,7 @@ interface Props{
   listed:readonly ProjectSearchSource[];
   listingLimited:boolean;
   available:boolean;
+  sourceOpen?:AnalysisSourceOpenContext;
   busy:boolean;
   onRun:(plan:ProjectInspectionPlan,settings:InspectionSettings,control:InspectionControl,captureInterfaces:boolean)=>Promise<ListedSymbolExecution>;
   onNavigate:(report:ListedSymbolReport,site:ListedSymbolSite)=>void;
@@ -189,7 +192,7 @@ export function ListedSymbolResults({report,busy,onNavigate}:{
   </section>;
 }
 
-export function ListedSymbolPanel({listed,listingLimited,available,busy,onRun,onNavigate}:Props){
+export function ListedSymbolPanel({listed,listingLimited,available,busy,onRun,onNavigate,sourceOpen}:Props){
   const [expanded,setExpanded]=useState(false);
   const [scope,setScope]=useState<ProjectSearchScope>(DEFAULT_PROJECT_SEARCH_SCOPE);
   const [mode,setMode]=useState<InspectionMode>('working');
@@ -253,6 +256,7 @@ export function ListedSymbolPanel({listed,listingLimited,available,busy,onRun,on
     <ListedFunctionInterfacesPanel report={report} busy={blocked} onNavigate={onNavigate} visible={expanded}/>
     {expanded&&<>
       {report&&<><ListedSymbolResults report={report} busy={blocked} onNavigate={site=>onNavigate(report,site)}/>
+        {sourceOpen&&<AnalysisSourceOpenPanel context={sourceOpen} busy={blocked} candidates={analysisSourceCandidates([...report.declarations,...report.calls])}/>}
         <button type="button" disabled={running} onClick={()=>setReport(null)}>Dismiss listed symbol results</button></>}
     </>}
   </section>;
