@@ -12,7 +12,8 @@
     "tauri": "tauri",
     "check:release-candidate": "node scripts/check-release-candidate.mjs",
     "test:release-candidate": "node --test scripts/check-release-candidate.node-tests.mjs scripts/windows-acceptance-report.node-tests.mjs scripts/settings-browser-harness.node-tests.mjs",
-    "test:settings-browser": "node scripts/settings-browser-smoke.mjs"
+    "test:settings-browser": "node scripts/settings-browser-smoke.mjs",
+    "test:search-browser": "vite build --config vite.search-smoke.config.ts && node scripts/search-browser-smoke.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

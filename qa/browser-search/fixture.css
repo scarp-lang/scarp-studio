@@ -1,0 +1,48 @@
+/* Deliberately independent of the desktop build. Keep every control visible
+   to the browser harness without shipping a test route in the application. */
+body {
+  margin: 1rem;
+  font: 15px/1.5 system-ui, sans-serif;
+  color: #18222c;
+  background: #fff;
+}
+main {
+  max-width: 1100px;
+}
+section, [role="group"] {
+  border: 1px solid #abb5c0;
+  margin: .75rem 0;
+  padding: .75rem;
+}
+button, input, select, textarea {
+  font: inherit;
+  margin: .2rem;
+}
+label {
+  display: block;
+}
+button:disabled {
+  opacity: .55;
+}
+textarea {
+  display: block;
+  width: 95%;
+}
+table {
+  border-collapse: collapse;
+}
+th, td {
+  padding: .25rem .5rem;
+  border: 1px solid #abb5c0;
+}
+dl > div {
+  display: flex;
+  gap: .5rem;
+}
+output {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.project-match-context {
+  white-space: pre-wrap;
+}
