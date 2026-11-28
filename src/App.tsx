@@ -101,6 +101,8 @@ import { SourceBookmarksPanel } from './components/SourceBookmarksPanel';
 import { WorkspaceInsightsPanel } from './components/WorkspaceInsightsPanel';
 import { CodeReferencesPanel } from './components/CodeReferencesPanel';
 import { WorkspaceTaskBoard } from './components/WorkspaceTaskBoard';
+import { ProjectInspectionPanel } from './components/ProjectInspectionPanel';
+import { confirmProjectInspection, executeProjectInspection, resolveInspectionSource, type InspectionSettings, type ProjectInspectionPlan, type ProjectInspectionReport, type InspectionControl, type InspectionExecution } from './model/projectInspection';
 import { DraftRecoveryPanel } from './components/DraftRecoveryPanel';
 import { StudioSettingsPanel } from './components/StudioSettingsPanel';
 import { IntelliSenseSettings } from './components/IntelliSenseSettings';
@@ -1664,6 +1666,33 @@ export default function App() {
     const path=resolveAuditFile(audit,id,selectedFolderRef.current,selectedProjectPath);
     if(path)void openFolderFile(path);
     else setError('The audited source is no longer uniquely listed.');
+  }
+
+  async function runListedInspection(plan:ProjectInspectionPlan, settings:InspectionSettings, control:InspectionControl):Promise<InspectionExecution>{
+    const selection=selectedFolderRef.current;
+    if(!isTauri()||!selection||recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)
+      return {kind:'invalidated'};
+    const checked=confirmProjectInspection(plan,selection.files,{
+      ...settings,listingLimited:folderListingLimited||unavailableProjectFolders.length>0,
+    });
+    if(!checked.ok){setError(checked.error);return {kind:'invalidated'};}
+    const start=liveEditor.current;
+    const epoch=projectResultEpoch.current;
+    const current=()=>control.isCurrent()&&selection===selectedFolderRef.current&&
+      epoch===projectResultEpoch.current&&start.sessionRevision===liveEditor.current.sessionRevision;
+    filePickerInProgress.current=true;setBusy(true);setError(null);
+    try{
+      const result=await executeProjectInspection(checked.value,start.documents,readScarpSource,{...control,isCurrent:current});
+      if(result.kind==='report'&&current())setNotice('Listed source inspection '+result.report.status+'. No files changed.');
+      return current()?result:{kind:'invalidated'};
+    }finally{filePickerInProgress.current=false;setBusy(false);}
+  }
+
+  function openInspectedSource(report:ProjectInspectionReport,label:string):void{
+    if(recoveryOperationsBlocked()||compilerBusy||compilerSelecting||compilerScanning)return;
+    const path=resolveInspectionSource(report,label,selectedFolderRef.current?.files??[]);
+    if(!path){setError('That inspected label is no longer uniquely listed. Refresh Explorer and inspect again.');return;}
+    void openFolderFile(path);
   }
 
   async function scanOpenFilesOnDisk(): Promise<WorkspaceDiskResult<WorkspaceDiskReview>> {
@@ -3553,6 +3582,12 @@ export default function App() {
           <WorkspaceTaskBoard documents={documents} activeId={activeId}
             busy={busy || compilerBusy || compilerSelecting}
             onNavigate={jumpToSourceInsight} />
+          </ExplorerToolSlot>
+          <ExplorerToolSlot id="listed-inspection">
+          <ProjectInspectionPanel key={'listed-inspection:'+folderPath} listed={folderEntries}
+            listingLimited={folderListingLimited||unavailableProjectFolders.length>0}
+            available={isTauri()&&!!folderPath} busy={busy||compilerBusy||compilerSelecting||compilerScanning}
+            onRun={runListedInspection} onOpen={openInspectedSource}/>
           </ExplorerToolSlot>
           </ExplorerToolDirectory>
         </aside>
