@@ -47,7 +47,7 @@ export async function listedReferenceScenarios(d,step){
       await d.change(identifier,'helper');
       await prepareReferences(d);
       await d.contains(review,'Match case');
-      await d.contains(review,'6 selected of 6 listed sources');
+      await d.contains(review,'6 selected of 6 listed files');
       await d.button(review,'Review reference source labels');
       await d.contains(review,helper);
       await d.contains(review,missing);
