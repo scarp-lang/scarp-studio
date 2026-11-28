@@ -10,6 +10,7 @@ import {validateMigrationRules,scanMigrationFile,replaceMigrationSites,mappingWa
   MAX_MIGRATION_SITES,MIGRATION_ROLES,MIGRATION_ROLE_LABELS,MIGRATION_WARNING_LABELS,
   type MigrationRule,type MigrationResult,type MigrationSite,type MigrationWarning,type MigrationRole} from './migrationRules';
 import {utf8ByteLength} from './utf8Text';
+import type {OpenFileReplaceUndo} from './openFileReplaceUndo';
 
 export const MIGRATION_PAGE_SIZE=16;
 export interface ProjectMigrationReview{
@@ -259,3 +260,22 @@ export function migrationInventoryReport(inventory:MigrationInventory,selected:r
   }
   return lines.join('\n');
 }
+
+/** Undo restores original contents, but leaves newly opened tabs present
+ * and clean. It is valid only against the exact committed editor snapshots.
+ */
+export function createMigrationUndo(changes:readonly MigrationChange[],after:EditorState):OpenFileReplaceUndo|null{
+  if(!changes.length)return null;
+  const replacements:OpenFileReplaceUndo['changes'][number][]=[];
+  for(const change of changes){
+    const matching=after.documents.filter(doc=>doc.path!==null&&sameFilePath(doc.path,change.path));
+    if(matching.length!==1)return null;
+    const current=matching[0];
+    if(current.content!==change.after||current.savedContent!==(change.document?.savedContent??change.before)||
+      (change.document&&current.id!==change.document.id))return null;
+    replacements.push({id:current.id,snapshot:Object.freeze({...current}),content:change.before});
+  }
+  return {after:after.documents.map(doc=>Object.freeze({...doc})),changes:replacements};
+}
+export type MigrationOutcome={readonly ok:true;readonly replacements:number;readonly files:number;readonly newTabs:number}|
+  {readonly ok:false;readonly error:string};
