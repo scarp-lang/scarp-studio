@@ -5,6 +5,13 @@ import { ProjectSearchComparisonPanel } from '../../src/components/ProjectSearch
 import { ProjectSearchLedgerPanel } from '../../src/components/ProjectSearchLedgerPanel';
 import { ProjectSearchPresetsPanel } from '../../src/components/ProjectSearchPresetsPanel';
 import { ProjectMatchExplorer } from '../../src/components/ProjectMatchExplorer';
+import { ProjectInspectionPanel } from '../../src/components/ProjectInspectionPanel';
+import { ProjectVerificationPanel } from '../../src/components/ProjectVerificationPanel';
+import { confirmProjectInspection, executeProjectInspection, resolveInspectionSource,
+  type ProjectInspectionPlan, type InspectionSettings, type InspectionControl, type InspectionExecution,
+  type ProjectInspectionReport } from '../../src/model/projectInspection';
+import { confirmProjectVerification, executeProjectVerification,
+  type ProjectVerificationPlan, type VerificationRule, type VerificationControl, type VerificationExecution } from '../../src/model/projectVerification';
 import { ProjectSearchSweepPanel } from '../../src/components/ProjectSearchSweepPanel';
 import { confirmSearchSweep, executeSearchSweep, type SearchSweepPlan, type SweepControl, type SweepExecution } from '../../src/model/projectSearchSweep';
 import { searchListedProjectSources, type ProjectSearchResult, type ProjectSearchHit } from '../../src/model/projectSearch';
@@ -15,7 +22,7 @@ import {
 import type { ProjectSearchSettings } from '../../src/model/projectSearchPresets';
 import {
   createFixture, listedSources, editBuffer, recoverFile, addListedFile,
-  removeDenseFile, createFixtureReader, QUERY, type FixtureWorkspace,
+  removeDenseFile, createFixtureReader, addFixtureTask, QUERY, type FixtureWorkspace,
 } from './fixture';
 import './fixture.css';
 
@@ -156,6 +163,57 @@ function Workbench() {
     }
   }
 
+  /** Use the same synthetic read adapter and generation checks for all
+   * reviewed analyses. A reset or workspace mutation retires in-flight work.
+   */
+  async function reviewedAnalysis<T extends InspectionExecution | VerificationExecution>(
+    control: InspectionControl,
+    execute: (read: ReturnType<typeof createFixtureReader>['read'], current: () => boolean) => Promise<T>,
+  ): Promise<T | {kind:'invalidated'}> {
+    if (busy) return {kind:'invalidated'};
+    retire();
+    const id = ++generation.current;
+    setBusy(true);
+    setSearches(value => value + 1);
+    let blocked = paused;
+    const reader = createFixtureReader(workspace, async () => {
+      if (!blocked) return;
+      blocked = false;
+      await new Promise<void>(resolve => { releaseRead.current = resolve; });
+      releaseRead.current = null;
+    });
+    const current = () => generation.current === id && control.isCurrent();
+    try {
+      const result = await execute(reader.read, current);
+      if (generation.current !== id) return {kind:'invalidated'};
+      setReadPaths(previous => [...previous, ...reader.paths()]);
+      return result;
+    } finally {
+      if (generation.current === id) setBusy(false);
+    }
+  }
+
+  async function runInspection(plan: ProjectInspectionPlan, config: InspectionSettings,
+    control: InspectionControl): Promise<InspectionExecution> {
+    const checked = confirmProjectInspection(plan, listed, config);
+    if (!checked.ok) return {kind:'invalidated'};
+    return reviewedAnalysis(control, (read, isCurrent) =>
+      executeProjectInspection(checked.value, workspace.documents, read, {...control,isCurrent}));
+  }
+
+  async function runVerification(plan: ProjectVerificationPlan, config: InspectionSettings,
+    rules: readonly VerificationRule[], control: VerificationControl): Promise<VerificationExecution> {
+    const checked = confirmProjectVerification(plan, listed, config, rules);
+    if (!checked.ok) return {kind:'invalidated'};
+    return reviewedAnalysis(control, (read, isCurrent) =>
+      executeProjectVerification(checked.value, workspace.documents, read, {...control,isCurrent}));
+  }
+
+  function openInspection(report: ProjectInspectionReport, label: string) {
+    const resolved = resolveInspectionSource(report, label, listed);
+    setNavigation(resolved ? JSON.stringify({name:label,source:'inspection'}) : '');
+  }
+
   function navigate(hit: ProjectSearchHit) {
     // Capture the callback arguments only. Real native navigation and its
     // filesystem revalidation belong to desktop acceptance, not this fixture.
@@ -175,6 +233,7 @@ function Workbench() {
     <section aria-label="Fixture controls">
       <button onClick={reset}>Reset fixture</button>
       <button onClick={() => mutate(editBuffer)}>Edit fixture buffer</button>
+      <button onClick={() => mutate(addFixtureTask)}>Add fixture task</button>
       <button onClick={() => mutate(recoverFile)}>Recover fixture read</button>
       <button onClick={() => mutate(addListedFile)}>Add fixture source</button>
       <button onClick={() => mutate(removeDenseFile)}>Remove dense fixture source</button>
@@ -219,6 +278,9 @@ function Workbench() {
         options: completed.settings.options,
         summary: completed.summary,
       } : null} busy={busy}/>
+      <ProjectInspectionPanel listed={listed} listingLimited={false} available busy={busy}
+        onRun={runInspection} onOpen={openInspection}/>
+      <ProjectVerificationPanel listed={listed} listingLimited={false} available busy={busy} onRun={runVerification}/>
       {completed && <section key={completed.id} aria-label="Fixture completed search">
         <output data-testid="completed-id">{completed.id}</output>
         <ProjectSearchCoverage summary={completed.summary}/>

@@ -68,6 +68,17 @@ export function editBuffer(workspace: FixtureWorkspace): FixtureWorkspace {
   };
 }
 
+export function addFixtureTask(workspace: FixtureWorkspace): FixtureWorkspace {
+  return {
+    ...workspace,
+    documents: workspace.documents.map(document => ({
+      ...document,
+      content: document.content + '\n// TODO(privateOwner): fixture-private-task  ',
+      revision: document.revision + 1,
+    })),
+  };
+}
+
 export function recoverFile(workspace: FixtureWorkspace): FixtureWorkspace {
   return { ...workspace, unavailable: [] };
 }
