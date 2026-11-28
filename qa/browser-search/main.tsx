@@ -187,12 +187,12 @@ function Workbench() {
     rules:readonly MigrationRule[],control:InspectionControl):Promise<MigrationScanExecution>{
     const confirmed=confirmProjectMigration(review,listed,scope,false,rules);
     if(!confirmed.ok)return {kind:'failed',error:confirmed.error};
-    return transactionRead(control,(read,isCurrent)=>scanProjectMigration(confirmed.value,editor,read,{...control,isCurrent}),
+    return transactionRead<MigrationScanExecution>(control,(read,isCurrent)=>scanProjectMigration(confirmed.value,editor,read,{...control,isCurrent}),
       {kind:'invalidated'});
   }
   async function applyMigration(plan:ProjectMigrationPlan,control:InspectionControl):Promise<MigrationOutcome>{
     const fail={ok:false as const,error:'Migration cancelled or invalidated. Nothing changed.'};
-    const result=await transactionRead(control,(read,isCurrent)=>prepareMigrationApply(plan,listed,false,editor,read,
+    const result=await transactionRead<Awaited<ReturnType<typeof prepareMigrationApply>>>(control,(read,isCurrent)=>prepareMigrationApply(plan,listed,false,editor,read,
       {...control,isCurrent}),{kind:'invalidated'});
     if(result.kind==='failed')return {ok:false,error:result.error};
     if(result.kind!=='prepared'||control.isCancelled()||!control.isCurrent()||generation.current!==editor.sessionRevision)return fail;
@@ -208,13 +208,13 @@ function Workbench() {
     control:InspectionControl):Promise<WhitespaceScanExecution>{
     const confirmed=confirmProjectWhitespace(review,listed,scope,false,options);
     if(!confirmed.ok)return {kind:'failed',error:confirmed.error};
-    return transactionRead(control,(read,isCurrent)=>scanProjectWhitespace(confirmed.value,editor,read,{...control,isCurrent}),
+    return transactionRead<WhitespaceScanExecution>(control,(read,isCurrent)=>scanProjectWhitespace(confirmed.value,editor,read,{...control,isCurrent}),
       {kind:'invalidated'});
   }
 
   async function applyWhitespace(plan:ProjectWhitespacePlan,control:InspectionControl):Promise<WhitespaceApplyOutcome>{
     const fail={ok:false as const,error:'Whitespace operation cancelled or invalidated. Nothing changed.'};
-    const result=await transactionRead(control,(read,isCurrent)=>prepareWhitespaceApply(plan,listed,false,editor,read,
+    const result=await transactionRead<Awaited<ReturnType<typeof prepareWhitespaceApply>>>(control,(read,isCurrent)=>prepareWhitespaceApply(plan,listed,false,editor,read,
       {...control,isCurrent}),{kind:'invalidated'});
     if(result.kind==='failed')return {ok:false,error:result.error};
     if(result.kind!=='ready'||control.isCancelled()||!control.isCurrent()||generation.current!==editor.sessionRevision)return fail;
@@ -237,7 +237,7 @@ function Workbench() {
     control:InspectionControl):Promise<ManifestExecution>{
     const confirmed=confirmProjectInspection(plan,listed,settings);
     if(!confirmed.ok)return {kind:'invalidated'};
-    return transactionRead(control,(read,isCurrent)=>executeSourceManifest(confirmed.value,editor.documents,read,
+    return transactionRead<ManifestExecution>(control,(read,isCurrent)=>executeSourceManifest(confirmed.value,editor.documents,read,
       {...control,isCurrent}),{kind:'invalidated'});
   }
 
