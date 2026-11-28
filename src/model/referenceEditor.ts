@@ -74,7 +74,8 @@ export function buildReferenceInventory(
   for (const id of mandatory) {
     if (visible.some(document => document.id === id)) continue;
     const document = byId.get(id)!;
-    const replace = visible.findLastIndex(item => !mandatory.has(item.id));
+    let replace = visible.length - 1;
+    while (replace >= 0 && mandatory.has(visible[replace].id)) replace -= 1;
     if (replace >= 0) visible[replace] = document;
   }
   const visibleIds = new Set(visible.map(document => document.id));
