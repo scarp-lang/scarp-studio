@@ -71,6 +71,7 @@ import { diskOperationCurrent, inspectWorkspaceDisk, prepareWorkspaceDiskReload,
 import { OpenEditorManager } from './components/OpenEditorManager';
 import { TabOrganizationPanel } from './components/TabOrganizationPanel';
 import { organizeEditorTabs, type TabOrganizationOperation } from './model/tabOrganization';
+import { EditorViewStateStore } from './model/editorViewStateStore';
 import { resolveBulkClose, type TabSelection } from './model/openEditorManagement';
 import { ProjectDependencyAuditPanel } from './components/ProjectDependencyAuditPanel';
 import { auditListedProjectDependencies,resolveAuditFile,type AuditMode,type AuditResult,type ProjectDependencyAudit } from './model/projectDependencyAudit';
@@ -348,6 +349,24 @@ export default function App() {
     const before = liveEditor.current;
     const next = editorReducer(before, action);
     if (next === before) return;
+    if (before.activeId !== next.activeId) {
+      const previous = currentActiveDocument(before);
+      const editor = mountedEditor.current;
+      // Only capture an editor that still represents the exact outgoing
+      // working snapshot. A delayed unmount cannot overwrite another tab.
+      if (previous && editor && mountedEditorDocumentId.current === previous.id) {
+        try {
+          if (editor.getModel()?.getValue() === previous.content) {
+            editorViewStates.capture(previous, editor.saveViewState());
+          }
+        } catch { /* A disposed editor has no restorable view. */ }
+      }
+      // An explicit switch supersedes a queued jump to any other tab.
+      if (pendingInsightJump.current && pendingInsightJump.current.documentId !== next.activeId) pendingInsightJump.current = null;
+      if (pendingSearchLocation.current && pendingSearchLocation.current.documentId !== next.activeId) pendingSearchLocation.current = null;
+      if (pendingProblem.current && pendingProblem.current.snapshot.documentId !== next.activeId) pendingProblem.current = null;
+    }
+    editorViewStates.reconcile(next.documents);
     const project = selectedFolderRef.current?.path ?? null;
     // Clicking a project-search hit opens/activates a source. Preserve the
     // result list through navigation, but immediately retire it after a
@@ -452,6 +471,7 @@ export default function App() {
   const [searchCaseSensitive, setSearchCaseSensitive] = useState(false);
   const [searchWholeWord, setSearchWholeWord] = useState(false);
   const searchInput = useRef<HTMLInputElement | null>(null);
+  const [editorViewStates] = useState(() => new EditorViewStateStore<Monaco.editor.ICodeEditorViewState>());
   const mountedEditor = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const mountedMonaco = useRef<typeof import('monaco-editor') | null>(null);
   const mountedEditorDocumentId = useRef<string | null>(null);
@@ -4389,6 +4409,7 @@ export default function App() {
               <Editor
                 key={active.id}
                 path={active.path || active.id + '.srp'}
+                saveViewState={false}
                 language="scarp"
                 theme={resolvedAppearance.monacoTheme}
                 value={active.content}
@@ -4409,9 +4430,28 @@ export default function App() {
                   editorHandle.current = editor;
                   mountedEditor.current = editor;
                   mountedEditorDocumentId.current = active.id;
-                  editor.onDidChangeCursorPosition((event) => {
-                    setCursor({ line: event.position.lineNumber, column: event.position.column });
+                  editor.onDidDispose(() => {
+                    if (mountedEditor.current === editor) {
+                      mountedEditor.current = null;
+                      editorHandle.current = null;
+                      mountedEditorDocumentId.current = null;
+                    }
                   });
+                  editor.onDidChangeCursorPosition((event) => {
+                    if (mountedEditor.current === editor && liveEditor.current.activeId === active.id) {
+                      setCursor({ line: event.position.lineNumber, column: event.position.column });
+                    }
+                  });
+                  const freshView = currentActiveDocument(liveEditor.current);
+                  if (freshView?.id === active.id && editor.getModel()?.getValue() === freshView.content) {
+                    const remembered = editorViewStates.restore(freshView);
+                    if (remembered) {
+                      try { editor.restoreViewState(remembered); }
+                      catch { editorViewStates.forget(freshView.id); }
+                    }
+                  }
+                  // Explicit diagnostic, search and insight jumps take
+                  // precedence over the restored view.
                   const pendingDiagnostic = pendingProblem.current;
                   if (pendingDiagnostic) {
                     pendingProblem.current = null;
@@ -4449,6 +4489,10 @@ export default function App() {
                       revealSearchLocation(editor, pending);
                     }
                     pendingSearchLocation.current = null;
+                  }
+                  if (mountedEditor.current === editor && liveEditor.current.activeId === active.id) {
+                    const position = editor.getPosition();
+                    setCursor(position ? { line: position.lineNumber, column: position.column } : { line: 1, column: 1 });
                   }
                 }}
                 loading={<div className="empty-state">Loading Scarp editor…</div>}
