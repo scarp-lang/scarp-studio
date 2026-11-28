@@ -1974,3 +1974,60 @@ button:focus-visible, [role="tab"]:focus-visible { outline: 2px solid #529eff; o
 .project-scope-inventory td { text-align: start; padding: 5px; border-bottom: 1px solid var(--border); }
 .project-scope-stats { display: flex; gap: 14px; flex-wrap: wrap; margin: 0; }
 .project-scope-stats dd { margin: 4px 0 0; font-weight: 600; }
+
+/* Bounded project match inspection keeps long labels and source context
+   readable at narrow sidebar widths without forcing horizontal overflow. */
+.project-match-explorer {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.project-match-explorer p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.project-match-explorer .project-scope-fields {
+  align-items: start;
+}
+.project-match-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  border-bottom: 1px solid var(--border);
+}
+.project-match-list-row .search-result-row {
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: start;
+  text-align: start;
+}
+.project-match-context {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.project-match-context mark {
+  color: var(--text);
+  background: var(--raised);
+  border-bottom: 2px solid var(--accent);
+  font-weight: 700;
+}
+.project-match-review {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  min-width: 0;
+}
+.project-match-explorer textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+@media (max-width: 700px) {
+  .project-match-list-row {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+}
