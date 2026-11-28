@@ -17,6 +17,9 @@ import { userSnippetStore } from './model/userSnippets';
 import { buildSnippetPaletteEntries, planSnippetInsertion, isSnippetPaletteEntry } from './model/snippetInsertion';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Editor from '@monaco-editor/react';
+import { ReferenceEditorPane } from './components/ReferenceEditorPane';
+import { DEFAULT_REFERENCE_LAYOUT, updateReferenceLayout, resolveReferenceSource,
+  reconcileReferenceSelection, planReferenceSwap } from './model/referenceEditor';
 import type * as Monaco from 'monaco-editor';
 import { ask, open } from '@tauri-apps/plugin-dialog';
 import { isTauri } from '@tauri-apps/api/core';
@@ -331,6 +334,27 @@ export default function App() {
   const [projectDiskEvidence,setProjectDiskEvidence]=useState<ProjectDiskCheckEvidence|null>(null);
   const projectPreflight=useRef<{cancelled:boolean}|null>(null);
   const { documents, activeId } = editorState;
+  const [referenceOpen, setReferenceOpen] = useState(false);
+  const [referenceId, setReferenceId] = useState<string | null>(null);
+  const referenceSelection = useRef<string | null>(null);
+  const [referenceLayout, setReferenceLayout] = useState(DEFAULT_REFERENCE_LAYOUT);
+
+  function selectReference(id: string | null): void {
+    const current = liveEditor.current;
+    if (id !== null && resolveReferenceSource(current.documents, current.activeId, id).kind !== 'available') return;
+    referenceSelection.current = id;
+    setReferenceId(id);
+  }
+
+  function swapReference(): void {
+    if (recoveryOperationsBlocked() || compilerBusy || compilerSelecting || compilerScanning) return;
+    const current = liveEditor.current;
+    const swap = planReferenceSwap(current.documents, current.activeId, referenceSelection.current);
+    if (!swap) return;
+    referenceSelection.current = swap.referenceId;
+    setReferenceId(swap.referenceId);
+    dispatch({ type: 'activate', id: swap.primaryId });
+  }
   // Completed searches survive safe navigation but never selected-project
   // source mutations, listing replacement or changed search options.
   const projectSearchEpoch = useRef(0);
@@ -367,6 +391,11 @@ export default function App() {
       if (pendingProblem.current && pendingProblem.current.snapshot.documentId !== next.activeId) pendingProblem.current = null;
     }
     editorViewStates.reconcile(next.documents);
+    const retainedReference = reconcileReferenceSelection(referenceSelection.current, next.documents);
+    if (retainedReference !== referenceSelection.current) {
+      referenceSelection.current = retainedReference;
+      setReferenceId(retainedReference);
+    }
     const project = selectedFolderRef.current?.path ?? null;
     // Clicking a project-search hit opens/activates a source. Preserve the
     // result list through navigation, but immediately retire it after a
@@ -3675,6 +3704,13 @@ export default function App() {
       }
       const command = matchStudioShortcut(event, studioShortcutStore.getSnapshot().bindings);
       if (!command) return;
+      // A read-only reference is not the primary editor. Do not route edit,
+      // save, close or execution shortcuts from its focus to another buffer.
+      if (event.target instanceof Element && event.target.closest('#scarp-reference-pane') &&
+          !['settings', 'quick-open', 'commands', 'stop-scarp'].includes(command)) {
+        event.preventDefault();
+        return;
+      }
       if (paletteMode !== null && !['settings', 'quick-open', 'commands', 'go-to-line', 'go-to-symbol', 'stop-scarp'].includes(command)) return;
       if (command === 'next-diagnostic' && (!navigableDiagnostic || busy || compilerBusy || compilerSelecting)) return;
       event.preventDefault();
@@ -3736,6 +3772,8 @@ export default function App() {
           <div className="toolbar-group" role="group" aria-label="Navigation">
           <button onClick={() => showPalette('commands')} title={"Commands (" + shortcut('commands') + ')'}>Commands</button>
           <button onClick={showStarterTemplates} title="New Scarp starter source templates">Examples</button>
+          <button type="button" aria-expanded={referenceOpen && !focusMode} aria-controls="scarp-reference-pane"
+            onClick={() => setReferenceOpen(open => !open)} title="Show a second open source in a read-only pane">Reference</button>
           <button onClick={toggleExplorer}
             aria-expanded={explorerVisible} aria-controls="scarp-explorer"
             title={"Toggle Explorer (" + shortcut('explorer') + ')'}>Explorer</button>
@@ -4402,7 +4440,9 @@ export default function App() {
             </div>
           )}
           <div className="editor-output-region" ref={editorOutputRegion}>
+          <div className={'editor-panes' + (referenceOpen && !focusMode ? ' split-' + referenceLayout.orientation : '')}>
           <div id="scarp-editor-panel" className="editor-panel" role="tabpanel"
+            style={referenceOpen && !focusMode ? { flexBasis: (100 - referenceLayout.share) + '%' } : undefined}
             aria-labelledby={active ? 'studio-tab-' + active.id : undefined}
             aria-label={active ? undefined : 'Scarp source editor'}>
             {active ? (
@@ -4521,6 +4561,13 @@ export default function App() {
                 </div>
               </section>
             )}
+          </div>
+          {referenceOpen && !focusMode && <ReferenceEditorPane
+            documents={documents} activeId={activeId} selectedId={referenceId}
+            layout={referenceLayout} theme={resolvedAppearance.monacoTheme}
+            busy={busy || compilerBusy || compilerSelecting || compilerScanning}
+            onSelect={selectReference} onLayout={patch => setReferenceLayout(current => updateReferenceLayout(current, patch))}
+            onSwap={swapReference} onClose={() => setReferenceOpen(false)} />}
           </div>
           {outputPanelMode === 'normal' && <WorkspaceSplitter dimension="outputHeight" value={workspaceLayout.outputHeight}
             available={workspaceDimensions.height} controls="scarp-output-panel"
