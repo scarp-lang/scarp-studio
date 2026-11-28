@@ -122,3 +122,45 @@ export function createFixtureReader(
     },
   };
 }
+
+
+export const LEXICAL_ENTRY='src/a-entry.srp';
+export const LEXICAL_HELPER='src/b-helper.srp';
+export const LEXICAL_LEAF='src/c-leaf.srp';
+export const LEXICAL_UNAVAILABLE='src/d-unavailable.srp';
+export const LEXICAL_CASE='src/f-case.srp';
+export const LEXICAL_TEST='tests/e-check.srp';
+export const LEXICAL_SECRET='fixture-private-function-body';
+export function createLexicalFixture():FixtureWorkspace{
+  const helperSaved='pub funcra helper(x: integer) -> integer { leaf(); return x; }\n';
+  const helperWorking='pub funcra helper(x: integer) -> integer { leaf(); leaf(); return x; }\n';
+  return Object.freeze({
+    files:Object.freeze([
+      file(LEXICAL_ENTRY,'pub funcra start(x: integer) -> integer { helper(); helper(); twin(); missing(); return x; }\nfuncra twin() {}\n'),
+      file(LEXICAL_HELPER,helperSaved),
+      file(LEXICAL_LEAF,'pub funcra leaf() { helper(); }\nfuncra twin() {}\nfuncra self() { self(); }\n'),
+      file(LEXICAL_UNAVAILABLE,'funcra hidden() { helper(); }\n'),
+      file(LEXICAL_CASE,'Helper(); module.helper(); bind typed: helper = 0; helper += 1;\n'),
+      file(LEXICAL_TEST,'start(1); helper();\n// helper();\nbind label = "helper";\n// '+LEXICAL_SECRET+'\n'),
+    ]),
+    unavailable:Object.freeze([LEXICAL_UNAVAILABLE]),
+    documents:Object.freeze([{
+      id:'fixture-lexical-helper',name:LEXICAL_HELPER,path:ROOT+'/'+LEXICAL_HELPER,
+      content:helperWorking,savedContent:helperSaved,revision:1,
+    }]),
+  });
+}
+export function changeLexicalInterface(workspace:FixtureWorkspace):FixtureWorkspace{
+  return {...workspace,documents:workspace.documents.map(document=>document.name===LEXICAL_HELPER?
+    {...document,content:document.content.replace('x: integer','x: float'),revision:document.revision+1}:document)};
+}
+export function shiftLexicalLocation(workspace:FixtureWorkspace):FixtureWorkspace{
+  return {...workspace,documents:workspace.documents.map(document=>document.name===LEXICAL_HELPER?
+    {...document,content:'// shifted location\n'+document.content,revision:document.revision+1}:document)};
+}
+export function failLexicalLeaf(workspace:FixtureWorkspace):FixtureWorkspace{
+  return {...workspace,unavailable:[...new Set([...workspace.unavailable,LEXICAL_LEAF])]};
+}
+export function removeLexicalEntry(workspace:FixtureWorkspace):FixtureWorkspace{
+  return {...workspace,files:workspace.files.filter(item=>item.name!==LEXICAL_ENTRY)};
+}
