@@ -14,10 +14,10 @@ export type QuickOpenLocationRequest =
 export const MAX_QUICK_OPEN_LOCATION_UNITS = 19;
 
 export function parseQuickOpenLocation(text: string): QuickOpenLocationRequest {
-  if (!text.trim() && text.length <= MAX_QUICK_OPEN_LOCATION_UNITS) return { kind: 'none' };
   if (text.length > MAX_QUICK_OPEN_LOCATION_UNITS || /[\x00-\x1f\x7f]/.test(text)) {
     return { kind: 'invalid', error: 'Enter a positive line or line:column, using up to nine digits per number.' };
   }
+  if (!text.trim()) return { kind: 'none' };
   const location = parseLineLocation(text);
   return location ? { kind: 'valid', location } : {
     kind: 'invalid', error: 'Enter a positive line or line:column, using up to nine digits per number.',
