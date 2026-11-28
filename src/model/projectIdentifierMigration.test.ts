@@ -228,7 +228,9 @@ describe('apply transaction and undo',()=>{
     const gate=new AutoSaveReviewGate();
     gate.holdReplacements(next.documents,undo.changes.map(change=>change.id));
     for(const change of undo.changes){
-      expect(gate.canWrite(change.snapshot,next,true)).toBe(false);
+      const live=next.documents.find(document=>document.id===change.id)!;
+      expect(gate.isHeld(live)).toBe(true);
+      expect(gate.canWrite(live,live,true)).toBe(false);
     }
   });
 });
