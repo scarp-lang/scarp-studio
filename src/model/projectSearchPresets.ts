@@ -150,6 +150,27 @@ export function replaceSearchPresetSettings(library: SearchPresetLibrary, id: nu
   return { ok: true, value: updateLibrary(library, library.presets.map(item =>
     item.id === id ? createPreset(id, item.name, validated.value) : item)) };
 }
+export interface SearchPresetReplaceReview {
+  readonly base: SearchPresetLibrary;
+  readonly preset: SearchPreset;
+  readonly proposed: ProjectSearchSettings;
+}
+export function prepareSearchPresetReplace(library: SearchPresetLibrary, id: number,
+  current: ProjectSearchSettings): PresetResult<SearchPresetReplaceReview> {
+  const preset = library.presets.find(item => item.id === id);
+  if (!preset) return fail('The selected preset no longer exists.');
+  const validated = validateProjectSearchSettings(current);
+  if (!validated.ok) return validated;
+  return { ok: true, value: Object.freeze({ base: library, preset, proposed: validated.value }) };
+}
+export function confirmSearchPresetReplace(library: SearchPresetLibrary, review: SearchPresetReplaceReview,
+  current: ProjectSearchSettings): PresetResult<SearchPresetLibrary> {
+  if (library !== review.base || !library.presets.includes(review.preset) ||
+      !sameProjectSearchSettings(review.proposed, current)) {
+    return fail('The preset or proposed search settings changed. Review the replacement again.');
+  }
+  return replaceSearchPresetSettings(library, review.preset.id, review.proposed);
+}
 export function removeSearchPreset(library: SearchPresetLibrary, id: number): PresetResult<SearchPresetLibrary> {
   if (!library.presets.some(item => item.id === id)) return fail('The selected preset no longer exists.');
   return { ok: true, value: updateLibrary(library, library.presets.filter(item => item.id !== id)) };
@@ -226,6 +247,7 @@ export interface PresetImportRow {
   readonly index: number;
   readonly name: string;
   readonly status: PresetImportStatus;
+  readonly settings: ProjectSearchSettings;
 }
 export interface PresetImportReview {
   readonly base: SearchPresetLibrary;
@@ -273,7 +295,7 @@ export function reviewSearchPresetImport(library: SearchPresetLibrary, text: str
   if (!parsed.ok) return parsed;
   const rows = parsed.value.map((item, index): PresetImportRow => {
     const existing = library.presets.find(preset => nameKey(preset.name) === nameKey(item.name));
-    return Object.freeze({ index, name: item.name, status: !existing ? 'new' :
+    return Object.freeze({ index, name: item.name, settings: item.settings, status: !existing ? 'new' :
       sameProjectSearchSettings(existing.settings, item.settings) ? 'identical' : 'conflict' });
   });
   return { ok: true, value: Object.freeze({
@@ -292,6 +314,12 @@ export function applySearchPresetImport(library: SearchPresetLibrary, review: Pr
       selected.some(index => !Number.isSafeInteger(index) || index < 0)) return fail('Select distinct new preset rows.');
   const checked = reviewSearchPresetImport(library, review.source);
   if (!checked.ok) return checked;
+  if (review.rows.length !== checked.value.rows.length || review.remainingCapacity !== checked.value.remainingCapacity ||
+      review.rows.some((row, index) => {
+        const expected = checked.value.rows[index];
+        return row.index !== expected.index || row.name !== expected.name || row.status !== expected.status ||
+          !sameProjectSearchSettings(row.settings, expected.settings);
+      })) return fail('The reviewed backup evidence changed. Review the backup again.');
   if (selected.length > checked.value.remainingCapacity) return fail('The selection exceeds the remaining preset capacity.');
   if (selected.some(index => checked.value.rows[index]?.status !== 'new')) return fail('Only reviewed new preset rows can be imported.');
   const parsed = parseSearchPresetBackup(review.source);
