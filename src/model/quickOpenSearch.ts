@@ -1,14 +1,16 @@
 import { MAX_NAVIGATION_QUERY_UNITS } from './navigation';
 import type { QuickOpenEntry } from './projectQuickOpen';
+import { EMPTY_QUICK_OPEN_RECENCY, quickOpenRecencyRanks, type QuickOpenRecency } from './quickOpenRecency';
 
 export const QUICK_OPEN_RESULT_LIMIT = 40;
 export const MAX_QUICK_OPEN_CANDIDATES = 1000;
-export const QUICK_OPEN_SCOPES = ['all', 'open', 'modified', 'untitled', 'listed', 'closed'] as const;
+export const QUICK_OPEN_SCOPES = ['all', 'open', 'recent', 'modified', 'untitled', 'listed', 'closed'] as const;
 export type QuickOpenScope = typeof QUICK_OPEN_SCOPES[number];
 export type QuickOpenMatchMode = 'fuzzy' | 'literal';
 export const QUICK_OPEN_SCOPE_LABELS: Readonly<Record<QuickOpenScope, string>> = Object.freeze({
   all: 'All sources',
   open: 'Open tabs',
+  recent: 'Recently active tabs',
   modified: 'Modified tabs',
   untitled: 'Untitled tabs',
   listed: 'Listed workspace sources',
@@ -19,6 +21,7 @@ export interface QuickOpenOptions {
   readonly scope: QuickOpenScope;
   readonly mode: QuickOpenMatchMode;
   readonly activeId: string | null;
+  readonly recency?: QuickOpenRecency;
 }
 export const DEFAULT_QUICK_OPEN_OPTIONS: QuickOpenOptions = Object.freeze({
   scope: 'all', mode: 'fuzzy', activeId: null,
@@ -108,10 +111,11 @@ function relativePath(entry: QuickOpenEntry): string | undefined {
   return entry.kind === 'project' ? entry.label : entry.relativeLabel;
 }
 
-function eligible(entry: QuickOpenEntry, scope: QuickOpenScope): boolean {
+function eligible(entry: QuickOpenEntry, scope: QuickOpenScope, recent: ReadonlyMap<string, number>): boolean {
   switch (scope) {
     case 'all': return true;
     case 'open': return entry.kind === 'tab';
+    case 'recent': return entry.kind === 'tab' && recent.has(entry.documentId);
     case 'modified': return entry.kind === 'tab' && entry.modified === true;
     case 'untitled': return entry.kind === 'tab' && entry.path === null;
     case 'listed': return entry.kind === 'project' || entry.relativeLabel !== undefined;
@@ -191,12 +195,15 @@ export function searchQuickOpen(
   const inputLimited = entries.length > MAX_QUICK_OPEN_CANDIDATES;
   if (invalidQuery) return { matches: [], eligible: 0, matched: 0, inputLimited, resultLimited: false, invalidQuery };
   const terms = fold(query).trim().split(/\s+/).filter(Boolean);
-  const candidates = entries.slice(0, MAX_QUICK_OPEN_CANDIDATES).filter(entry => eligible(entry, options.scope));
+  const recent = quickOpenRecencyRanks(options.recency ?? EMPTY_QUICK_OPEN_RECENCY);
+  const candidates = entries.slice(0, MAX_QUICK_OPEN_CANDIDATES).filter(entry => eligible(entry, options.scope, recent));
   const ranked = candidates.flatMap((entry, index) => {
     const match = scoreEntry(entry, terms, options);
     return match ? [{ match, index }] : [];
   });
+  const rank = (entry: QuickOpenEntry) => entry.kind === 'tab' ? recent.get(entry.documentId) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER;
   ranked.sort((a, b) => b.match.score - a.match.score ||
+    rank(a.match.entry) - rank(b.match.entry) ||
     (terms.length ? compareText(fold(a.match.entry.label), fold(b.match.entry.label)) : 0) || a.index - b.index);
   return {
     matches: ranked.slice(0, limit).map(item => item.match),
