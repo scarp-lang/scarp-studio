@@ -213,6 +213,6 @@ export function ProjectExplorer({
       </section>;
     })}
     </div>
-    {!shown && <p className="sidebar-note">{searching ? 'No listed sources match the filters.' : groups.length ? 'No .srp files found in these folders.' : 'No .srp files or folders found.'}</p>}
+    {!shown && scopeAvailable && <p className="sidebar-note">{searching ? 'No listed sources match the filters.' : scoped.length ? 'No .srp files found in these folders.' : 'No .srp files or folders found.'}</p>}
   </div>;
 }
