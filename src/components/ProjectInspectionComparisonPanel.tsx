@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { QUALITY_RULES, QUALITY_LABELS } from '../model/sourceQuality';
 import { INSPECTION_TASK_KINDS, INSPECTION_STATE_LABELS, INSPECTION_ORIGIN_LABELS,
   type ProjectInspectionReport } from '../model/projectInspection';
@@ -91,13 +91,14 @@ export function InspectionComparisonDetails({ data }: { data: InspectionComparis
   </section>;
 }
 
-export function ProjectInspectionComparisonPanel({ current, busy }: { current: ProjectInspectionReport | null; busy: boolean }) {
+export function ProjectInspectionComparisonPanel({ current, busy, visible = true }: { current: ProjectInspectionReport | null; busy: boolean; visible?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const [records, setRecords] = useState<readonly RecordEntry[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [notice, setNotice] = useState('');
   const nextId = useRef(1);
+  useEffect(() => { if (!visible) { setExpanded(false); setConfirmClear(false); setNotice(''); } }, [visible]);
   const candidate = useMemo(() => current ? captureInspectionBaseline(current) : null, [current]);
   const selected = records.find(record => record.id === selectedId);
   const comparison = useMemo(() => selected && candidate?.ok
@@ -113,8 +114,9 @@ export function ProjectInspectionComparisonPanel({ current, busy }: { current: P
     setRecords(remaining); setSelectedId(remaining.at(-1)?.id ?? null);
     setConfirmClear(false); setNotice('Removed selected inspection baseline.');
   }
+  if (!visible) return null;
   return <section className="project-scope-coverage" aria-label="Listed inspection baseline library">
-    <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
+    <button type="button" aria-expanded={expanded} onClick={() => { setExpanded(!expanded); if (expanded) setConfirmClear(false); }}>
       {expanded ? 'Hide inspection comparisons' : 'Compare inspection baselines'}
     </button>
     {expanded && <>
