@@ -4,9 +4,15 @@ import { DEFAULT_TOOL_DIRECTORY,EXPLORER_TOOLS,MAX_TOOL_QUERY,MAX_TOOL_RECENT,fi
 const ids=(state:ToolDirectoryState)=>filterExplorerTools(state).map(tool=>tool.id);
 describe('Explorer tool directory',()=>{
   it('exposes all registered tools by default with unique stable identities',()=>{
-    expect(ids(DEFAULT_TOOL_DIRECTORY)).toHaveLength(27);
+    expect(ids(DEFAULT_TOOL_DIRECTORY)).toHaveLength(28);
     expect(new Set(ids(DEFAULT_TOOL_DIRECTORY)).size).toBe(EXPLORER_TOOLS.length);
     expect(new Set(EXPLORER_TOOLS.map(tool=>tool.category))).toEqual(new Set(TOOL_CATEGORIES));
+  });
+  it('finds the workspace architecture explorer by architecture and impact terms',()=>{
+    let state=reduceToolDirectory(DEFAULT_TOOL_DIRECTORY,{type:'query',value:'architecture impact'});
+    expect(ids(state)).toEqual(['workspace-architecture']);
+    state=reduceToolDirectory(state,{type:'filter',value:'analysis'});
+    expect(ids(state)).toEqual(['workspace-architecture']);
   });
   it('combines case-insensitive keyword terms and category filters',()=>{
     let state=reduceToolDirectory(DEFAULT_TOOL_DIRECTORY,{type:'query',value:'  DIFF transfer '});
