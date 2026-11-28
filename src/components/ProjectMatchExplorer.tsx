@@ -4,7 +4,7 @@ import type { ScopedSearchSummary } from '../model/projectSearchScope';
 import {
   buildProjectMatchInventory, filterProjectMatchInventory, pageProjectMatchRows, adjacentProjectMatch,
   resolveReviewedProjectMatch, projectMatchExplorerReport, visibleMatchContext,
-  DEFAULT_PROJECT_MATCH_FILTER, PROJECT_MATCH_FILTER_LIMIT, MATCH_COVERAGE_LABELS, MATCH_ORIGIN_LABELS,
+  DEFAULT_PROJECT_MATCH_FILTER, PROJECT_MATCH_FILTER_LIMIT, PROJECT_MATCH_PAGE_SIZE, MATCH_COVERAGE_LABELS, MATCH_ORIGIN_LABELS,
   type ProjectMatchFilter, type ProjectMatchRow, type ProjectMatchContext, type ProjectMatchInventory,
 } from '../model/projectMatchExplorer';
 
@@ -148,7 +148,7 @@ export function ProjectMatchExplorer({ result, coverage, busy, onNavigate }: Pro
         setSelectedIndex(index);
         const position = rows.findIndex(row => row.index === index);
         if (position >= 0) {
-          const nextPage = pageProjectMatchRows(rows, Math.floor(position / Math.max(1, pageProjectMatchRows(rows, 1).rows.length)) + 1);
+          const nextPage = pageProjectMatchRows(rows, Math.floor(position / PROJECT_MATCH_PAGE_SIZE) + 1);
           setPage(nextPage.page);
         }
       }} onNavigate={() => navigate(selected)}/>}
